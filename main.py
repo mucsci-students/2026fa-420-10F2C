@@ -1,5 +1,6 @@
 import argparse
 from commands import *
+from faculty_commands import add_faculty, modify_faculty, delete_faculty
 
 
 def main():
