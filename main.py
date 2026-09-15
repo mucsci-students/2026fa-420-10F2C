@@ -4,7 +4,7 @@
 #                                      we simply import the shell and run it                                              #   
 #                                                                                                                         #
 # ----------------------------------------------------------------------------------------------------------------------- #
-from shell import SchedulerShell 
+from app.shell import SchedulerShell 
 
 
 shell = SchedulerShell()
