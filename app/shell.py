@@ -1,6 +1,6 @@
 import argparse
 from app.commands import *
-#from faculty_commands import add_faculty, modify_faculty, delete_faculty
+from app.Cli.facultyComm import add_faculty, modify_faculty, delete_faculty
 # ----------------------------------------------------------------------------------------------------------------------- #
 #                       Handles the interactive shell and user commands for the scheduler                                 #   
 # ----------------------------------------------------------------------------------------------------------------------- #

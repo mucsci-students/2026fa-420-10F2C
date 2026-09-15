@@ -19,8 +19,8 @@ import os
 # elsewhere on the team (Faculty is a class of staticmethods -- it's never
 # instantiated, every method just takes the faculty list as its first
 # argument like a normal function).
-import Faculty_model as FacultyModel
-from Faculty_model import FacultyValidationError
+import app.model.facultyModel as FacultyModel
+from app.model.facultyModel import FacultyValidationError
 
 CONFIG_PATH = "config.json"  # <-- match this to the rest of commands.py
 
