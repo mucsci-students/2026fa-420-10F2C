@@ -54,6 +54,7 @@ class SchedulerShell:
         timeslot_subparsers.add_parser("add")
         timeslot_subparsers.add_parser("modify")
         timeslot_subparsers.add_parser("delete")
+        timeslot_subparsers.add_parser("timing")
 
         pattern_parser = subparsers.add_parser("pattern")
         pattern_subparsers = pattern_parser.add_subparsers(dest="action", required=True)
@@ -76,6 +77,16 @@ class SchedulerShell:
         p_load = config_subparsers.add_parser("load")
         p_load.add_argument("path")
         config_subparsers.add_parser("validate")
+
+        settings_parser = subparsers.add_parser("settings")
+        settings_subparsers = settings_parser.add_subparsers(dest="action", required=True)
+        p_limit = settings_subparsers.add_parser("limit")
+        p_limit.add_argument("value", nargs="?", type=int, default=None)
+        p_limit.add_argument("--reset", action="store_true")
+        p_flag_on = settings_subparsers.add_parser("enable-flag")
+        p_flag_on.add_argument("flag")
+        p_flag_off = settings_subparsers.add_parser("disable-flag")
+        p_flag_off.add_argument("flag")
 
         help_parser = subparsers.add_parser("help", help="Display available commands")
 
@@ -152,6 +163,7 @@ class SchedulerShell:
                 "add": commands.add_timeslot,
                 "modify": commands.modify_timeslot,
                 "delete": commands.delete_timeslot,
+                "timing": commands.modify_timing_options,
             }[args.action](session)
 
         elif args.command == "pattern":
@@ -192,6 +204,19 @@ class SchedulerShell:
                 commands.load_config(session, args.path)
             elif args.action == "validate":
                 commands.validate_config(session)
+
+        elif args.command == "settings":
+            if args.action == "limit":
+                if args.reset:
+                    commands.reset_generation_limit(session)
+                elif args.value is not None:
+                    commands.set_generation_limit(session, args.value)
+                else:
+                    print("Usage: settings limit <value> | settings limit --reset")
+            elif args.action == "enable-flag":
+                commands.enable_optimizer_flag(session, args.flag)
+            elif args.action == "disable-flag":
+                commands.disable_optimizer_flag(session, args.flag)
 
         elif args.command == "help":
             self.show_help()
@@ -241,6 +266,7 @@ class SchedulerShell:
             print("6. Class Meeting Patterns")
             print("7. Meetings")
             print("8. Config file (new / load / save / print / validate)")
+            print("9. Global Settings (generation limit / optimizer flags)")
             print("0. Back")
             choice = input("Select: ").strip()
 
@@ -261,7 +287,9 @@ class SchedulerShell:
                                        commands.delete_lab)
                 elif choice == "5":
                     self._entity_menu("Time Slot", commands.add_timeslot, commands.modify_timeslot,
-                                       commands.delete_timeslot)
+                                       commands.delete_timeslot,
+                                       extra_actions={"Modify global timing options (gap/overlap)":
+                                                       commands.modify_timing_options})
                 elif choice == "6":
                     self._entity_menu("Class Pattern", commands.add_pattern, commands.modify_pattern,
                                        commands.delete_pattern)
@@ -270,20 +298,34 @@ class SchedulerShell:
                                        commands.delete_meeting)
                 elif choice == "8":
                     self._config_file_menu()
+                elif choice == "9":
+                    self._settings_menu()
                 else:
                     print("Please enter a number from the menu.")
             except ConfigError as e:
                 print(f"Error: {e}")
 
     # Add/modify/delete/view for one entity; reused for every entity type.
-    def _entity_menu(self, label, add_fn, modify_fn, delete_fn, view=None):
+    # extra_actions is an optional {label: fn} dict for entity-specific
+    # actions beyond plain CRUD (e.g. time slots' global timing options).
+    def _entity_menu(self, label, add_fn, modify_fn, delete_fn, view=None, extra_actions=None):
+        extra_actions = extra_actions or {}
         while True:
             print(f"\n--- {label} ---")
             print(f"1. Add {label}")
             print(f"2. Modify {label}")
             print(f"3. Delete {label}")
+            next_num = 4
+            view_num = None
             if view is not None:
-                print(f"4. View all {label} records")
+                print(f"{next_num}. View all {label} records")
+                view_num = next_num
+                next_num += 1
+            extra_nums = {}
+            for extra_label, fn in extra_actions.items():
+                print(f"{next_num}. {extra_label}")
+                extra_nums[str(next_num)] = fn
+                next_num += 1
             print("0. Back")
             choice = input("Select: ").strip()
 
@@ -296,8 +338,10 @@ class SchedulerShell:
                     modify_fn(self.session)
                 elif choice == "3":
                     delete_fn(self.session)
-                elif choice == "4" and view is not None:
+                elif view_num is not None and choice == str(view_num):
                     view(self.session)
+                elif choice in extra_nums:
+                    extra_nums[choice](self.session)
                 else:
                     print("Please enter a number from the menu.")
             except ConfigError as e:
@@ -329,6 +373,38 @@ class SchedulerShell:
                     commands.print_config(self.session)
                 elif choice == "5":
                     commands.validate_config(self.session)
+                else:
+                    print("Please enter a number from the menu.")
+            except ConfigError as e:
+                print(f"Error: {e}")
+
+    def _settings_menu(self):
+        while True:
+            print("\n--- Global Settings ---")
+            print("1. Set generation limit")
+            print("2. Reset generation limit to default")
+            print("3. Enable an optimizer flag")
+            print("4. Disable an optimizer flag")
+            print("0. Back")
+            choice = input("Select: ").strip()
+
+            try:
+                if choice == "0":
+                    return
+                elif choice == "1":
+                    value_input = input("New generation limit: ").strip()
+                    if not value_input.lstrip("-").isdigit():
+                        print("Please enter a whole number.")
+                        continue
+                    commands.set_generation_limit(self.session, int(value_input))
+                elif choice == "2":
+                    commands.reset_generation_limit(self.session)
+                elif choice == "3":
+                    flag = input("Flag to enable (e.g. faculty_course, same_room, pack_labs): ").strip()
+                    commands.enable_optimizer_flag(self.session, flag)
+                elif choice == "4":
+                    flag = input("Flag to disable: ").strip()
+                    commands.disable_optimizer_flag(self.session, flag)
                 else:
                     print("Please enter a number from the menu.")
             except ConfigError as e:
@@ -391,7 +467,8 @@ class SchedulerShell:
               "course      <add,modify,delete>\n"
               "lab         <add,modify,delete>\n"
               "room        <add,modify,delete>\n"
-              "timeslot    <add,modify,delete>\n"
+              "timeslot    <add,modify,delete,timing>\n"
+              "settings    <limit N,limit --reset,enable-flag F,disable-flag F>\n"
               "pattern     <add,modify,delete>\n"
               "meeting     <add,modify,delete>\n"
               "config      <new,print,load <path>,save [path],validate>\n"
