@@ -1,3 +1,10 @@
+# Project-specific: manual test output and local scratch files
+out.json
+out.csv
+single.csv
+bad.csv
+test_config.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
