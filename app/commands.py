@@ -24,6 +24,17 @@ from app import schedule_ops
 # ---- CONFIRM this import: the nested faculty model's real name/location. ----
 from scheduler.config import FacultyConfig
 
+# ---- CONFIRM these too: class-pattern CRUD below (add/modify/delete_pattern)
+# needs the model class(es) for one entry of time_slot_config.classes and its
+# nested meetings. Guessed as ClassConfig / MeetingConfig by analogy with
+# FacultyConfig above (JSON key "classes" -> "ClassConfig", singular of the
+# nested "meetings" list -> "MeetingConfig") -- NOT verified against
+# scheduler.config's real exports. Check with:
+#   uv run python -c "import scheduler.config as c; print([n for n in dir(c) if not n.startswith('_')])"
+# and fix these two names (and cfg.time_slot_config.classes below, if the
+# attribute itself is named differently than the JSON key) once confirmed.
+from scheduler.config import ClassConfig, MeetingConfig
+
 # =========================================================================== #
 #  Config lifecycle (Req #4)
 # =========================================================================== #
@@ -261,14 +272,185 @@ def delete_timeslot(session):
     print("TODO")
 
 
+# ---------------------------------------------------------------- #
+#  Class pattern CRUD (time_slot_config.classes)                    #
+#                                                                    #
+#  Same apply_edit()/ValidationFailure recipe as faculty above, with #
+#  one structural difference: entries here have no name/id field    #
+#  (confirmed against config_example.json -- a "class" entry is     #
+#  just {credits, meetings[, start_time][, disabled]}), so add/     #
+#  modify/delete identify a pattern by its position in the list     #
+#  instead of a lookup key. No check_no_references() call for       #
+#  delete_pattern: nothing else in the schema points at a pattern   #
+#  by index, unlike rooms/labs/faculty being named from courses     #
+#  (Req #7 only calls those four out explicitly).                   #
+# ---------------------------------------------------------------- #
+
+def _prompt_meeting():
+    """One {day, duration, lab} entry, per the meetings shape confirmed
+    in config_example.json's time_slot_config.classes."""
+    print("  Day (MON/TUE/WED/THU/FRI):")
+    day = input("  > ").strip().upper()
+
+    print("  Duration in minutes:")
+    duration_raw = input("  > ").strip()
+    duration = int(duration_raw) if duration_raw.isdigit() else 0
+
+    print("  Is this meeting a lab session? (y/n, default n)")
+    lab = input("  > ").strip().lower() in ("y", "yes")
+
+    return MeetingConfig(day=day, duration=duration, lab=lab)
+
+
+def _prompt_pattern_fields():
+    """Prompts for one full class-pattern record: credits, one-or-more
+    meetings, and the two optional fields (start_time, disabled) seen on
+    some entries in config_example.json."""
+    print("Credits for this pattern:")
+    credits_raw = input().strip()
+    credits = int(credits_raw) if credits_raw.isdigit() else 0
+
+    meetings = []
+    print("Now enter the meetings for this pattern (at least one required).")
+    while True:
+        meetings.append(_prompt_meeting())
+        print("Add another meeting? (y/n, default n)")
+        if input().strip().lower() not in ("y", "yes"):
+            break
+
+    print("Fixed start time for this pattern, e.g. 16:00 (blank = none):")
+    start_time = input().strip() or None
+
+    print("Should this pattern start disabled? (y/n, default n)")
+    disabled = input().strip().lower() in ("y", "yes")
+
+    return {
+        "credits": credits,
+        "meetings": meetings,
+        "start_time": start_time,
+        "disabled": disabled,
+    }
+
+
+def _format_pattern(index, pattern):
+    meeting_bits = ", ".join(
+        f"{m.day} {m.duration}min" + (" (lab)" if getattr(m, "lab", False) else "")
+        for m in pattern.meetings
+    )
+    extras = []
+    if getattr(pattern, "start_time", None):
+        extras.append(f"start_time={pattern.start_time}")
+    if getattr(pattern, "disabled", False):
+        extras.append("disabled")
+    extra_str = f"  [{', '.join(extras)}]" if extras else ""
+    return f"[{index}] {pattern.credits} credits -- {meeting_bits}{extra_str}"
+
+
+def _list_patterns(config):
+    """Prints every existing pattern with its index (there's no standalone
+    'pattern view' command -- see shell.py's pattern subparser -- so
+    modify/delete show the list themselves right before asking which one
+    to act on)."""
+    patterns = config.time_slot_config.classes
+    if not patterns:
+        print("(no class patterns defined)")
+        return patterns
+    for i, p in enumerate(patterns):
+        print(_format_pattern(i, p))
+    return patterns
+
+
+def _prompt_pattern_index(count):
+    raw = input("Enter the pattern's index: ").strip()
+    if not raw.isdigit():
+        print("Please enter a valid integer index.")
+        return None
+    idx = int(raw)
+    if not (0 <= idx < count):
+        print(f"No pattern at index {idx}. Valid range: 0-{count - 1}.")
+        return None
+    return idx
+
+
 def add_pattern(session):
-    print("TODO")
+    config = session.require_config()
+    fields = _prompt_pattern_fields()
+    if fields["credits"] <= 0:
+        print("Credits must be a positive integer.")
+        return
+    if not fields["meetings"]:
+        print("A pattern needs at least one meeting.")
+        return
+
+    new_pattern = ClassConfig(**fields)
+
+    def _mutate(cfg):
+        cfg.time_slot_config.classes.append(new_pattern)
+
+    try:
+        apply_edit(config, "pattern", _mutate)
+        print("Class pattern added.")
+    except ValidationFailure as e:
+        print(f"Could not add pattern: {e}")
+
 
 def modify_pattern(session):
-    print("TODO")
+    config = session.require_config()
+    patterns = _list_patterns(config)
+    if not patterns:
+        return
+
+    print("Which pattern would you like to edit?")
+    idx = _prompt_pattern_index(len(patterns))
+    if idx is None:
+        return
+
+    updated_fields = _prompt_pattern_fields()
+    if updated_fields["credits"] <= 0:
+        print("Credits must be a positive integer.")
+        return
+    if not updated_fields["meetings"]:
+        print("A pattern needs at least one meeting.")
+        return
+
+    updated_pattern = ClassConfig(**updated_fields)
+
+    def _mutate(cfg):
+        cfg.time_slot_config.classes[idx] = updated_pattern
+
+    try:
+        apply_edit(config, "pattern", _mutate)
+        print("Class pattern updated.")
+    except ValidationFailure as e:
+        # Nothing to manually restore -- edit_mode() already rolled the
+        # whole config back to its pre-mutate state (Req #4/#6).
+        print(f"Could not save changes, previous version kept: {e}")
+
 
 def delete_pattern(session):
-    print("TODO: check courses referencing this class pattern before deleting.")
+    config = session.require_config()
+    patterns = _list_patterns(config)
+    if not patterns:
+        return
+
+    print("Which pattern would you like to delete?")
+    idx = _prompt_pattern_index(len(patterns))
+    if idx is None:
+        return
+
+    print("Are you sure you want to delete this pattern? This cannot be undone. (y/n)")
+    if input().lower().strip() not in ("y", "yes"):
+        print("Removal cancelled")
+        return
+
+    def _mutate(cfg):
+        del cfg.time_slot_config.classes[idx]
+
+    try:
+        apply_edit(config, "pattern", _mutate)
+        print("Class pattern removed.")
+    except ValidationFailure as e:
+        print(f"Could not remove pattern: {e}")
 
 
 def add_meeting(session):
