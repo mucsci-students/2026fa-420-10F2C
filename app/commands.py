@@ -22,7 +22,13 @@ from app.crud import apply_edit, ValidationFailure, check_no_references
 from app import schedule_ops
 
 # ---- CONFIRM this import: the nested faculty model's real name/location. ----
-from scheduler.config import FacultyConfig
+from scheduler.config import FacultyConfig, TimeBlock, ValidationError, OptimizerFlags
+
+_VALID_DAYS = ("MON", "TUE", "WED", "THU", "FRI")
+_VALID_OPTIMIZER_FLAGS = {
+    "faculty_course", "faculty_room", "faculty_lab",
+    "same_room", "same_lab", "pack_rooms", "pack_labs",
+}
 
 # =========================================================================== #
 #  Config lifecycle (Req #4)
@@ -203,7 +209,7 @@ def view_faculty(session):
 
 
 # =========================================================================== #
-#  TODO: course / lab / room / timeslot / pattern / meeting CRUD
+#  TODO: course / lab / room / pattern / meeting CRUD
 #
 #  Follow the exact recipe used above for faculty:
 #    1. session.require_config() to get the live CombinedConfig.
@@ -251,14 +257,166 @@ def delete_room(session):
     print("TODO: check courses whose room list references this room before deleting.")
 
 
+def _prompt_time_block():
+    print("Start time (HH:MM)?")
+    start = input().strip()
+    print("End time (HH:MM)?")
+    end = input().strip()
+    print("Spacing between slots, in minutes?")
+    spacing_raw = input().strip()
+
+    try:
+        spacing = int(spacing_raw)
+    except ValueError:
+        print(f"'{spacing_raw}' is not a valid number of minutes.")
+        return None
+
+    try:
+        return TimeBlock(start=start, spacing=spacing, end=end)
+    except ValidationError as e:
+        print(f"Invalid time block: {e}")
+        return None
+
+
+def _blocks_overlap(a, b):
+    return a.start < b.end and b.start < a.end
+
+
 def add_timeslot(session):
-    print("TODO")
+    config = session.require_config()
+    print(f"Which day? ({'/'.join(_VALID_DAYS)})")
+    day = input().strip().upper()
+    if day not in _VALID_DAYS:
+        print(f"'{day}' is not a valid day.")
+        return
+
+    new_block = _prompt_time_block()
+    if new_block is None:
+        return
+
+    existing = config.time_slot_config.times.get(day, [])
+    conflict = next((b for b in existing if _blocks_overlap(b, new_block)), None)
+    if conflict:
+        print(f"Time Conflict: overlaps existing block {conflict.start}-{conflict.end}")
+        return
+
+    def _mutate(cfg):
+        cfg.time_slot_config.times.setdefault(day, []).append(new_block)
+
+    try:
+        apply_edit(config, "timeslot", _mutate)
+        print("Time Slot Added Successfully")
+    except ValidationFailure as e:
+        print(f"Could not add time slot: {e}")
+
 
 def modify_timeslot(session):
-    print("TODO")
+    config = session.require_config()
+    print(f"Which day is the time slot on? ({'/'.join(_VALID_DAYS)})")
+    day = input().strip().upper()
+    blocks = config.time_slot_config.times.get(day, [])
+    if not blocks:
+        print(f"No time slots defined for {day}.")
+        return
+
+    for i, b in enumerate(blocks):
+        print(f"  [{i}] {b.start}-{b.end} (spacing {b.spacing}m)")
+    print("Which one do you want to change? (index)")
+    try:
+        idx = int(input().strip())
+        blocks[idx]
+    except (ValueError, IndexError):
+        print("Not a valid selection.")
+        return
+
+    print("Enter the new time slot:")
+    new_block = _prompt_time_block()
+    if new_block is None:
+        return
+
+    conflict = next(
+        (b for j, b in enumerate(blocks) if j != idx and _blocks_overlap(b, new_block)),
+        None,
+    )
+    if conflict:
+        print(f"Time Conflict: overlaps existing block {conflict.start}-{conflict.end}")
+        return
+
+    def _mutate(cfg):
+        cfg.time_slot_config.times[day][idx] = new_block
+
+    try:
+        apply_edit(config, "timeslot", _mutate)
+        print("Time Changed Successfully")
+    except ValidationFailure as e:
+        print(f"Could not save changes, previous version kept: {e}")
+
 
 def delete_timeslot(session):
-    print("TODO")
+    config = session.require_config()
+    print(f"Which day is the time slot on? ({'/'.join(_VALID_DAYS)})")
+    day = input().strip().upper()
+    blocks = config.time_slot_config.times.get(day, [])
+    if not blocks:
+        print(f"No time slots defined for {day}.")
+        return
+    if len(blocks) == 1:
+        print(f"Can't delete the only time block on {day} -- every weekday needs at least one.")
+        return
+
+    for i, b in enumerate(blocks):
+        print(f"  [{i}] {b.start}-{b.end} (spacing {b.spacing}m)")
+    print("Which one do you want to delete? (index)")
+    try:
+        idx = int(input().strip())
+        blocks[idx]
+    except (ValueError, IndexError):
+        print("Not a valid selection.")
+        return
+
+    print("Are you sure? Type confirm or cancel")
+    if input().strip().lower() != "confirm":
+        print("Cancelled.")
+        return
+
+    def _mutate(cfg):
+        del cfg.time_slot_config.times[day][idx]
+
+    try:
+        apply_edit(config, "timeslot", _mutate)
+        print("Time slot deleted.")
+    except ValidationFailure as e:
+        print(f"Could not delete: {e}")
+
+
+def modify_timing_options(session):
+    """The 'global timing options' half of the Time slots requirement:
+    TimeSlotConfig.max_time_gap / min_time_overlap."""
+    config = session.require_config()
+    current = config.time_slot_config
+    print(f"Max time gap in minutes [{current.max_time_gap}] (blank to keep):")
+    gap_input = input().strip()
+    print(f"Min time overlap in minutes [{current.min_time_overlap}] (blank to keep):")
+    overlap_input = input().strip()
+
+    try:
+        new_gap = int(gap_input) if gap_input else None
+        new_overlap = int(overlap_input) if overlap_input else None
+    except ValueError:
+        print("Please enter whole numbers.")
+        return
+
+    def _mutate(cfg):
+        if new_gap is not None:
+            cfg.time_slot_config.max_time_gap = new_gap
+        if new_overlap is not None:
+            cfg.time_slot_config.min_time_overlap = new_overlap
+
+    try:
+        apply_edit(config, "timeslot", _mutate)
+        print("Timing options updated.")
+    except ValidationFailure as e:
+        print(f"Could not update timing options: {e}")
 
 
 def add_pattern(session):
@@ -279,6 +437,74 @@ def modify_meeting(session):
 
 def delete_meeting(session):
     print("TODO")
+
+
+# =========================================================================== #
+#  Global settings CRUD (Req #28-30): generation limit + optimizer flags
+# =========================================================================== #
+
+def set_generation_limit(session, value):
+    config = session.require_config()
+    if value <= 0:
+        print("Error: generation limit needs to be positive.")
+        return
+
+    def _mutate(cfg):
+        cfg.limit = value
+
+    try:
+        apply_edit(config, "global_settings", _mutate)
+        print(f"Generation limit set to {value}.")
+    except ValidationFailure as e:
+        print(f"Could not set limit: {e}")
+
+
+def reset_generation_limit(session):
+    config = session.require_config()
+
+    def _mutate(cfg):
+        cfg.limit = 10  # confirmed library default
+
+    try:
+        apply_edit(config, "global_settings", _mutate)
+        print("Generation limit reset to default (10).")
+    except ValidationFailure as e:
+        print(f"Could not reset limit: {e}")
+
+
+def enable_optimizer_flag(session, flag):
+    config = session.require_config()
+    if flag not in _VALID_OPTIMIZER_FLAGS:
+        print(f"Error: '{flag}' is not a valid optimizer flag.")
+        return
+    if flag in config.optimizer_flags:
+        print(f"'{flag}' is already enabled.")
+        return
+
+    def _mutate(cfg):
+        cfg.optimizer_flags.append(OptimizerFlags(flag))
+
+    try:
+        apply_edit(config, "global_settings", _mutate)
+        print(f"Optimizer flag '{flag}' added.")
+    except ValidationFailure as e:
+        print(f"Could not add flag: {e}")
+
+
+def disable_optimizer_flag(session, flag):
+    config = session.require_config()
+    if flag not in config.optimizer_flags:
+        print(f"'{flag}' is not currently enabled.")
+        return
+
+    def _mutate(cfg):
+        cfg.optimizer_flags.remove(flag)
+
+    try:
+        apply_edit(config, "global_settings", _mutate)
+        print(f"Optimizer flag '{flag}' removed.")
+    except ValidationFailure as e:
+        print(f"Could not remove flag: {e}")
 
 
 # =========================================================================== #
