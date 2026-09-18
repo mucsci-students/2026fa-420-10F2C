@@ -221,26 +221,31 @@ def _field(obj, key):
     return getattr(obj, key, None)
 
 
+_DAY_LABELS = {"MON": "Mon", "TUE": "Tue", "WED": "Wed", "THU": "Thu", "FRI": "Fri"}
+
+
 def _format_faculty(f):
-    kind = "adjunct" if f.unique_course_limit <= 1 else "full-time"
-    lines = [
-        f"{f.name}  ({kind}, {f.minimum_credits}-{f.maximum_credits} credits, "
-        f"{f.unique_course_limit} unique course max, {f.maximum_days} days/week max)"
-    ]
+    kind = "Adjunct" if f.unique_course_limit <= 1 else "Full-Time"
+    header = f"{f.name} \u2014 {kind}"
+    lines = [header, "-" * len(header)]
+
+    lines.append(f"  Credits: {f.minimum_credits}-{f.maximum_credits}"
+                  f"   Unique courses: {f.unique_course_limit}"
+                  f"   Max days/week: {f.maximum_days}")
 
     if f.mandatory_days:
         lines.append(f"  Mandatory days: {', '.join(f.mandatory_days)}")
 
+    availability_lines = []
+    for day in ["MON", "TUE", "WED", "THU", "FRI"]:
+        blocks = _field(f.times, day)
+        if not blocks:
+            continue
+        ranges = ", ".join(f"{_field(b, 'start')}-{_field(b, 'end')}" for b in blocks)
+        availability_lines.append(f"    {_DAY_LABELS[day]}  {ranges}")
+
     lines.append("  Availability:")
-    if not f.times:
-        lines.append("    (none set)")
-    else:
-        for day in ["MON", "TUE", "WED", "THU", "FRI"]:
-            blocks = _field(f.times, day)
-            if not blocks:
-                continue
-            ranges = ", ".join(f"{_field(b, 'start')}-{_field(b, 'end')}" for b in blocks)
-            lines.append(f"    {day}: {ranges}")
+    lines.extend(availability_lines if availability_lines else ["    (none set)"])
 
     for label, prefs in (
         ("Course preferences", f.course_preferences),
@@ -259,9 +264,10 @@ def view_faculty(session):
     if not config.config.faculty:
         print("(no faculty defined)")
         return
-    for f in config.config.faculty:
+    for i, f in enumerate(config.config.faculty):
+        if i > 0:
+            print()
         print(_format_faculty(f))
-        print()
 
 
 # =========================================================================== #
@@ -495,24 +501,32 @@ def _prompt_meeting():
     NOTE: "in_person" is the only delivery value actually confirmed in
     the example data; other values (online/hybrid/etc) are a guess --
     double check the real enum via scheduler.config before relying on
-    anything but "in_person" here."""
-    print("  Day (MON/TUE/WED/THU/FRI):")
-    day = input("  > ").strip().upper()
+    anything but "in_person" here.
+    Loops on invalid input (Req #3/#6: recover from bad input without
+    terminating the session) instead of letting Meeting(...)'s
+    ValidationError propagate uncaught and crash the app."""
+    while True:
+        print("  Day (MON/TUE/WED/THU/FRI):")
+        day = input("  > ").strip().upper()
 
-    print("  Duration in minutes:")
-    duration_raw = input("  > ").strip()
-    duration = int(duration_raw) if duration_raw.isdigit() else 0
+        print("  Duration in minutes:")
+        duration_raw = input("  > ").strip()
+        duration = int(duration_raw) if duration_raw.isdigit() else 0
 
-    print("  Is this meeting a lab session? (y/n, default n)")
-    lab = input("  > ").strip().lower() in ("y", "yes")
+        print("  Is this meeting a lab session? (y/n, default n)")
+        lab = input("  > ").strip().lower() in ("y", "yes")
 
-    print("  Delivery mode (in_person/online/hybrid, default in_person):")
-    delivery = input("  > ").strip().lower() or "in_person"
+        print("  Delivery mode (in_person/online/hybrid, default in_person):")
+        delivery = input("  > ").strip().lower() or "in_person"
 
-    print("  Fixed start time for this meeting, e.g. 09:00 (blank = none):")
-    start_time = input("  > ").strip() or None
+        print("  Fixed start time for this meeting, e.g. 09:00 (blank = none):")
+        start_time = input("  > ").strip() or None
 
-    return Meeting(day=day, duration=duration, lab=lab, delivery=delivery, start_time=start_time)
+        try:
+            return Meeting(day=day, duration=duration, lab=lab, delivery=delivery, start_time=start_time)
+        except ValidationError as e:
+            print(f"Invalid meeting: {e}")
+            print("Let's try that meeting again.")
 
 
 def _prompt_pattern_fields():
