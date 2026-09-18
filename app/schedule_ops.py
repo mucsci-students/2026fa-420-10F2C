@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Optional
 
 from scheduler import Scheduler
+from scheduler.writers import CSVWriter, JSONWriter
 
 
 class GenerationOutcome:
@@ -104,12 +105,23 @@ def summarize_schedule(schedule) -> str:
     return "\n".join(lines)
 
 
-def export_schedule(schedule_or_schedules, fmt: str, out_path: str, overwrite: bool = False) -> Path:
-    """Writes one schedule or the whole generated set to JSON or CSV
-    (Req #10). Refuses to clobber an existing file unless overwrite=True --
-    that's this app's documented overwrite-protection approach; adjust the
-    behavior/docstring together if you choose a different one (e.g.
-    prompting for confirmation in the shell instead of a flag here).
+def export_schedule(schedules: list, fmt: str, out_path: str, overwrite: bool = False) -> Path:
+    """Writes generated schedule(s) to JSON or CSV via the library's own
+    writers (Req #10). `schedules` is always a list of schedules (each a
+    list[CourseInstance]) -- the caller wraps a single selected schedule
+    in a one-element list so this function never has to sniff which case
+    it's in.
+
+    CONFIRMED via `inspect` against course-constraint-scheduler 3.0.0:
+      scheduler.writers.{JSONWriter,CSVWriter}(filename: str | None = None)
+      is a context manager; call .add_schedule(schedule) once per
+      schedule inside the `with` block. filename=None writes to stdout,
+      which we never use here since out_path is always provided.
+
+    Overwrite protection: refuse if the target already exists and
+    overwrite=False -- this app's documented approach (see README). This
+    has a benign TOCTOU race against the writer's own file open, which is
+    acceptable for a single-user interactive CLI.
     """
     if fmt not in ("json", "csv"):
         raise ValueError(f"Unknown export format: {fmt!r} (expected 'json' or 'csv')")
@@ -118,24 +130,9 @@ def export_schedule(schedule_or_schedules, fmt: str, out_path: str, overwrite: b
     if target.exists() and not overwrite:
         raise FileExistsError(f"'{target}' already exists. Re-run with overwrite confirmed to replace it.")
 
-    # ---- CONFIRM: replace this block with the library's real writer API.
-    # Guessed shape, based on "context manager support" in the README's
-    # project-structure listing:
-    #
-    #   from scheduler.writers.json_writer import JsonWriter
-    #   from scheduler.writers.csv_writer import CsvWriter
-    #   writer_cls = JsonWriter if fmt == "json" else CsvWriter
-    #   with writer_cls(target) as writer:
-    #       writer.write(schedule_or_schedules)
-    #
-    # or, if writers/__init__.py exports plain functions instead:
-    #
-    #   from scheduler.writers import write_json, write_csv
-    #   (write_json if fmt == "json" else write_csv)(target, schedule_or_schedules)
-    #
-    # Until confirmed, raise loudly instead of silently writing a
-    # hand-rolled (and therefore non-compliant, per Req #10) format:
-    raise NotImplementedError(
-        "Wire this to scheduler.writers' real JSON/CSV writer classes once "
-        "confirmed -- see the CONFIRM block in schedule_ops.export_schedule()."
-    )
+    writer_cls = JSONWriter if fmt == "json" else CSVWriter
+    with writer_cls(str(target)) as writer:
+        for schedule in schedules:
+            writer.add_schedule(schedule)
+
+    return target.resolve()

@@ -1,45 +1,48 @@
 # ----------------------------------------------------------------------------------------------------------------------- #
 #   app/commands.py                                                                                                       #
 #                                                                                                                         #
-#   Every function here now takes `session` (app/session.py) as its first        #
-#   argument instead of doing its own file I/O. Config lifecycle and schedule    #
-#   commands are implemented against the real library. Faculty is rewritten as   #
-#   the worked CRUD example, built on CombinedConfig + edit_mode() instead of     #
-#   the old hand-rolled facultyModel.py. The other entity types are left as      #
-#   clearly-marked TODOs following the exact same pattern -- see the comment     #
-#   block above add_course() for the recipe.                                     #
+#   Every function here takes `session` (app/session.py) as its first argument   #
+#   instead of doing its own file I/O.                                          #
 #                                                                                 #
-#   CONFIRM (see session.py / crud.py / schedule_ops.py docstrings for the       #
-#   full list): the exact Pydantic class name for a faculty record inside        #
-#   scheduler.config (guessed as `Faculty` below -- check with                   #
-#   `python -c "import scheduler.config as c; print([n for n in dir(c) if not   #
-#   n.startswith('_')])"` once the library is installed, and fix the single      #
-#   import line marked below if the name differs).                              #
+#   Implemented against the real library and tested:                            #
+#     - Config lifecycle (Req #4): new/load/save/print/validate.                #
+#     - Faculty CRUD -- the worked example everything else below follows;       #
+#       built on CombinedConfig + edit_mode(), not the old hand-rolled          #
+#       facultyModel.py.                                                        #
+#     - Timeslot CRUD (add/modify/delete) and global timing options.            #
+#     - Class pattern CRUD (add/modify/delete_pattern), identified by list      #
+#       index rather than a name/id -- see the comment block above              #
+#       _list_patterns() for why.                                               #
+#     - Global settings (Req #28-30): generation limit, optimizer flags.        #
+#     - Schedule generation/inspection/export (Req #8-10) -- schedule_ops.py    #
+#       does the real work; export_schedule() here bounds-checks --index        #
+#       before touching session.schedules so a bad index degrades to a         #
+#       printed message instead of killing the session (Req #3).               #
+#                                                                                 #
+#   Still TODO, same recipe as add_faculty() below (require_config() ->         #
+#   prompt -> construct the library's real model -> apply_edit() + _mutate()    #
+#   closure -> catch ValidationFailure; check_no_references() first for any     #
+#   delete_*):                                                                  #
+#     - Course CRUD (add/modify/delete_course).                                 #
+#     - Lab CRUD (add/modify/delete_lab) -- delete needs to check courses'      #
+#       lab lists.                                                              #
+#     - Room CRUD (add/modify/delete_room) -- delete needs to check courses'    #
+#       room lists.                                                             #
+#     - Meeting CRUD (add/modify/delete_meeting).                               #
 # ----------------------------------------------------------------------------------------------------------------------- #
+
 
 from app.session import ConfigError
 from app.crud import apply_edit, ValidationFailure, check_no_references
 from app import schedule_ops
 
-# ---- CONFIRM this import: the nested faculty model's real name/location. ----
-from scheduler.config import FacultyConfig, TimeBlock, ValidationError, OptimizerFlags
+from scheduler.config import FacultyConfig, TimeBlock, ValidationError, OptimizerFlags, ClassPattern, Meeting
 
 _VALID_DAYS = ("MON", "TUE", "WED", "THU", "FRI")
 _VALID_OPTIMIZER_FLAGS = {
     "faculty_course", "faculty_room", "faculty_lab",
     "same_room", "same_lab", "pack_rooms", "pack_labs",
 }
-
-# ---- CONFIRM these too: class-pattern CRUD below (add/modify/delete_pattern)
-# needs the model class(es) for one entry of time_slot_config.classes and its
-# nested meetings. Guessed as ClassConfig / MeetingConfig by analogy with
-# FacultyConfig above (JSON key "classes" -> "ClassConfig", singular of the
-# nested "meetings" list -> "MeetingConfig") -- NOT verified against
-# scheduler.config's real exports. Check with:
-#   uv run python -c "import scheduler.config as c; print([n for n in dir(c) if not n.startswith('_')])"
-# and fix these two names (and cfg.time_slot_config.classes below, if the
-# attribute itself is named differently than the JSON key) once confirmed.
-from scheduler.config import ClassConfig, MeetingConfig
 
 # =========================================================================== #
 #  Config lifecycle (Req #4)
@@ -220,22 +223,20 @@ def view_faculty(session):
 
 
 # =========================================================================== #
-#  TODO: course / lab / room / pattern / meeting CRUD
+#  TODO: course / lab / room / meeting CRUD
 #
-#  Follow the exact recipe used above for faculty:
+#  Follow the exact recipe used above for faculty (and already applied to
+#  timeslots and patterns below):
 #    1. session.require_config() to get the live CombinedConfig.
 #    2. Prompt for fields; construct the library's real nested model
-#       (Course / Room / Lab / TimeSlot / ClassPattern / Meeting -- confirm
-#       exact names in scheduler.config, same as Faculty above).
+#       (Course / Room / Lab / Meeting -- same scheduler.config lookup
+#       FacultyConfig/ClassConfig/MeetingConfig already went through).
 #    3. Build a small _mutate(cfg) closure that appends/replaces/removes
-#       from the right list on cfg.config (or cfg.time_slot_config for
-#       timeslots/patterns/meetings, per the JSON shape in the Sprint 1
-#       doc).
+#       from the right list on cfg.config.
 #    4. Wrap it in apply_edit(config, "<area>", _mutate) and catch
 #       ValidationFailure.
 #    5. For delete_*, scan for references first (check_no_references) --
-#       e.g. deleting a room needs to check courses' room lists and any
-#       class patterns/meetings pinned to it.
+#       e.g. deleting a room needs to check courses' room lists.
 # =========================================================================== #
 
 def add_course(session):
@@ -457,7 +458,7 @@ def _prompt_meeting():
     print("  Is this meeting a lab session? (y/n, default n)")
     lab = input("  > ").strip().lower() in ("y", "yes")
 
-    return MeetingConfig(day=day, duration=duration, lab=lab)
+    return Meeting(day=day, duration=duration, lab=lab)
 
 
 def _prompt_pattern_fields():
@@ -540,7 +541,7 @@ def add_pattern(session):
         print("A pattern needs at least one meeting.")
         return
 
-    new_pattern = ClassConfig(**fields)
+    new_pattern = ClassPattern(**fields)
 
     def _mutate(cfg):
         cfg.time_slot_config.classes.append(new_pattern)
@@ -571,7 +572,7 @@ def modify_pattern(session):
         print("A pattern needs at least one meeting.")
         return
 
-    updated_pattern = ClassConfig(**updated_fields)
+    updated_pattern = ClassPattern(**updated_fields)
 
     def _mutate(cfg):
         cfg.time_slot_config.classes[idx] = updated_pattern
@@ -737,11 +738,18 @@ def export_schedule(session, fmt, path, index=None, overwrite=False):
         print("No generated schedules to export. Run 'schedule generate' first.")
         return
 
-    payload = session.schedules[index] if index is not None else session.schedules
+    if index is not None:
+        if not (0 <= index < len(session.schedules)):
+            print(f"No schedule at index {index}. Valid range: 0-{len(session.schedules) - 1}.")
+            return
+        payload = [session.schedules[index]]
+    else:
+        payload = session.schedules
+
     try:
         target = schedule_ops.export_schedule(payload, fmt, path, overwrite=overwrite)
         print(f"Exported to '{target}'.")
     except FileExistsError as e:
         print(f"{e} (pass --overwrite to replace it).")
-    except NotImplementedError as e:
-        print(f"Not wired up yet: {e}")
+    except ValueError as e:
+        print(f"Export failed: {e}")
