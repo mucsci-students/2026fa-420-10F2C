@@ -213,13 +213,55 @@ def delete_faculty(session):
         print(f"Could not remove faculty: {e}")
 
 
+def _field(obj, key):
+    """Reads a field whether obj is a dict or a pydantic model instance
+    (times/preferences can come back as either)."""
+    if isinstance(obj, dict):
+        return obj.get(key)
+    return getattr(obj, key, None)
+
+
+def _format_faculty(f):
+    kind = "adjunct" if f.unique_course_limit <= 1 else "full-time"
+    lines = [
+        f"{f.name}  ({kind}, {f.minimum_credits}-{f.maximum_credits} credits, "
+        f"{f.unique_course_limit} unique course max, {f.maximum_days} days/week max)"
+    ]
+
+    if f.mandatory_days:
+        lines.append(f"  Mandatory days: {', '.join(f.mandatory_days)}")
+
+    lines.append("  Availability:")
+    if not f.times:
+        lines.append("    (none set)")
+    else:
+        for day in ["MON", "TUE", "WED", "THU", "FRI"]:
+            blocks = _field(f.times, day)
+            if not blocks:
+                continue
+            ranges = ", ".join(f"{_field(b, 'start')}-{_field(b, 'end')}" for b in blocks)
+            lines.append(f"    {day}: {ranges}")
+
+    for label, prefs in (
+        ("Course preferences", f.course_preferences),
+        ("Room preferences", f.room_preferences),
+        ("Lab preferences", f.lab_preferences),
+    ):
+        if prefs:
+            formatted = ", ".join(f"{name} ({weight})" for name, weight in prefs.items())
+            lines.append(f"  {label}: {formatted}")
+
+    return "\n".join(lines)
+
+
 def view_faculty(session):
     config = session.require_config()
     if not config.config.faculty:
         print("(no faculty defined)")
         return
     for f in config.config.faculty:
-        print(f.model_dump_json(indent=2))
+        print(_format_faculty(f))
+        print()
 
 
 # =========================================================================== #
@@ -446,8 +488,14 @@ def modify_timing_options(session):
 # ---------------------------------------------------------------- #
 
 def _prompt_meeting():
-    """One {day, duration, lab} entry, per the meetings shape confirmed
-    in config_example.json's time_slot_config.classes."""
+    """One meeting entry: day, duration, lab flag, delivery mode, and an
+    optional fixed start time -- matches the shape confirmed in
+    config_example.json's time_slot_config.classes[].meetings
+    ({day, duration, lab, delivery, start_time}).
+    NOTE: "in_person" is the only delivery value actually confirmed in
+    the example data; other values (online/hybrid/etc) are a guess --
+    double check the real enum via scheduler.config before relying on
+    anything but "in_person" here."""
     print("  Day (MON/TUE/WED/THU/FRI):")
     day = input("  > ").strip().upper()
 
@@ -458,7 +506,13 @@ def _prompt_meeting():
     print("  Is this meeting a lab session? (y/n, default n)")
     lab = input("  > ").strip().lower() in ("y", "yes")
 
-    return Meeting(day=day, duration=duration, lab=lab)
+    print("  Delivery mode (in_person/online/hybrid, default in_person):")
+    delivery = input("  > ").strip().lower() or "in_person"
+
+    print("  Fixed start time for this meeting, e.g. 09:00 (blank = none):")
+    start_time = input("  > ").strip() or None
+
+    return Meeting(day=day, duration=duration, lab=lab, delivery=delivery, start_time=start_time)
 
 
 def _prompt_pattern_fields():
@@ -612,14 +666,143 @@ def delete_pattern(session):
         print(f"Could not remove pattern: {e}")
 
 
+def _list_meetings(pattern):
+    """Prints one pattern's meetings with their index (mirrors
+    _list_patterns()'s role for patterns themselves -- add/modify/delete
+    show the list right before asking which meeting to act on)."""
+    if not pattern.meetings:
+        print("(no meetings on this pattern)")
+        return pattern.meetings
+    for i, m in enumerate(pattern.meetings):
+        lab_str = " (lab)" if getattr(m, "lab", False) else ""
+        extras = []
+        if getattr(m, "delivery", None):
+            extras.append(m.delivery)
+        if getattr(m, "start_time", None):
+            extras.append(f"start_time={m.start_time}")
+        extra_str = f"  [{', '.join(extras)}]" if extras else ""
+        print(f"  [{i}] {m.day} {m.duration}min{lab_str}{extra_str}")
+    return pattern.meetings
+
+
+def _prompt_meeting_index(count):
+    raw = input("Enter the meeting's index: ").strip()
+    if not raw.isdigit():
+        print("Please enter a valid integer index.")
+        return None
+    idx = int(raw)
+    if not (0 <= idx < count):
+        print(f"No meeting at index {idx}. Valid range: 0-{count - 1}.")
+        return None
+    return idx
+
+
+def _choose_pattern_and_meeting(config):
+    """Shared by modify_meeting/delete_meeting: pick a pattern, then a
+    meeting within it. Returns (pattern_index, meeting_index) or None if
+    the user backed out / entered something invalid at any step."""
+    patterns = _list_patterns(config)
+    if not patterns:
+        return None
+
+    print("Which pattern is the meeting on?")
+    p_idx = _prompt_pattern_index(len(patterns))
+    if p_idx is None:
+        return None
+
+    meetings = _list_meetings(patterns[p_idx])
+    if not meetings:
+        return None
+
+    print("Which meeting?")
+    m_idx = _prompt_meeting_index(len(meetings))
+    if m_idx is None:
+        return None
+
+    return p_idx, m_idx
+
+
 def add_meeting(session):
-    print("TODO")
+    config = session.require_config()
+    patterns = _list_patterns(config)
+    if not patterns:
+        print("Add a class pattern first -- meetings belong to a pattern.")
+        return
+
+    print("Which pattern do you want to add a meeting to?")
+    idx = _prompt_pattern_index(len(patterns))
+    if idx is None:
+        return
+
+    new_meeting = _prompt_meeting()
+
+    def _mutate(cfg):
+        cfg.time_slot_config.classes[idx].meetings.append(new_meeting)
+
+    try:
+        apply_edit(config, "meeting", _mutate)
+        print("Meeting added.")
+    except ValidationFailure as e:
+        print(f"Could not add meeting: {e}")
+
 
 def modify_meeting(session):
-    print("TODO")
+    config = session.require_config()
+    choice = _choose_pattern_and_meeting(config)
+    if choice is None:
+        return
+    p_idx, m_idx = choice
+
+    updated_meeting = _prompt_meeting()
+
+    def _mutate(cfg):
+        cfg.time_slot_config.classes[p_idx].meetings[m_idx] = updated_meeting
+
+    try:
+        apply_edit(config, "meeting", _mutate)
+        print("Meeting updated.")
+    except ValidationFailure as e:
+        # Nothing to manually restore -- edit_mode() already rolled the
+        # whole config back to its pre-mutate state (Req #4/#6).
+        print(f"Could not save changes, previous version kept: {e}")
+
 
 def delete_meeting(session):
-    print("TODO")
+    config = session.require_config()
+    patterns = _list_patterns(config)
+    if not patterns:
+        return
+
+    print("Which pattern is the meeting on?")
+    p_idx = _prompt_pattern_index(len(patterns))
+    if p_idx is None:
+        return
+
+    meetings = _list_meetings(patterns[p_idx])
+    if not meetings:
+        return
+    if len(meetings) == 1:
+        print("Can't delete the only meeting on this pattern -- delete the pattern instead if you don't need it.")
+        return
+
+    print("Which meeting would you like to delete?")
+    m_idx = _prompt_meeting_index(len(meetings))
+    if m_idx is None:
+        return
+
+    print("Are you sure you want to delete this meeting? This cannot be undone. (y/n)")
+    if input().lower().strip() not in ("y", "yes"):
+        print("Removal cancelled")
+        return
+
+    def _mutate(cfg):
+        del cfg.time_slot_config.classes[p_idx].meetings[m_idx]
+
+    try:
+        apply_edit(config, "meeting", _mutate)
+        print("Meeting removed.")
+    except ValidationFailure as e:
+        print(f"Could not remove meeting: {e}")
 
 
 # =========================================================================== #
