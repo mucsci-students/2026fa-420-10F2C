@@ -213,13 +213,55 @@ def delete_faculty(session):
         print(f"Could not remove faculty: {e}")
 
 
+def _field(obj, key):
+    """Reads a field whether obj is a dict or a pydantic model instance
+    (times/preferences can come back as either)."""
+    if isinstance(obj, dict):
+        return obj.get(key)
+    return getattr(obj, key, None)
+
+
+def _format_faculty(f):
+    kind = "adjunct" if f.unique_course_limit <= 1 else "full-time"
+    lines = [
+        f"{f.name}  ({kind}, {f.minimum_credits}-{f.maximum_credits} credits, "
+        f"{f.unique_course_limit} unique course max, {f.maximum_days} days/week max)"
+    ]
+
+    if f.mandatory_days:
+        lines.append(f"  Mandatory days: {', '.join(f.mandatory_days)}")
+
+    lines.append("  Availability:")
+    if not f.times:
+        lines.append("    (none set)")
+    else:
+        for day in ["MON", "TUE", "WED", "THU", "FRI"]:
+            blocks = _field(f.times, day)
+            if not blocks:
+                continue
+            ranges = ", ".join(f"{_field(b, 'start')}-{_field(b, 'end')}" for b in blocks)
+            lines.append(f"    {day}: {ranges}")
+
+    for label, prefs in (
+        ("Course preferences", f.course_preferences),
+        ("Room preferences", f.room_preferences),
+        ("Lab preferences", f.lab_preferences),
+    ):
+        if prefs:
+            formatted = ", ".join(f"{name} ({weight})" for name, weight in prefs.items())
+            lines.append(f"  {label}: {formatted}")
+
+    return "\n".join(lines)
+
+
 def view_faculty(session):
     config = session.require_config()
     if not config.config.faculty:
         print("(no faculty defined)")
         return
     for f in config.config.faculty:
-        print(f.model_dump_json(indent=2))
+        print(_format_faculty(f))
+        print()
 
 
 # =========================================================================== #
