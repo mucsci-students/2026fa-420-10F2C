@@ -222,9 +222,36 @@ class SchedulerShell:
             self.show_help()
 
 
-# Guided entry point: welcome -> main menu -> submenus.
+    def _confirm_discard_if_dirty(self, action_label):
+        """Called before anything that would throw away unsaved changes
+        (exiting, starting a new config, loading over the current one).
+        Returns True if it's safe to proceed, False if the user backed
+        out. Offers to save right here instead of making the user
+        cancel, go save, then come back and retry."""
+        if not self.session.dirty:
+            return True
+
+        print(f"You have unsaved changes. {action_label} will lose them.")
+        choice = input("Save first? (y = save, n = discard and continue, c = cancel): ").strip().lower()
+
+        if choice in ("c", "cancel"):
+            return False
+        if choice in ("y", "yes"):
+            path = input("Path to save to (blank = reuse last path): ").strip()
+            try:
+                commands.save_config(self.session, path or None)
+            except ConfigError as e:
+                print(f"Error: {e}")
+                print("Not proceeding, since the save failed -- your changes are still unsaved.")
+                return False
+            return True
+        # "n"/anything else: proceed without saving
+        return True
+
+    # Guided entry point: welcome -> main menu -> submenus.
     def run(self):
         self._welcome()
+        self._auto_load_example_config()
         while True:
             print("\nPlease select an option:\n")
             print("1. Configuration")
@@ -235,6 +262,8 @@ class SchedulerShell:
             choice = input("Select: ").strip()
 
             if choice == "0":
+                if not self._confirm_discard_if_dirty("Exiting"):
+                    continue
                 print("Goodbye!")
                 break
             elif choice == "1":
@@ -256,6 +285,20 @@ class SchedulerShell:
         print("schedules, and exports the results.")
         print("Type 'help' any time you see a prompt for the raw command")
         print("syntax instead, if you'd rather type commands directly.\n")
+
+    def _auto_load_example_config(self):
+        """Every session starts with the example dataset (17 courses, 9
+        faculty, rooms/labs/time slots) already loaded, instead of
+        empty, so CRUD has real data to work with immediately. Falls
+        back to an empty session (still auto-provisioned on demand by
+        _ensure_config()) if the file is missing or fails validation --
+        never crashes the shell on startup."""
+        example_path = "app/examples/config_example.json"
+        try:
+            self.session.load(example_path)
+            print(f"Loaded example configuration from '{example_path}'.\n")
+        except ConfigError as e:
+            print(f"(Could not auto-load example config: {e})\n")
 
     # Pick a configuration area.
     def _configuration_menu(self):
@@ -373,10 +416,15 @@ class SchedulerShell:
                 if choice == "0":
                     return
                 elif choice == "1":
+                    if not self._confirm_discard_if_dirty("Starting a new configuration"):
+                        continue
                     commands.new_config(self.session)
                     return
                 elif choice == "2":
-                    path = input("Path to load: ").strip()
+                    if not self._confirm_discard_if_dirty("Loading a different configuration"):
+                        continue
+                    path = input("Path to load (blank = example config): ").strip()
+                    path = path or "app/examples/config_example.json"
                     commands.load_config(self.session, path)
                 elif choice == "3":
                     path = input("Path to save to (blank = reuse last path): ").strip()

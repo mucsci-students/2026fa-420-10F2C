@@ -119,6 +119,11 @@ class Session:
         # Kept as a plain list so "schedule summary/view/clear" (Req #9)
         # have something to index into.
         self.schedules: list = []
+        # True whenever the in-memory config has changes not yet written
+        # to disk. Set by commands.py's _apply_edit() wrapper on every
+        # successful add/modify/delete; cleared here on new/load/save so
+        # the shell can warn before exiting or discarding unsaved work.
+        self.dirty: bool = False
 
     # ---------------------------------------------------------------- #
     #  Configuration lifecycle (Req #4)                                #
@@ -140,6 +145,7 @@ class Session:
 
         self.config_path = None
         self.schedules = []
+        self.dirty = False
 
     def load(self, path: str) -> None:
         """Load + validate a configuration file through the library
@@ -165,6 +171,7 @@ class Session:
         self.config = new_config
         self.config_path = p
         self.schedules = []
+        self.dirty = False
 
     def save(self, path: Optional[str] = None) -> Path:
         """Serialize the in-memory config through Pydantic (Req #4: 'saved
@@ -180,6 +187,7 @@ class Session:
 
         target.write_text(self.config.model_dump_json(indent=2), encoding="utf-8")
         self.config_path = target
+        self.dirty = False
         return target
 
     def require_config(self) -> CombinedConfig:
