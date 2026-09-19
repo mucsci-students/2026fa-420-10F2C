@@ -32,6 +32,8 @@
 # ----------------------------------------------------------------------------------------------------------------------- #
 
 
+import re
+
 from app.session import ConfigError
 from app.crud import apply_edit, ValidationFailure, check_no_references
 from app import schedule_ops
@@ -43,6 +45,18 @@ _VALID_OPTIMIZER_FLAGS = {
     "faculty_course", "faculty_room", "faculty_lab",
     "same_room", "same_lab", "pack_rooms", "pack_labs",
 }
+
+def _apply_edit(session, config, area, mutate_fn):
+    """Thin wrapper around crud.apply_edit that also marks the session
+    dirty on success. Every CRUD command below calls this instead of
+    apply_edit() directly, so shell.py can warn before exiting, starting
+    a new config, or loading over unsaved changes -- one choke point for
+    every entity (faculty/course/room/lab/timeslot/pattern/meeting/
+    global settings all funnel through here) instead of repeating the
+    dirty-flag logic in each command."""
+    apply_edit(config, area, mutate_fn)
+    session.dirty = True
+
 
 # =========================================================================== #
 #  Config lifecycle (Req #4)
@@ -96,7 +110,70 @@ def validate_config(session):
 #  facultyModel.py / facultyComm.py entirely; do not import those anymore)
 # =========================================================================== #
 
-def _prompt_faculty_fields():
+_TIME_RANGE_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$")
+
+
+def _prompt_faculty_times():
+    """Availability by weekday (Req: 'Times -- default 9-5, specify a
+    day'). Per day: blank = default 09:00-17:00, 'n/a' = unavailable
+    that day, or a custom HH:MM-HH:MM range."""
+    print("Availability (Times) -- one entry per weekday: MON, TUE, WED, THU, FRI.")
+    print("  Leave blank for the default 09:00-17:00")
+    print("  Type 'n/a' if unavailable that day")
+    print("  Or enter a custom range like 09:30-15:00")
+    times = {}
+    for day in _VALID_DAYS:
+        raw = input(f"  {day}: ").strip()
+        if raw.lower() in ("n/a", "na", "none", "unavailable"):
+            continue
+        if not raw:
+            times[day] = [{"start": "09:00", "end": "17:00"}]
+            continue
+        if not _TIME_RANGE_RE.match(raw):
+            print(f"  '{raw}' isn't a valid HH:MM-HH:MM range -- treating {day} as unavailable.")
+            continue
+        start, end = raw.split("-")
+        times[day] = [{"start": start, "end": end}]
+    return times
+
+
+def _prompt_weighted_preferences(label, valid_names):
+    """Repeatedly asks for a name + weight until the user enters a
+    blank name. Used for course/room/lab preferences.
+    CONFIRMED (via a real validation error against the installed
+    library) that a preference must name something that already
+    exists in the config -- courses/rooms/labs that don't exist yet
+    get rejected at save time with an 'unknown_faculty_*_preference'
+    error. This contradicts the written Sprint 1 wording ('a course
+    preference need not exist yet') -- worth confirming with whoever
+    wrote that spec. Shows the valid options and re-prompts
+    immediately on an unrecognized name, instead of silently
+    collecting a name that will only fail much later when the whole
+    record is saved."""
+    prefs = {}
+    if valid_names:
+        print(f"  Existing {label}s: {', '.join(sorted(valid_names))}")
+    else:
+        print(f"  (no {label}s defined yet -- add one first if you want a {label} preference)")
+    print(f"  Add {label} preferences (blank name to stop):")
+    while True:
+        name = input(f"  {label.capitalize()} name: ").strip()
+        if not name:
+            break
+        if valid_names and name not in valid_names:
+            print(f"  '{name}' isn't a known {label} -- pick from: {', '.join(sorted(valid_names))}")
+            continue
+        weight_raw = input("  Weight (0-10, default 5): ").strip()
+        if weight_raw.isdigit() and 0 <= int(weight_raw) <= 10:
+            weight = int(weight_raw)
+        else:
+            print(f"  '{weight_raw}' isn't 0-10 -- using the default weight of 5.")
+            weight = 5
+        prefs[name] = weight
+    return prefs
+
+
+def _prompt_faculty_fields(config):
     """Same interactive prompts as the old facultyComm.py -- reuse that
     UX, just stop building a plain dict for a hand-rolled validator and
     build kwargs for the library's real Faculty model instead."""
@@ -110,24 +187,32 @@ def _prompt_faculty_fields():
     else:
         max_credits, unique_course_limit = 12, 2
 
-    # ... existing daysAndTimes()/preference prompts from facultyComm.py
-    # can be lifted in here unchanged; omitted for brevity in this
-    # backbone pass ...
+    times = _prompt_faculty_times()
+
+    course_ids = {c.course_id for c in config.config.courses}
+    room_names = {r.name for r in config.config.rooms}
+    lab_names = {l.name for l in config.config.labs}
+
+    print("Preferences:")
+    course_preferences = _prompt_weighted_preferences("course", course_ids)
+    room_preferences = _prompt_weighted_preferences("room", room_names)
+    lab_preferences = _prompt_weighted_preferences("lab", lab_names)
+
     return {
         "name": name,
         "maximum_credits": max_credits,
         "minimum_credits": 0,
         "unique_course_limit": unique_course_limit,
-        "times": {},
-        "course_preferences": {},
-        "room_preferences": {},
-        "lab_preferences": {},
+        "times": times,
+        "course_preferences": course_preferences,
+        "room_preferences": room_preferences,
+        "lab_preferences": lab_preferences,
     }
 
 
 def add_faculty(session):
     config = session.require_config()
-    fields = _prompt_faculty_fields()
+    fields = _prompt_faculty_fields(config)
     if not fields["name"]:
         print("You entered a blank name!")
         return
@@ -141,7 +226,7 @@ def add_faculty(session):
         cfg.config.faculty.append(new_faculty)
 
     try:
-        apply_edit(config, "faculty", _mutate)
+        _apply_edit(session, config, "faculty", _mutate)
         print("Faculty added.")
     except ValidationFailure as e:
         # config is guaranteed unchanged here -- edit_mode() rolled back
@@ -162,7 +247,7 @@ def modify_faculty(session):
     # Collect edited fields the same way add_faculty does, seeded with the
     # existing record's values (mirrors the old modify_faculty's
     # "pull the record out, ask what to change" flow).
-    updated_fields = _prompt_faculty_fields()
+    updated_fields = _prompt_faculty_fields(config)
 
     def _mutate(cfg):
         faculty_list = cfg.config.faculty
@@ -170,7 +255,7 @@ def modify_faculty(session):
         faculty_list.append(FacultyConfig(**updated_fields))
 
     try:
-        apply_edit(config, "faculty", _mutate)
+        _apply_edit(session, config, "faculty", _mutate)
         print("Faculty updated.")
     except ValidationFailure as e:
         # Nothing to manually restore -- edit_mode() already rolled the
@@ -191,7 +276,7 @@ def delete_faculty(session):
     # Req #7: don't silently leave dangling references. A course whose
     # `faculty` list names this person is a reference; scan for those
     # before deleting.
-    referencing_courses = [c.course_id for c in config.config.courses if name in getattr(c, "faculty", [])]
+    referencing_courses = [c.course_id for c in config.config.courses if name in (getattr(c, "faculty", None) or [])]
     try:
         check_no_references(name, referencing_courses)
     except Exception as e:  # ReferenceError_ from app.crud
@@ -207,7 +292,7 @@ def delete_faculty(session):
         cfg.config.faculty.remove(existing)
 
     try:
-        apply_edit(config, "faculty", _mutate)
+        _apply_edit(session, config, "faculty", _mutate)
         print("Faculty removed.")
     except ValidationFailure as e:
         print(f"Could not remove faculty: {e}")
@@ -221,26 +306,31 @@ def _field(obj, key):
     return getattr(obj, key, None)
 
 
+_DAY_LABELS = {"MON": "Mon", "TUE": "Tue", "WED": "Wed", "THU": "Thu", "FRI": "Fri"}
+
+
 def _format_faculty(f):
-    kind = "adjunct" if f.unique_course_limit <= 1 else "full-time"
-    lines = [
-        f"{f.name}  ({kind}, {f.minimum_credits}-{f.maximum_credits} credits, "
-        f"{f.unique_course_limit} unique course max, {f.maximum_days} days/week max)"
-    ]
+    kind = "Adjunct" if f.unique_course_limit <= 1 else "Full-Time"
+    header = f"{f.name} \u2014 {kind}"
+    lines = [header, "-" * len(header)]
+
+    lines.append(f"  Credits: {f.minimum_credits}-{f.maximum_credits}"
+                  f"   Unique courses: {f.unique_course_limit}"
+                  f"   Max days/week: {f.maximum_days}")
 
     if f.mandatory_days:
         lines.append(f"  Mandatory days: {', '.join(f.mandatory_days)}")
 
+    availability_lines = []
+    for day in ["MON", "TUE", "WED", "THU", "FRI"]:
+        blocks = _field(f.times, day)
+        if not blocks:
+            continue
+        ranges = ", ".join(f"{_field(b, 'start')}-{_field(b, 'end')}" for b in blocks)
+        availability_lines.append(f"    {_DAY_LABELS[day]}  {ranges}")
+
     lines.append("  Availability:")
-    if not f.times:
-        lines.append("    (none set)")
-    else:
-        for day in ["MON", "TUE", "WED", "THU", "FRI"]:
-            blocks = _field(f.times, day)
-            if not blocks:
-                continue
-            ranges = ", ".join(f"{_field(b, 'start')}-{_field(b, 'end')}" for b in blocks)
-            lines.append(f"    {day}: {ranges}")
+    lines.extend(availability_lines if availability_lines else ["    (none set)"])
 
     for label, prefs in (
         ("Course preferences", f.course_preferences),
@@ -259,9 +349,10 @@ def view_faculty(session):
     if not config.config.faculty:
         print("(no faculty defined)")
         return
-    for f in config.config.faculty:
+    for i, f in enumerate(config.config.faculty):
+        if i > 0:
+            print()
         print(_format_faculty(f))
-        print()
 
 
 # =========================================================================== #
@@ -358,7 +449,7 @@ def add_timeslot(session):
         cfg.time_slot_config.times.setdefault(day, []).append(new_block)
 
     try:
-        apply_edit(config, "timeslot", _mutate)
+        _apply_edit(session, config, "timeslot", _mutate)
         print("Time Slot Added Successfully")
     except ValidationFailure as e:
         print(f"Could not add time slot: {e}")
@@ -400,7 +491,7 @@ def modify_timeslot(session):
         cfg.time_slot_config.times[day][idx] = new_block
 
     try:
-        apply_edit(config, "timeslot", _mutate)
+        _apply_edit(session, config, "timeslot", _mutate)
         print("Time Changed Successfully")
     except ValidationFailure as e:
         print(f"Could not save changes, previous version kept: {e}")
@@ -437,7 +528,7 @@ def delete_timeslot(session):
         del cfg.time_slot_config.times[day][idx]
 
     try:
-        apply_edit(config, "timeslot", _mutate)
+        _apply_edit(session, config, "timeslot", _mutate)
         print("Time slot deleted.")
     except ValidationFailure as e:
         print(f"Could not delete: {e}")
@@ -467,7 +558,7 @@ def modify_timing_options(session):
             cfg.time_slot_config.min_time_overlap = new_overlap
 
     try:
-        apply_edit(config, "timeslot", _mutate)
+        _apply_edit(session, config, "timeslot", _mutate)
         print("Timing options updated.")
     except ValidationFailure as e:
         print(f"Could not update timing options: {e}")
@@ -495,24 +586,32 @@ def _prompt_meeting():
     NOTE: "in_person" is the only delivery value actually confirmed in
     the example data; other values (online/hybrid/etc) are a guess --
     double check the real enum via scheduler.config before relying on
-    anything but "in_person" here."""
-    print("  Day (MON/TUE/WED/THU/FRI):")
-    day = input("  > ").strip().upper()
+    anything but "in_person" here.
+    Loops on invalid input (Req #3/#6: recover from bad input without
+    terminating the session) instead of letting Meeting(...)'s
+    ValidationError propagate uncaught and crash the app."""
+    while True:
+        print("  Day (MON/TUE/WED/THU/FRI):")
+        day = input("  > ").strip().upper()
 
-    print("  Duration in minutes:")
-    duration_raw = input("  > ").strip()
-    duration = int(duration_raw) if duration_raw.isdigit() else 0
+        print("  Duration in minutes:")
+        duration_raw = input("  > ").strip()
+        duration = int(duration_raw) if duration_raw.isdigit() else 0
 
-    print("  Is this meeting a lab session? (y/n, default n)")
-    lab = input("  > ").strip().lower() in ("y", "yes")
+        print("  Is this meeting a lab session? (y/n, default n)")
+        lab = input("  > ").strip().lower() in ("y", "yes")
 
-    print("  Delivery mode (in_person/online/hybrid, default in_person):")
-    delivery = input("  > ").strip().lower() or "in_person"
+        print("  Delivery mode (in_person/online/hybrid, default in_person):")
+        delivery = input("  > ").strip().lower() or "in_person"
 
-    print("  Fixed start time for this meeting, e.g. 09:00 (blank = none):")
-    start_time = input("  > ").strip() or None
+        print("  Fixed start time for this meeting, e.g. 09:00 (blank = none):")
+        start_time = input("  > ").strip() or None
 
-    return Meeting(day=day, duration=duration, lab=lab, delivery=delivery, start_time=start_time)
+        try:
+            return Meeting(day=day, duration=duration, lab=lab, delivery=delivery, start_time=start_time)
+        except ValidationError as e:
+            print(f"Invalid meeting: {e}")
+            print("Let's try that meeting again.")
 
 
 def _prompt_pattern_fields():
@@ -547,16 +646,16 @@ def _prompt_pattern_fields():
 
 def _format_pattern(index, pattern):
     meeting_bits = ", ".join(
-        f"{m.day} {m.duration}min" + (" (lab)" if getattr(m, "lab", False) else "")
+        f"{_DAY_LABELS.get(m.day, m.day)} {m.duration}min" + (" (lab)" if getattr(m, "lab", False) else "")
         for m in pattern.meetings
     )
     extras = []
     if getattr(pattern, "start_time", None):
-        extras.append(f"start_time={pattern.start_time}")
+        extras.append(f"starts at {pattern.start_time}")
     if getattr(pattern, "disabled", False):
         extras.append("disabled")
-    extra_str = f"  [{', '.join(extras)}]" if extras else ""
-    return f"[{index}] {pattern.credits} credits -- {meeting_bits}{extra_str}"
+    extra_str = f"  ({'; '.join(extras)})" if extras else ""
+    return f"[{index}] {pattern.credits} credits: {meeting_bits}{extra_str}"
 
 
 def _list_patterns(config):
@@ -601,7 +700,7 @@ def add_pattern(session):
         cfg.time_slot_config.classes.append(new_pattern)
 
     try:
-        apply_edit(config, "pattern", _mutate)
+        _apply_edit(session, config, "pattern", _mutate)
         print("Class pattern added.")
     except ValidationFailure as e:
         print(f"Could not add pattern: {e}")
@@ -632,7 +731,7 @@ def modify_pattern(session):
         cfg.time_slot_config.classes[idx] = updated_pattern
 
     try:
-        apply_edit(config, "pattern", _mutate)
+        _apply_edit(session, config, "pattern", _mutate)
         print("Class pattern updated.")
     except ValidationFailure as e:
         # Nothing to manually restore -- edit_mode() already rolled the
@@ -660,7 +759,7 @@ def delete_pattern(session):
         del cfg.time_slot_config.classes[idx]
 
     try:
-        apply_edit(config, "pattern", _mutate)
+        _apply_edit(session, config, "pattern", _mutate)
         print("Class pattern removed.")
     except ValidationFailure as e:
         print(f"Could not remove pattern: {e}")
@@ -674,14 +773,15 @@ def _list_meetings(pattern):
         print("(no meetings on this pattern)")
         return pattern.meetings
     for i, m in enumerate(pattern.meetings):
-        lab_str = " (lab)" if getattr(m, "lab", False) else ""
+        day = _DAY_LABELS.get(m.day, m.day)
+        lab_str = " (lab session)" if getattr(m, "lab", False) else ""
         extras = []
         if getattr(m, "delivery", None):
-            extras.append(m.delivery)
+            extras.append(f"delivery: {m.delivery}")
         if getattr(m, "start_time", None):
-            extras.append(f"start_time={m.start_time}")
-        extra_str = f"  [{', '.join(extras)}]" if extras else ""
-        print(f"  [{i}] {m.day} {m.duration}min{lab_str}{extra_str}")
+            extras.append(f"starts at {m.start_time}")
+        extra_str = f"  ({'; '.join(extras)})" if extras else ""
+        print(f"  [{i}] {day}, {m.duration} min{lab_str}{extra_str}")
     return pattern.meetings
 
 
@@ -740,7 +840,7 @@ def add_meeting(session):
         cfg.time_slot_config.classes[idx].meetings.append(new_meeting)
 
     try:
-        apply_edit(config, "meeting", _mutate)
+        _apply_edit(session, config, "meeting", _mutate)
         print("Meeting added.")
     except ValidationFailure as e:
         print(f"Could not add meeting: {e}")
@@ -759,7 +859,7 @@ def modify_meeting(session):
         cfg.time_slot_config.classes[p_idx].meetings[m_idx] = updated_meeting
 
     try:
-        apply_edit(config, "meeting", _mutate)
+        _apply_edit(session, config, "meeting", _mutate)
         print("Meeting updated.")
     except ValidationFailure as e:
         # Nothing to manually restore -- edit_mode() already rolled the
@@ -799,7 +899,7 @@ def delete_meeting(session):
         del cfg.time_slot_config.classes[p_idx].meetings[m_idx]
 
     try:
-        apply_edit(config, "meeting", _mutate)
+        _apply_edit(session, config, "meeting", _mutate)
         print("Meeting removed.")
     except ValidationFailure as e:
         print(f"Could not remove meeting: {e}")
@@ -819,7 +919,7 @@ def set_generation_limit(session, value):
         cfg.limit = value
 
     try:
-        apply_edit(config, "global_settings", _mutate)
+        _apply_edit(session, config, "global_settings", _mutate)
         print(f"Generation limit set to {value}.")
     except ValidationFailure as e:
         print(f"Could not set limit: {e}")
@@ -832,7 +932,7 @@ def reset_generation_limit(session):
         cfg.limit = 10  # confirmed library default
 
     try:
-        apply_edit(config, "global_settings", _mutate)
+        _apply_edit(session, config, "global_settings", _mutate)
         print("Generation limit reset to default (10).")
     except ValidationFailure as e:
         print(f"Could not reset limit: {e}")
@@ -851,7 +951,7 @@ def enable_optimizer_flag(session, flag):
         cfg.optimizer_flags.append(OptimizerFlags(flag))
 
     try:
-        apply_edit(config, "global_settings", _mutate)
+        _apply_edit(session, config, "global_settings", _mutate)
         print(f"Optimizer flag '{flag}' added.")
     except ValidationFailure as e:
         print(f"Could not add flag: {e}")
@@ -867,7 +967,7 @@ def disable_optimizer_flag(session, flag):
         cfg.optimizer_flags.remove(flag)
 
     try:
-        apply_edit(config, "global_settings", _mutate)
+        _apply_edit(session, config, "global_settings", _mutate)
         print(f"Optimizer flag '{flag}' removed.")
     except ValidationFailure as e:
         print(f"Could not remove flag: {e}")
