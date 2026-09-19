@@ -35,10 +35,10 @@
 import re
 
 from app.session import ConfigError
-from app.crud import apply_edit, ValidationFailure, check_no_references
+from app.crud import apply_edit, ReferenceError_, ValidationFailure, check_no_references
 from app import schedule_ops
 
-from scheduler.config import FacultyConfig, TimeBlock, LabConfig,  ValidationError, OptimizerFlags, ClassPattern, Meeting
+from scheduler.config import FacultyConfig, TimeBlock, LabConfig, RoomConfig, ValidationError, OptimizerFlags, ClassPattern, Meeting
 
 _VALID_DAYS = ("MON", "TUE", "WED", "THU", "FRI")
 _VALID_OPTIMIZER_FLAGS = {
@@ -586,14 +586,117 @@ def delete_lab(session):
     except ValidationFailure as e: 
         print(f"Could not remove lab: {e}")
 
+def _prompt_room_fields():
+    while True:
+        name = input("Enter the room's name: ").strip()
+        if name:
+            break
+        print("Room name cannot be blank.")
+
+    while True:
+        capacity_input = input("Enter the room's max student capacity: ").strip()
+        try:
+            capacity = int(capacity_input)
+            if capacity > 0:
+                break
+        except ValueError:
+            pass
+        print("Room capacity must be a positive whole number!")
+
+    return {
+        "name": name,
+        "capacity": capacity,
+    }
+
+
 def add_room(session):
-    print("TODO")
+    config = session.require_config()
+    fields = _prompt_room_fields()
+
+    if any(room.name == fields["name"] for room in config.config.rooms):
+        print("Room is already in the system!")
+        return
+
+    new_room = RoomConfig(**fields)
+
+    def _mutate(cfg):
+        cfg.config.rooms.append(new_room)
+
+    try:
+        _apply_edit(session, config, "room", _mutate)
+        print("Room added.")
+    except ValidationFailure as e:
+        print(f"Could not add room: {e}")
 
 def modify_room(session):
-    print("TODO")
+    config = session.require_config()
+    target_name = input("What is the name of the room you would like to edit? ").strip()
+    existing = next(
+        (room for room in config.config.rooms if room.name == target_name),
+        None,
+    )
+
+    if existing is None:
+        print("Room does not exist!")
+        return
+
+    fields = _prompt_room_fields()
+    if fields["name"] != target_name and any(
+        room.name == fields["name"] for room in config.config.rooms
+    ):
+        print("Room name is already in the system!")
+        return
+
+    updated_room = RoomConfig(**fields)
+
+    def _mutate(cfg):
+        room_list = cfg.config.rooms
+        room_list.remove(existing)
+        room_list.append(updated_room)
+
+    try:
+        _apply_edit(session, config, "room", _mutate)
+        print("Room updated.")
+    except ValidationFailure as e:
+        print(f"Could not save changes, previous version kept: {e}")
+
 
 def delete_room(session):
-    print("TODO: check courses whose room list references this room before deleting.")
+    config = session.require_config()
+    name = input("What is the name of the room you want to remove? ").strip()
+
+    existing = next(
+        (room for room in config.config.rooms if room.name == name),
+        None,
+    )
+    if existing is None:
+        print("Room does not exist!")
+        return
+
+    referencing_courses = [
+        course.course_id
+        for course in config.config.courses
+        if name in (getattr(course, "room", None) or [])
+    ]
+    try:
+        check_no_references(name, referencing_courses)
+    except ReferenceError_ as e:
+        print(f"{e} -- remove this room from those courses first.")
+        return
+
+    print("Are you sure you want to delete this room? This cannot be undone. (y/n)")
+    if input().strip().lower() not in ("y", "yes"):
+        print("Removal cancelled")
+        return
+
+    def _mutate(cfg):
+        cfg.config.rooms.remove(existing)
+
+    try:
+        _apply_edit(session, config, "room", _mutate)
+        print("Room removed.")
+    except ValidationFailure as e:
+        print(f"Could not remove room: {e}")
 
 
 def _prompt_time_block():
