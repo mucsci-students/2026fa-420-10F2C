@@ -38,7 +38,7 @@ from app.session import ConfigError
 from app.crud import apply_edit, ValidationFailure, check_no_references
 from app import schedule_ops
 
-from scheduler.config import FacultyConfig, TimeBlock, ValidationError, OptimizerFlags, ClassPattern, Meeting
+from scheduler.config import FacultyConfig, TimeBlock, LabConfig,  ValidationError, OptimizerFlags, ClassPattern, Meeting
 
 _VALID_DAYS = ("MON", "TUE", "WED", "THU", "FRI")
 _VALID_OPTIMIZER_FLAGS = {
@@ -459,6 +459,7 @@ def view_faculty(session):
 #       e.g. deleting a room needs to check courses' room lists.
 # =========================================================================== #
 
+
 def add_course(session):
     print("TODO: same pattern as add_faculty -- see the block comment above.")
 
@@ -469,15 +470,121 @@ def delete_course(session):
     print("TODO: same pattern as delete_faculty (check courses referencing this course's conflicts, etc).")
 
 
+def _prompt_lab_fields(): 
+    while True: 
+        name = input("Enter the lab's name: ").strip()
+
+        if name: 
+            break
+        print("Lab name cannot be blank.")
+    while True: 
+        capacity_input = input("Enter the lab's max student capacity: ").strip()
+
+        try: 
+            capacity = int(capacity_input)
+            if capacity > 0:
+                break 
+        except ValueError:
+            pass
+
+        print("Lab capacity must be a positive whole number!")
+
+    return {
+        "name": name,
+        "capacity": capacity,
+    }
+
+
 def add_lab(session):
-    print("TODO")
+    # Get the current session config
+    config = session.require_config()
+    # Get the fields [in this case name and capactiy for labs]
+    fields = _prompt_lab_fields()
+
+    # Check to see if any fields exist inside of the current config, if not store the fields 
+    if any(lab.name == fields["name"] for lab in config.config.labs):
+        print("Lab is already in the system!")
+        return 
+    # Unpacks fields and passes it to LabConfig and store inside new_lab: LabConfig
+    new_lab = LabConfig(**fields)
+
+    def _mutate(cfg): 
+        cfg.config.labs.append(new_lab)
+
+    try: 
+        apply_edit(config, "lab", _mutate)
+        print("Lab added.")
+    except ValidationError as e:
+        print(f"could not add lab: {e}")
 
 def modify_lab(session):
-    print("TODO")
+    config = session.require_config()
+    target_name = input("What is the name of the lab you would like to edit? ").strip()
+    existing = next(
+        (lab for lab in config.config.labs if lab.name == target_name),
+        None,
+    )
+
+    if existing is None:
+        print("Lab does not exist!")
+        return
+
+    fields = _prompt_lab_fields()
+
+    if fields["name"] != target_name and any(
+        lab.name == fields["name"] for lab in config.config.labs): 
+        print("Lab name is already in the system!")
+        return 
+
+    updated_lab = LabConfig(**fields)
+
+    def _mutate(cfg):
+        lab_list = cfg.config.labs
+        lab_list.remove(existing)
+        lab_list.append(updated_lab)
+
+    try:
+        apply_edit(config, "lab", _mutate)
+        print("Lab updated.")
+    except ValidationFailure as e:
+        print(f"Could not save changes, previous version kept: {e}")
 
 def delete_lab(session):
-    print("TODO: check courses whose lab list references this lab before deleting.")
+    config = session.require_config()
 
+    name = input("What is the name of the lab you want to remove? ")
+
+    existing = next(
+        (lab for lab in config.config.labs if lab.name == name),
+        None,
+    )
+    if existing is None: 
+        print("Lab does not exist!")
+        return 
+    referencing_courses = [
+        course.course_id
+        for course in config.config.courses
+        if name in course.lab
+    ]
+
+    try: 
+        check_no_references(name, referencing_courses)
+    except Exception as e: 
+        print(f"{e} -- remove this lab from those courses first")
+        return
+
+    print("Are you sure you want to delete this lab? This cannot be undone (y/n)")
+    if input(). lower().strip() not in ("yes", "y"):
+        print("Removal cancelled")
+        return 
+    def _mutate(cfg):
+        cfg.config.labs.remove(existing)
+
+    try: 
+        apply_edit(config, "lab", _mutate)
+        print("Lab removed.")
+    except ValidationFailure as e: 
+        print(f"Could not remove lab: {e}")
 
 def add_room(session):
     print("TODO")
