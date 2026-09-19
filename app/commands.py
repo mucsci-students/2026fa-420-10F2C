@@ -173,6 +173,86 @@ def _prompt_weighted_preferences(label, valid_names):
     return prefs
 
 
+
+
+
+def _prompt_mandatory_days(times):
+    """Which weekdays this faculty member MUST be scheduled on (Req #5:
+    the Faculty row explicitly lists 'mandatory days' as required
+    editable data). Previously missing entirely -- _format_faculty()
+    displayed f.mandatory_days but nothing ever prompted for it, so
+    every faculty member got the model's default regardless of intent.
+
+    CONFIRMED against the scheduler library's own example.json
+    (github.com/mucsci/Scheduler, matches the course-constraint-scheduler
+    version pinned in pyproject.toml): mandatory_days is an OPTIONAL
+    list of the same day-code strings used in `times`
+    (e.g. ["MON", "WED", "FRI"]) -- several faculty entries in that
+    example have no mandatory_days key at all, and it's fine to omit it.
+
+    Restricted here to days the faculty is actually available on: every
+    faculty entry with mandatory_days in the confirmed example data also
+    has a non-empty `times` block for each of those days, and a
+    mandatory day with no available time would be rejected by edit_mode()
+    anyway -- this just surfaces that as an immediate, specific message.
+
+    Returns None (omit the field, let the library default apply) if the
+    user leaves this blank.
+    """
+    available_days = [d for d in _VALID_DAYS if times.get(d)]
+    if not available_days:
+        print("  No available days set -- skipping mandatory days.")
+        return None
+
+    print(f"  Mandatory days (must be scheduled every term) -- choose from: {', '.join(available_days)}")
+    print("  Comma-separated, or blank for none:")
+    raw = input("  > ").strip()
+    if not raw:
+        return None
+
+    days = []
+    for token in raw.split(","):
+        day = token.strip().upper()
+        if not day:
+            continue
+        if day not in available_days:
+            print(f"  Skipping '{day}' -- not one of this faculty member's available days.")
+            continue
+        if day not in days:
+            days.append(day)
+    return days or None
+
+
+def _prompt_maximum_days(mandatory_days):
+    """Cap on distinct weekdays this faculty member can be scheduled on
+    (Req #5: 'workload limits'). Same bug class as mandatory_days --
+    displayed by _format_faculty(), never collected.
+
+    CONFIRMED against the same example.json: maximum_days is an
+    OPTIONAL int, independent of mandatory_days (one faculty entry sets
+    maximum_days with no mandatory_days at all). Wherever the example
+    sets both, len(mandatory_days) <= maximum_days holds -- enforced
+    here client-side for an immediate message; the library would also
+    reject an inconsistent value during edit_mode().
+
+    Returns None (omit the field, let the library default apply) if
+    left blank.
+    """
+    print("  Maximum days/week this faculty can be scheduled (blank = use the library default):")
+    raw = input("  > ").strip()
+    if not raw:
+        return None
+    if not (raw.isdigit() and int(raw) > 0):
+        print(f"  '{raw}' isn't a positive whole number -- leaving maximum_days unset.")
+        return None
+
+    value = int(raw)
+    if mandatory_days and value < len(mandatory_days):
+        print(f"  {len(mandatory_days)} day(s) are marked mandatory -- raising maximum_days to match.")
+        value = len(mandatory_days)
+    return value
+
+
 def _prompt_faculty_fields(config):
     """Same interactive prompts as the old facultyComm.py -- reuse that
     UX, just stop building a plain dict for a hand-rolled validator and
@@ -188,6 +268,8 @@ def _prompt_faculty_fields(config):
         max_credits, unique_course_limit = 12, 2
 
     times = _prompt_faculty_times()
+    mandatory_days = _prompt_mandatory_days(times)
+    maximum_days = _prompt_maximum_days(mandatory_days)
 
     course_ids = {c.course_id for c in config.config.courses}
     room_names = {r.name for r in config.config.rooms}
@@ -198,7 +280,7 @@ def _prompt_faculty_fields(config):
     room_preferences = _prompt_weighted_preferences("room", room_names)
     lab_preferences = _prompt_weighted_preferences("lab", lab_names)
 
-    return {
+    fields = {
         "name": name,
         "maximum_credits": max_credits,
         "minimum_credits": 0,
@@ -208,6 +290,11 @@ def _prompt_faculty_fields(config):
         "room_preferences": room_preferences,
         "lab_preferences": lab_preferences,
     }
+    if mandatory_days is not None:
+        fields["mandatory_days"] = mandatory_days
+    if maximum_days is not None:
+        fields["maximum_days"] = maximum_days
+    return fields
 
 
 def add_faculty(session):
