@@ -323,7 +323,7 @@ class SchedulerShell:
                                        commands.delete_faculty, view=commands.view_faculty)
                 elif choice == "2":
                     self._entity_menu("Course", commands.add_course, commands.modify_course,
-                                       commands.delete_course)
+                                       commands.delete_course, view=commands.view_course)
                 elif choice == "3":
                     self._entity_menu("Room", commands.add_room, commands.modify_room,
                                        commands.delete_room)

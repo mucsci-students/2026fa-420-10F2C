@@ -38,7 +38,7 @@ from app.session import ConfigError
 from app.crud import apply_edit, ReferenceError_, ValidationFailure, check_no_references
 from app import schedule_ops
 
-from scheduler.config import FacultyConfig, TimeBlock, LabConfig, RoomConfig, ValidationError, OptimizerFlags, ClassPattern, Meeting
+from scheduler.config import FacultyConfig, TimeBlock, LabConfig, RoomConfig, ValidationError, OptimizerFlags, ClassPattern, Meeting, CourseConfig
 
 _VALID_DAYS = ("MON", "TUE", "WED", "THU", "FRI")
 _VALID_OPTIMIZER_FLAGS = {
@@ -443,7 +443,7 @@ def view_faculty(session):
 
 
 # =========================================================================== #
-#  TODO: course / lab / room / meeting CRUD
+#  TODO: 
 #
 #  Follow the exact recipe used above for faculty (and already applied to
 #  timeslots and patterns below):
@@ -459,16 +459,291 @@ def view_faculty(session):
 #       e.g. deleting a room needs to check courses' room lists.
 # =========================================================================== #
 
+# =========================================================================== #
+#  Course CRUD (Req #5, #6, #7).
+#  - Repeated course_id values are legal (they create sections), so
+#    modify/delete pick by list index like patterns do, not by name.
+#  - modify assigns in place: section numbers come from list position,
+#    so remove+append would renumber other sections of the same id.
+#  - delete only checks references when removing the LAST section of a
+#    course_id -- conflicts/preferences point at the id, not a section.
+# =========================================================================== #
 
+def _enabled_pattern_credits(config):
+    """Credit values that have at least one enabled class pattern."""
+    return sorted({p.credits for p in config.time_slot_config.classes if not p.disabled})
+ 
+ 
+def _course_display_name(course, seen_counts):
+    """'CS 101.A' or 'CS 101.01' -- matches the library's own section naming."""
+    count = seen_counts.get(course.course_id, 0) + 1
+    seen_counts[course.course_id] = count
+    return f"{course.course_id}.{course.section_id or f'{count:02d}'}"
+ 
+ 
+def _format_course(index, course, display):
+    bits = [f"[{index}] {display}  --  {course.credits} credits, capacity {course.capacity}"]
+    bits.append(f"      Modality: {course.modality}")
+    if course.room:
+        bits.append(f"      Rooms: {', '.join(course.room)}")
+    if course.required_room_features:
+        bits.append(f"      Required room features: {', '.join(sorted(course.required_room_features))}")
+    if course.lab:
+        bits.append(f"      Labs: {', '.join(course.lab)}")
+        bits.append(f"      Reserves room during lab: {'yes' if course.reserve_room_during_lab else 'no'}")
+    if course.required_lab_features:
+        bits.append(f"      Required lab features: {', '.join(sorted(course.required_lab_features))}")
+    if course.conflicts:
+        bits.append(f"      Conflicts: {', '.join(course.conflicts)}")
+    if course.faculty is None:
+        bits.append("      Faculty: (derived from faculty course preferences)")
+    else:
+        bits.append(f"      Faculty: {', '.join(course.faculty)}")
+    return "\n".join(bits)
+ 
+ 
+def _list_courses(config):
+    courses = config.config.courses
+    if not courses:
+        print("(no courses defined)")
+        return courses
+    seen = {}
+    for i, c in enumerate(courses):
+        print(_format_course(i, c, _course_display_name(c, seen)))
+    return courses
+ 
+ 
+def _prompt_course_index(count):
+    raw = input("Enter the course's index: ").strip()
+    if not raw.isdigit():
+        print("Please enter a valid integer index.")
+        return None
+    idx = int(raw)
+    if not (0 <= idx < count):
+        print(f"No course at index {idx}. Valid range: 0-{count - 1}.")
+        return None
+    return idx
+ 
+ 
+def _prompt_name_list(label, valid_names):
+    """Collects names from `valid_names` until a blank line."""
+    if valid_names:
+        print(f"  Existing {label}s: {', '.join(sorted(valid_names))}")
+    else:
+        print(f"  (no {label}s defined yet)")
+    print(f"  Add {label}s one at a time (blank to stop):")
+ 
+    chosen = []
+    while True:
+        name = input(f"  {label.capitalize()}: ").strip()
+        if not name:
+            break
+        if valid_names and name not in valid_names:
+            print(f"  '{name}' isn't a known {label} -- pick from: {', '.join(sorted(valid_names))}")
+            continue
+        if name in chosen:
+            print(f"  '{name}' is already on the list.")
+            continue
+        chosen.append(name)
+    return chosen
+ 
+ 
+def _prompt_feature_set(label):
+    raw = input(f"  Required {label} features (comma-separated, blank for none): ").strip()
+    return {part.strip() for part in raw.split(",") if part.strip()} if raw else set()
+ 
+ 
+def _prompt_positive_int(prompt_text, label):
+    while True:
+        raw = input(prompt_text).strip()
+        try:
+            value = int(raw)
+            if value > 0:
+                return value
+        except ValueError:
+            pass
+        print(f"{label} must be a positive whole number!")
+ 
+ 
+def _prompt_course_fields(config):
+    scheduler_config = config.config
+ 
+    while True:
+        course_id = input("Course ID (e.g. 'CS 101'): ").strip()
+        if course_id:
+            break
+        print("Course ID cannot be blank.")
+ 
+    section_id = input("Section ID (blank = auto-number by input order): ").strip() or None
+ 
+    available = _enabled_pattern_credits(config)
+    if available:
+        print(f"  Credit values with an enabled class pattern: {', '.join(str(c) for c in available)}")
+    else:
+        print("  (warning: no enabled class patterns exist -- any course will be rejected)")
+    credits = _prompt_positive_int("Credits: ", "Credits")
+    if available and credits not in available:
+        print(f"  Note: no enabled pattern has {credits} credits, so this will be rejected "
+              f"until you add one (Class Meeting Patterns -> Add).")
+ 
+    capacity = _prompt_positive_int("Expected enrollment (capacity): ", "Capacity")
+ 
+    while True:
+        modality = (input("Modality (in_person/online/hybrid, default in_person): ").strip().lower()
+                    or "in_person")
+        if modality in ("in_person", "online", "hybrid"):
+            break
+        print("  Modality must be one of: in_person, online, hybrid.")
+ 
+    rooms, labs = [], []
+    required_room_features, required_lab_features = set(), set()
+    reserve_room_during_lab = True
+ 
+    # Online courses may not carry rooms, labs, or room features, so don't ask.
+    if modality == "online":
+        print("  (online course -- skipping rooms, labs, and feature requirements)")
+    else:
+        print("Candidate rooms (blank list is valid only for patterns that occupy no room):")
+        rooms = _prompt_name_list("room", [r.name for r in scheduler_config.rooms])
+        if rooms:
+            required_room_features = _prompt_feature_set("room")
+ 
+        print("Candidate labs (leave empty if this course has no lab meeting):")
+        labs = _prompt_name_list("lab", [lab.name for lab in scheduler_config.labs])
+        if labs:
+            required_lab_features = _prompt_feature_set("lab")
+            answer = input("  Should the lab meeting also occupy the lecture room? (y/n, default y): ")
+            reserve_room_during_lab = answer.strip().lower() not in ("n", "no")
+ 
+    print("Conflicting courses (sections of these can never overlap):")
+    conflicts = _prompt_name_list(
+        "conflict course",
+        sorted({c.course_id for c in scheduler_config.courses if c.course_id != course_id}),
+    )
+ 
+    print("Faculty candidates (leave empty to derive them from faculty course preferences):")
+    faculty = _prompt_name_list("faculty", [f.name for f in scheduler_config.faculty])
+ 
+    return {
+        "course_id": course_id,
+        "section_id": section_id,
+        "credits": credits,
+        "capacity": capacity,
+        "room": rooms,
+        "lab": labs,
+        "conflicts": conflicts,
+        "faculty": faculty or None,  # [] is rejected; None = derive from preferences
+        "modality": modality,
+        "required_room_features": required_room_features,
+        "required_lab_features": required_lab_features,
+        "reserve_room_during_lab": reserve_room_during_lab,
+    }
+ 
+ 
 def add_course(session):
-    print("TODO: same pattern as add_faculty -- see the block comment above.")
-
+    config = session.require_config()
+    fields = _prompt_course_fields(config)
+ 
+    try:
+        new_course = CourseConfig(**fields)
+    except ValidationError as e:
+        print(f"Could not add course: {e}")
+        return
+ 
+    def _mutate(cfg):
+        cfg.config.courses.append(new_course)
+ 
+    try:
+        _apply_edit(session, config, "course", _mutate)
+        print("Course added.")
+    except ValidationFailure as e:
+        print(f"Could not add course: {e}")
+ 
+ 
 def modify_course(session):
-    print("TODO: same pattern as modify_faculty.")
-
+    config = session.require_config()
+    courses = _list_courses(config)
+    if not courses:
+        return
+ 
+    index = _prompt_course_index(len(courses))
+    if index is None:
+        return
+ 
+    fields = _prompt_course_fields(config)
+ 
+    try:
+        updated_course = CourseConfig(**fields)
+    except ValidationError as e:
+        print(f"Could not save changes, previous version kept: {e}")
+        return
+ 
+    def _mutate(cfg):
+        cfg.config.courses[index] = updated_course
+ 
+    try:
+        _apply_edit(session, config, "course", _mutate)
+        print("Course updated.")
+    except ValidationFailure as e:
+        print(f"Could not save changes, previous version kept: {e}")
+ 
+ 
 def delete_course(session):
-    print("TODO: same pattern as delete_faculty (check courses referencing this course's conflicts, etc).")
-
+    config = session.require_config()
+    courses = _list_courses(config)
+    if not courses:
+        return
+ 
+    index = _prompt_course_index(len(courses))
+    if index is None:
+        return
+ 
+    existing = courses[index]
+    course_id = existing.course_id
+ 
+    last_section = not any(c.course_id == course_id for i, c in enumerate(courses) if i != index)
+    if last_section:
+        referenced_by = [
+            f"course '{c.course_id}' (conflicts)"
+            for i, c in enumerate(courses)
+            if i != index and course_id in c.conflicts
+        ]
+        referenced_by += [
+            f"faculty '{f.name}' (course preference)"
+            for f in config.config.faculty
+            if course_id in f.course_preferences
+        ]
+        try:
+            check_no_references(course_id, referenced_by)
+        except ReferenceError_ as e:
+            print(f"{e} -- remove those references first.")
+            return
+ 
+    print("Are you sure you want to delete this course? This cannot be undone. (y/n)")
+    if input().strip().lower() not in ("y", "yes"):
+        print("Removal cancelled")
+        return
+ 
+    def _mutate(cfg):
+        del cfg.config.courses[index]
+ 
+    try:
+        _apply_edit(session, config, "course", _mutate)
+        print("Course removed.")
+    except ValidationFailure as e:
+        print(f"Could not remove course: {e}")
+ 
+ 
+def view_course(session):
+    config = session.require_config()
+    if not config.config.courses:
+        print("(no courses defined)")
+        return
+    seen = {}
+    for i, c in enumerate(config.config.courses):
+        if i > 0:
+            print()
+        print(_format_course(i, c, _course_display_name(c, seen)))
 
 def _prompt_lab_fields(): 
     while True: 
