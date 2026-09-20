@@ -114,16 +114,17 @@ def test_delete_lab_does_not_remove_referenced_lab(monkeypatch, capsys):
     assert labs[0].name == "Linux Lab"
     assert "Cannot delete 'Linux Lab'" in capsys.readouterr().out
 
+
 def test_prompt_lab_fields_retries_after_bad_input(monkeypatch):
-    inputs = iter(["", "Linux Lab", "zero", "0", "-5", "28"])
+    inputs = iter(["", "Linux Lab", "zero", "0", "-5", "28", "", ""])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
 
     fields = commands._prompt_lab_fields()
 
-    assert fields == {
-        "name": "Linux Lab",
-        "capacity": 28,
-        }
+    assert fields["name"] == "Linux Lab"
+    assert fields["capacity"] == 28
+    assert fields["features"] == []
+    assert "times" not in fields
 
 
 def test_modify_lab_rejects_missing_lab(monkeypatch, capsys):
