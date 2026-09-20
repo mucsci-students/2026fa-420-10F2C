@@ -211,6 +211,7 @@ def test_delete_course_removes_unreferenced_course(monkeypatch, capsys):
 def test_delete_course_blocked_when_another_course_conflicts_with_it(monkeypatch, capsys):
     session = make_session()
     add_course_to_config(session, monkeypatch, conflicts=["PLACEHOLDER 000"])
+    session.dirty = False 
 
     inputs = iter(["0", "yes"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
