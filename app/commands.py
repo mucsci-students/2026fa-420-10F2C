@@ -4,33 +4,26 @@
 #   Every function here takes `session` (app/session.py) as its first argument   #
 #   instead of doing its own file I/O.                                          #
 #                                                                                 #
-#   Implemented against the real library and tested:                            #
+#   Implemented against the real library and tested -- all built on             #
+#   CombinedConfig + edit_mode(), following the same recipe throughout:         #
+#   require_config() -> prompt -> construct the library's real model ->         #
+#   _apply_edit() + _mutate() closure -> catch ValidationFailure;               #
+#   check_no_references() first for any delete_* that can leave a              #
+#   dangling reference (room/lab/faculty/course):                              #
 #     - Config lifecycle (Req #4): new/load/save/print/validate.                #
-#     - Faculty CRUD -- the worked example everything else below follows;       #
-#       built on CombinedConfig + edit_mode(), not the old hand-rolled          #
-#       facultyModel.py.                                                        #
-#     - Timeslot CRUD (add/modify/delete) and global timing options.            #
+#     - Faculty CRUD -- the worked example everything else follows.             #
+#     - Course CRUD (Req #5-7), room/lab CRUD including features + optional     #
+#       weekday availability windows, timeslot CRUD + global timing options,    #
+#       and meeting CRUD.                                                       #
 #     - Class pattern CRUD (add/modify/delete_pattern), identified by list      #
 #       index rather than a name/id -- see the comment block above              #
 #       _list_patterns() for why.                                               #
-#     - Global settings (Req #28-30): generation limit, optimizer flags.        #
+#     - Global settings: generation limit, optimizer flags.        #
 #     - Schedule generation/inspection/export (Req #8-10) -- schedule_ops.py    #
 #       does the real work; export_schedule() here bounds-checks --index        #
 #       before touching session.schedules so a bad index degrades to a         #
 #       printed message instead of killing the session (Req #3).               #
-#                                                                                 #
-#   Still TODO, same recipe as add_faculty() below (require_config() ->         #
-#   prompt -> construct the library's real model -> apply_edit() + _mutate()    #
-#   closure -> catch ValidationFailure; check_no_references() first for any     #
-#   delete_*):                                                                  #
-#     - Course CRUD (add/modify/delete_course).                                 #
-#     - Lab CRUD (add/modify/delete_lab) -- delete needs to check courses'      #
-#       lab lists.                                                              #
-#     - Room CRUD (add/modify/delete_room) -- delete needs to check courses'    #
-#       room lists.                                                             #
-#     - Meeting CRUD (add/modify/delete_meeting).                               #
 # ----------------------------------------------------------------------------------------------------------------------- #
-
 
 import re
 
@@ -441,24 +434,6 @@ def view_faculty(session):
             print()
         print(_format_faculty(f))
 
-
-# =========================================================================== #
-#  TODO: 
-#
-#  Follow the exact recipe used above for faculty (and already applied to
-#  timeslots and patterns below):
-#    1. session.require_config() to get the live CombinedConfig.
-#    2. Prompt for fields; construct the library's real nested model
-#       (Course / Room / Lab / Meeting -- same scheduler.config lookup
-#       FacultyConfig/ClassConfig/MeetingConfig already went through).
-#    3. Build a small _mutate(cfg) closure that appends/replaces/removes
-#       from the right list on cfg.config.
-#    4. Wrap it in apply_edit(config, "<area>", _mutate) and catch
-#       ValidationFailure.
-#    5. For delete_*, scan for references first (check_no_references) --
-#       e.g. deleting a room needs to check courses' room lists.
-# =========================================================================== #
-
 # =========================================================================== #
 #  Course CRUD (Req #5, #6, #7).
 #  - Repeated course_id values are legal (they create sections), so
@@ -745,52 +720,55 @@ def view_course(session):
             print()
         print(_format_course(i, c, _course_display_name(c, seen)))
 
-def _prompt_lab_fields(): 
-    while True: 
+def _prompt_lab_fields():
+    while True:
         name = input("Enter the lab's name: ").strip()
-
-        if name: 
+        if name:
             break
         print("Lab name cannot be blank.")
-    while True: 
-        capacity_input = input("Enter the lab's max student capacity: ").strip()
 
-        try: 
+    while True:
+        capacity_input = input("Enter the lab's max student capacity: ").strip()
+        try:
             capacity = int(capacity_input)
             if capacity > 0:
-                break 
+                break
         except ValueError:
             pass
-
         print("Lab capacity must be a positive whole number!")
 
-    return {
+    features = _prompt_supplied_features("lab")
+    times = _prompt_resource_availability("lab")
+
+    fields = {
         "name": name,
         "capacity": capacity,
+        "features": features,
     }
+    if times is not None:
+        fields["times"] = times
+    return fields
 
 
 def add_lab(session):
-    # Get the current session config
     config = session.require_config()
-    # Get the fields [in this case name and capactiy for labs]
     fields = _prompt_lab_fields()
 
-    # Check to see if any fields exist inside of the current config, if not store the fields 
     if any(lab.name == fields["name"] for lab in config.config.labs):
         print("Lab is already in the system!")
-        return 
-    # Unpacks fields and passes it to LabConfig and store inside new_lab: LabConfig
+        return
+
     new_lab = LabConfig(**fields)
 
-    def _mutate(cfg): 
+    def _mutate(cfg):
         cfg.config.labs.append(new_lab)
 
-    try: 
-        apply_edit(config, "lab", _mutate)
+    try:
+        _apply_edit(session, config, "lab", _mutate)
         print("Lab added.")
-    except ValidationError as e:
-        print(f"could not add lab: {e}")
+    except ValidationFailure as e:
+        print(f"Could not add lab: {e}")
+
 
 def modify_lab(session):
     config = session.require_config()
@@ -807,9 +785,9 @@ def modify_lab(session):
     fields = _prompt_lab_fields()
 
     if fields["name"] != target_name and any(
-        lab.name == fields["name"] for lab in config.config.labs): 
+        lab.name == fields["name"] for lab in config.config.labs):
         print("Lab name is already in the system!")
-        return 
+        return
 
     updated_lab = LabConfig(**fields)
 
@@ -819,10 +797,11 @@ def modify_lab(session):
         lab_list.append(updated_lab)
 
     try:
-        apply_edit(config, "lab", _mutate)
+        _apply_edit(session, config, "lab", _mutate)
         print("Lab updated.")
     except ValidationFailure as e:
         print(f"Could not save changes, previous version kept: {e}")
+
 
 def delete_lab(session):
     config = session.require_config()
@@ -833,33 +812,105 @@ def delete_lab(session):
         (lab for lab in config.config.labs if lab.name == name),
         None,
     )
-    if existing is None: 
+    if existing is None:
         print("Lab does not exist!")
-        return 
+        return
     referencing_courses = [
         course.course_id
         for course in config.config.courses
         if name in course.lab
     ]
 
-    try: 
+    try:
         check_no_references(name, referencing_courses)
-    except Exception as e: 
+    except ReferenceError_ as e:
         print(f"{e} -- remove this lab from those courses first")
         return
 
     print("Are you sure you want to delete this lab? This cannot be undone (y/n)")
-    if input(). lower().strip() not in ("yes", "y"):
+    if input().lower().strip() not in ("yes", "y"):
         print("Removal cancelled")
-        return 
+        return
+
     def _mutate(cfg):
         cfg.config.labs.remove(existing)
 
-    try: 
-        apply_edit(config, "lab", _mutate)
+    try:
+        _apply_edit(session, config, "lab", _mutate)
         print("Lab removed.")
-    except ValidationFailure as e: 
+    except ValidationFailure as e:
         print(f"Could not remove lab: {e}")
+
+def _format_lab(index, lab):
+    lines = [f"[{index}] {lab.name} -- capacity {lab.capacity}"]
+    if lab.features:
+        lines.append(f"      Features: {', '.join(sorted(lab.features))}")
+    if lab.times:
+        lines.append("      Availability:")
+        for day in _VALID_DAYS:
+            blocks = _field(lab.times, day)
+            if not blocks:
+                continue
+            ranges = ", ".join(f"{_field(b, 'start')}-{_field(b, 'end')}" for b in blocks)
+            lines.append(f"        {_DAY_LABELS[day]}  {ranges}")
+    else:
+        lines.append("      Availability: unrestricted")
+    return "\n".join(lines)
+
+
+def view_lab(session):
+    config = session.require_config()
+    if not config.config.labs:
+        print("(no labs defined)")
+        return
+    for i, l in enumerate(config.config.labs):
+        if i > 0:
+            print()
+        print(_format_lab(i, l))
+
+def _prompt_supplied_features(label):
+    """Features/equipment tags this room or lab itself SUPPLIES
+    (RoomConfig.features / LabConfig.features -- confirmed via
+    model_json_schema(): list[str], unique). Distinct from
+    _prompt_feature_set(), which collects a COURSE's *required*
+    features -- this collects what the resource itself provides."""
+    raw = input(f"  Features this {label} provides (comma-separated, blank for none): ").strip()
+    return sorted({part.strip() for part in raw.split(",") if part.strip()}) if raw else []
+
+
+def _prompt_resource_availability(label):
+    """Optional weekday availability windows for a room/lab
+    (RoomConfig.times / LabConfig.times -- confirmed via
+    model_json_schema(): optional dict[Day, list[TimeRange]],
+    default null = unrestricted).
+
+    ASSUMPTION, not yet confirmed the way Faculty.times' semantics
+    were: a weekday left out of the mapping means the resource is
+    NOT available that day, mirroring Faculty.times on the same
+    TimeRange shape. Re-check against a real validation/schedule
+    result before trusting this if a generated schedule looks wrong
+    for a restricted room/lab.
+    """
+    restrict = input(
+        f"  Restrict this {label}'s availability? (y/n, default n = available any time): "
+    ).strip().lower() in ("y", "yes")
+    if not restrict:
+        return None
+
+    print(f"  Enter availability for this {label}, one entry per weekday: MON, TUE, WED, THU, FRI.")
+    print("  Leave blank if unavailable that day, or enter a range like 09:00-17:00")
+    times = {}
+    for day in _VALID_DAYS:
+        raw = input(f"  {day}: ").strip()
+        if not raw:
+            continue
+        if not _TIME_RANGE_RE.match(raw):
+            print(f"  '{raw}' isn't a valid HH:MM-HH:MM range -- treating {day} as unavailable.")
+            continue
+        start, end = raw.split("-")
+        times[day] = [{"start": start, "end": end}]
+    return times or None
+
 
 def _prompt_room_fields():
     while True:
@@ -878,10 +929,17 @@ def _prompt_room_fields():
             pass
         print("Room capacity must be a positive whole number!")
 
-    return {
+    features = _prompt_supplied_features("room")
+    times = _prompt_resource_availability("room")
+
+    fields = {
         "name": name,
         "capacity": capacity,
+        "features": features,
     }
+    if times is not None:
+        fields["times"] = times
+    return fields
 
 
 def add_room(session):
@@ -973,6 +1031,32 @@ def delete_room(session):
     except ValidationFailure as e:
         print(f"Could not remove room: {e}")
 
+def _format_room(index, room):
+    lines = [f"[{index}] {room.name} -- capacity {room.capacity}"]
+    if room.features:
+        lines.append(f"      Features: {', '.join(sorted(room.features))}")
+    if room.times:
+        lines.append("      Availability:")
+        for day in _VALID_DAYS:
+            blocks = _field(room.times, day)
+            if not blocks:
+                continue
+            ranges = ", ".join(f"{_field(b, 'start')}-{_field(b, 'end')}" for b in blocks)
+            lines.append(f"        {_DAY_LABELS[day]}  {ranges}")
+    else:
+        lines.append("      Availability: unrestricted")
+    return "\n".join(lines)
+
+
+def view_room(session):
+    config = session.require_config()
+    if not config.config.rooms:
+        print("(no rooms defined)")
+        return
+    for i, r in enumerate(config.config.rooms):
+        if i > 0:
+            print()
+        print(_format_room(i, r))
 
 def _prompt_time_block():
     print("Start time (HH:MM)?")
