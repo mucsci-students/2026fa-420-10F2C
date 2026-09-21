@@ -130,9 +130,10 @@ def _prompt_faculty_times():
     return times
 
 
-def _prompt_weighted_preferences(label, valid_names):
-    """Repeatedly asks for a name + weight until the user enters a
-    blank name. Used for course/room/lab preferences.
+def _prompt_weighted_preferences(label, valid_names, ask_weight=True, max_weight=10):
+    """Repeatedly asks for a name (and, unless ask_weight is False, a
+    weight) until the user enters a blank name. Used for course/room/lab
+    preferences.
     CONFIRMED (via a real validation error against the installed
     library) that a preference must name something that already
     exists in the config -- courses/rooms/labs that don't exist yet
@@ -142,7 +143,12 @@ def _prompt_weighted_preferences(label, valid_names):
     wrote that spec. Shows the valid options and re-prompts
     immediately on an unrecognized name, instead of silently
     collecting a name that will only fail much later when the whole
-    record is saved."""
+    record is saved.
+    ask_weight=False skips the weight prompt entirely and stores the
+    default weight (5) for every name -- used for room preferences,
+    where a per-room weight was judged redundant with course weighting.
+    max_weight caps the accepted range (course preferences use 5
+    instead of the general 0-10)."""
     prefs = {}
     if valid_names:
         print(f"  Existing {label}s: {', '.join(sorted(valid_names))}")
@@ -156,11 +162,14 @@ def _prompt_weighted_preferences(label, valid_names):
         if valid_names and name not in valid_names:
             print(f"  '{name}' isn't a known {label} -- pick from: {', '.join(sorted(valid_names))}")
             continue
-        weight_raw = input("  Weight (0-10, default 5): ").strip()
-        if weight_raw.isdigit() and 0 <= int(weight_raw) <= 10:
+        if not ask_weight:
+            prefs[name] = 5
+            continue
+        weight_raw = input(f"  Weight (0-{max_weight}, default 5): ").strip()
+        if weight_raw.isdigit() and 0 <= int(weight_raw) <= max_weight:
             weight = int(weight_raw)
         else:
-            print(f"  '{weight_raw}' isn't 0-10 -- using the default weight of 5.")
+            print(f"  '{weight_raw}' isn't 0-{max_weight} -- using the default weight of 5.")
             weight = 5
         prefs[name] = weight
     return prefs
@@ -216,36 +225,6 @@ def _prompt_mandatory_days(times):
     return days or None
 
 
-def _prompt_maximum_days(mandatory_days):
-    """Cap on distinct weekdays this faculty member can be scheduled on
-    (Req #5: 'workload limits'). Same bug class as mandatory_days --
-    displayed by _format_faculty(), never collected.
-
-    CONFIRMED against the same example.json: maximum_days is an
-    OPTIONAL int, independent of mandatory_days (one faculty entry sets
-    maximum_days with no mandatory_days at all). Wherever the example
-    sets both, len(mandatory_days) <= maximum_days holds -- enforced
-    here client-side for an immediate message; the library would also
-    reject an inconsistent value during edit_mode().
-
-    Returns None (omit the field, let the library default apply) if
-    left blank.
-    """
-    print("  Maximum days/week this faculty can be scheduled (blank = use the library default):")
-    raw = input("  > ").strip()
-    if not raw:
-        return None
-    if not (raw.isdigit() and int(raw) > 0):
-        print(f"  '{raw}' isn't a positive whole number -- leaving maximum_days unset.")
-        return None
-
-    value = int(raw)
-    if mandatory_days and value < len(mandatory_days):
-        print(f"  {len(mandatory_days)} day(s) are marked mandatory -- raising maximum_days to match.")
-        value = len(mandatory_days)
-    return value
-
-
 def _prompt_faculty_fields(config):
     """Same interactive prompts as the old facultyComm.py -- reuse that
     UX, just stop building a plain dict for a hand-rolled validator and
@@ -262,15 +241,14 @@ def _prompt_faculty_fields(config):
 
     times = _prompt_faculty_times()
     mandatory_days = _prompt_mandatory_days(times)
-    maximum_days = _prompt_maximum_days(mandatory_days)
 
     course_ids = {c.course_id for c in config.config.courses}
     room_names = {r.name for r in config.config.rooms}
     lab_names = {l.name for l in config.config.labs}
 
     print("Preferences:")
-    course_preferences = _prompt_weighted_preferences("course", course_ids)
-    room_preferences = _prompt_weighted_preferences("room", room_names)
+    course_preferences = _prompt_weighted_preferences("course", course_ids, max_weight=5)
+    room_preferences = _prompt_weighted_preferences("room", room_names, ask_weight=False)
     lab_preferences = _prompt_weighted_preferences("lab", lab_names)
 
     fields = {
@@ -285,8 +263,6 @@ def _prompt_faculty_fields(config):
     }
     if mandatory_days is not None:
         fields["mandatory_days"] = mandatory_days
-    if maximum_days is not None:
-        fields["maximum_days"] = maximum_days
     return fields
 
 

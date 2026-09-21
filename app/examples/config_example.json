@@ -522,8 +522,8 @@
           "Mac": 3
         },
         "mandatory_days": [
-          "MON",
           "FRI",
+          "MON",
           "WED"
         ]
       },
