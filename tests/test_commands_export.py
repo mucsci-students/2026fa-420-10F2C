@@ -1,4 +1,4 @@
-# tests/test_commands_export.py
+"""Unit tests for the schedule-export command interface."""
 
 import pytest
 
@@ -11,12 +11,15 @@ class _FakeCourseInstance:
     CSVWriter and JSONWriter's needs (as_csv() / model_dump())."""
 
     def __init__(self, course_id="FAKE 101"):
+        """Initialize the test double with the supplied values."""
         self.course_id = course_id
 
     def as_csv(self):
+        """Return the CSV representation expected by the export writer."""
         return f"{self.course_id},Faculty,Room,None,MON 09:00-09:50"
 
     def model_dump(self, by_alias=True, exclude_none=True):
+        """Return serializable fields expected by the JSON writer."""
         return {"course_id": self.course_id, "faculty": "Faculty"}
 
 
@@ -34,10 +37,12 @@ def session_with_schedules():
 
 @pytest.fixture
 def empty_session():
+    """Provide a session with no generated schedules."""
     return Session()  # schedules == [] from __init__
 
 
 def test_export_with_no_schedules_prints_guard_message(empty_session, tmp_path, capsys):
+    """Verify that export with no schedules prints guard message."""
     target = tmp_path / "out.json"
     commands.export_schedule(empty_session, "json", str(target))
 
@@ -47,6 +52,7 @@ def test_export_with_no_schedules_prints_guard_message(empty_session, tmp_path, 
 
 
 def test_export_whole_set_when_index_is_none(session_with_schedules, tmp_path, capsys):
+    """Verify that export whole set when index is none."""
     target = tmp_path / "out.json"
     commands.export_schedule(session_with_schedules, "json", str(target))
 
@@ -59,6 +65,7 @@ def test_export_whole_set_when_index_is_none(session_with_schedules, tmp_path, c
 
 
 def test_export_single_schedule_by_index(session_with_schedules, tmp_path, capsys):
+    """Verify that export single schedule by index."""
     target = tmp_path / "single.csv"
     commands.export_schedule(session_with_schedules, "csv", str(target), index=0)
 
@@ -71,6 +78,7 @@ def test_export_single_schedule_by_index(session_with_schedules, tmp_path, capsy
 
 
 def test_export_rejects_out_of_range_index(session_with_schedules, tmp_path, capsys):
+    """Verify that export rejects out of range index."""
     target = tmp_path / "bad.csv"
     commands.export_schedule(session_with_schedules, "csv", str(target), index=99)
 
@@ -80,6 +88,7 @@ def test_export_rejects_out_of_range_index(session_with_schedules, tmp_path, cap
 
 
 def test_export_refuses_existing_file_without_overwrite(session_with_schedules, tmp_path, capsys):
+    """Verify that export refuses existing file without overwrite."""
     target = tmp_path / "out.csv"
     target.write_text("pre-existing", encoding="utf-8")
 
@@ -92,6 +101,7 @@ def test_export_refuses_existing_file_without_overwrite(session_with_schedules, 
 
 
 def test_export_overwrites_when_flag_set(session_with_schedules, tmp_path, capsys):
+    """Verify that export overwrites when flag set."""
     target = tmp_path / "out.csv"
     target.write_text("stale", encoding="utf-8")
 

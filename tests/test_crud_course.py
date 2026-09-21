@@ -16,6 +16,7 @@ from app.session import Session
 
 
 def make_session():
+    """Create an initialized session for a test."""
     session = Session()
     session.new_config()
     return session
@@ -42,6 +43,7 @@ def course_fields(**overrides):
 
 
 def add_course_to_config(session, monkeypatch, **overrides):
+    """Add a course through the command using controlled prompt data."""
     monkeypatch.setattr(commands, "_prompt_course_fields", lambda config: course_fields(**overrides))
     commands.add_course(session)
 
@@ -51,6 +53,7 @@ def add_course_to_config(session, monkeypatch, **overrides):
 # --------------------------------------------------------------------------- #
 
 def test_add_course_appends_new_course(monkeypatch, capsys):
+    """Verify that add course appends new course."""
     session = make_session()
 
     add_course_to_config(session, monkeypatch)
@@ -104,6 +107,7 @@ def test_add_online_course_with_a_room_is_rejected(monkeypatch, capsys):
 
 
 def test_add_course_with_unknown_faculty_is_rejected(monkeypatch, capsys):
+    """Verify that add course with unknown faculty is rejected."""
     session = make_session()
 
     add_course_to_config(session, monkeypatch, faculty=["Nobody"])
@@ -117,6 +121,7 @@ def test_add_course_with_unknown_faculty_is_rejected(monkeypatch, capsys):
 # --------------------------------------------------------------------------- #
 
 def test_view_course_lists_every_course(monkeypatch, capsys):
+    """Verify that view course lists every course."""
     session = make_session()
     add_course_to_config(session, monkeypatch)
     capsys.readouterr()
@@ -133,6 +138,7 @@ def test_view_course_lists_every_course(monkeypatch, capsys):
 # --------------------------------------------------------------------------- #
 
 def test_modify_course_replaces_in_place(monkeypatch, capsys):
+    """Verify that modify course replaces in place."""
     session = make_session()
     add_course_to_config(session, monkeypatch)
 
@@ -157,6 +163,7 @@ def test_modify_course_replaces_in_place(monkeypatch, capsys):
 
 
 def test_modify_course_rejects_out_of_range_index(monkeypatch, capsys):
+    """Verify that modify course rejects out of range index."""
     session = make_session()
 
     monkeypatch.setattr("builtins.input", lambda prompt="": "7")
@@ -193,6 +200,7 @@ def test_failed_modify_keeps_previous_valid_state(monkeypatch, capsys):
 # --------------------------------------------------------------------------- #
 
 def test_delete_course_removes_unreferenced_course(monkeypatch, capsys):
+    """Verify that delete course removes unreferenced course."""
     session = make_session()
     add_course_to_config(session, monkeypatch)
 
@@ -209,6 +217,7 @@ def test_delete_course_removes_unreferenced_course(monkeypatch, capsys):
 
 
 def test_delete_course_blocked_when_another_course_conflicts_with_it(monkeypatch, capsys):
+    """Verify that delete course blocked when another course conflicts with it."""
     session = make_session()
     add_course_to_config(session, monkeypatch, conflicts=["PLACEHOLDER 000"])
     session.dirty = False 
@@ -246,6 +255,7 @@ def test_delete_one_section_is_allowed_while_another_remains(monkeypatch, capsys
 
 
 def test_delete_course_cancelled_leaves_config_untouched(monkeypatch, capsys):
+    """Verify that delete course cancelled leaves config untouched."""
     session = make_session()
     add_course_to_config(session, monkeypatch)
     session.dirty = False

@@ -47,9 +47,11 @@ _EXAMPLE_CONFIG = "app/examples/config_example.json"
 # --------------------------------------------------------------------- #
 
 def feed_inputs(monkeypatch, answers):
+    """Replace input() with a sequence of predetermined answers."""
     it = iter(answers)
 
     def fake_input(prompt=""):
+        """Return the next answer or fail on an unexpected prompt."""
         try:
             return next(it)
         except StopIteration:
@@ -93,17 +95,20 @@ class FakeFacultyConfig:
     kwargs commands.py builds it with."""
 
     def __init__(self, **kwargs):
+        """Initialize the test double with the supplied values."""
         self.__dict__.update(kwargs)
 
 
 class FakeCourse:
     def __init__(self, course_id, faculty=None):
+        """Initialize the test double with the supplied values."""
         self.course_id = course_id
         self.faculty = list(faculty or [])
 
 
 class FakeRoom:
     def __init__(self, name):
+        """Initialize the test double with the supplied values."""
         self.name = name
 
 
@@ -114,6 +119,7 @@ class FakeCombinedConfig:
     self is left completely untouched."""
 
     def __init__(self, faculty=None, courses=None, rooms=None, labs=None, reject=False):
+        """Initialize the test double with the supplied values."""
         self.config = SimpleNamespace(
             faculty=list(faculty or []),
             courses=list(courses or []),
@@ -124,6 +130,7 @@ class FakeCombinedConfig:
 
     @contextmanager
     def edit_mode(self):
+        """Yield an isolated draft and commit it only after validation."""
         draft = FakeCombinedConfig(
             faculty=list(self.config.faculty),
             courses=list(self.config.courses),
@@ -140,6 +147,7 @@ class FakeCombinedConfig:
 
 
 def make_session(faculty=None, courses=None, rooms=None, labs=None, reject=False):
+    """Create an initialized session for a test."""
     session = Session()
     session.config = FakeCombinedConfig(faculty=faculty, courses=courses, rooms=rooms, labs=labs, reject=reject)
     return session
@@ -154,22 +162,26 @@ class TestFacultyCRUDLogic:
 
     @pytest.fixture(autouse=True)
     def _patch_library_types(self, monkeypatch):
+        """Patch scheduler types only for the fake-library test class."""
         monkeypatch.setattr(commands, "FacultyConfig", FakeFacultyConfig)
         monkeypatch.setattr(crud, "ValidationError", FakeValidationError)
 
     # ---------- _prompt_mandatory_days / _prompt_maximum_days ----------
 
     def test_prompt_mandatory_days_blank_returns_none(self, monkeypatch):
+        """Verify that prompt mandatory days blank returns none."""
         times = {d: [{"start": "09:00", "end": "17:00"}] for d in commands._VALID_DAYS}
         feed_inputs(monkeypatch, [""])
         assert commands._prompt_mandatory_days(times) is None
 
     def test_prompt_mandatory_days_valid_selection(self, monkeypatch):
+        """Verify that prompt mandatory days valid selection."""
         times = {d: [{"start": "09:00", "end": "17:00"}] for d in commands._VALID_DAYS}
         feed_inputs(monkeypatch, ["MON, WED"])
         assert commands._prompt_mandatory_days(times) == ["MON", "WED"]
 
     def test_prompt_mandatory_days_rejects_unavailable_day(self, monkeypatch):
+        """Verify that prompt mandatory days rejects unavailable day."""
         times = {
             "MON": [{"start": "09:00", "end": "17:00"}],
             "WED": [{"start": "09:00", "end": "17:00"}],
@@ -178,41 +190,50 @@ class TestFacultyCRUDLogic:
         assert commands._prompt_mandatory_days(times) == ["WED"]
 
     def test_prompt_mandatory_days_no_available_days_skips_prompt(self, monkeypatch):
+        """Verify that prompt mandatory days no available days skips prompt."""
         feed_inputs(monkeypatch, [])
         assert commands._prompt_mandatory_days({}) is None
 
     def test_prompt_mandatory_days_dedupes_and_uppercases(self, monkeypatch):
+        """Verify that prompt mandatory days dedupes and uppercases."""
         times = {d: [{"start": "09:00", "end": "17:00"}] for d in commands._VALID_DAYS}
         feed_inputs(monkeypatch, ["mon, MON, Wed"])
         assert commands._prompt_mandatory_days(times) == ["MON", "WED"]
 
     def test_prompt_maximum_days_blank_returns_none(self, monkeypatch):
+        """Verify that prompt maximum days blank returns none."""
         feed_inputs(monkeypatch, [""])
         assert commands._prompt_maximum_days(mandatory_days=None) is None
 
     def test_prompt_maximum_days_valid_value(self, monkeypatch):
+        """Verify that prompt maximum days valid value."""
         feed_inputs(monkeypatch, ["4"])
         assert commands._prompt_maximum_days(mandatory_days=None) == 4
 
     def test_prompt_maximum_days_non_numeric_returns_none(self, monkeypatch):
+        """Verify that prompt maximum days non numeric returns none."""
         feed_inputs(monkeypatch, ["banana"])
         assert commands._prompt_maximum_days(mandatory_days=["MON", "WED"]) is None
 
     def test_prompt_maximum_days_zero_or_negative_returns_none(self, monkeypatch):
+        """Verify that prompt maximum days zero or negative returns none."""
         feed_inputs(monkeypatch, ["0"])
         assert commands._prompt_maximum_days(mandatory_days=None) is None
 
     def test_prompt_maximum_days_bumped_up_to_match_mandatory_count(self, monkeypatch):
+        """Verify that prompt maximum days bumped up to match mandatory count."""
         feed_inputs(monkeypatch, ["1"])
         assert commands._prompt_maximum_days(mandatory_days=["MON", "WED", "FRI"]) == 3
 
     def test_prompt_maximum_days_not_bumped_when_already_sufficient(self, monkeypatch):
+        """Verify that prompt maximum days not bumped when already sufficient."""
         feed_inputs(monkeypatch, ["5"])
         assert commands._prompt_maximum_days(mandatory_days=["MON", "WED"]) == 5
 
     # ---------- add_faculty ----------
 
     def test_add_faculty_happy_path(self, monkeypatch, capsys):
+        """Verify that add faculty happy path."""
         session = make_session(faculty=[])
         feed_inputs(monkeypatch, ["Dr. Test", "full"] + _skip_times_and_prefs())
 
@@ -230,6 +251,7 @@ class TestFacultyCRUDLogic:
         assert "faculty added" in capsys.readouterr().out.lower()
 
     def test_add_faculty_captures_times_and_preferences(self, monkeypatch):
+        """Verify that add faculty captures times and preferences."""
         session = make_session(
             faculty=[],
             courses=[FakeCourse("CMSC 420"), FakeCourse("CMSC 350")],
@@ -264,6 +286,7 @@ class TestFacultyCRUDLogic:
         assert added.lab_preferences == {}
 
     def test_add_faculty_rejects_unknown_preference_name_and_retries(self, monkeypatch):
+        """Verify that add faculty rejects unknown preference name and retries."""
         session = make_session(faculty=[], courses=[FakeCourse("CMSC 420")])
         feed_inputs(monkeypatch, [
             "Dr. Full", "full",
@@ -280,6 +303,7 @@ class TestFacultyCRUDLogic:
         assert added.course_preferences == {"CMSC 420": 6}
 
     def test_add_faculty_adjunct_defaults(self, monkeypatch):
+        """Verify that add faculty adjunct defaults."""
         session = make_session(faculty=[])
         feed_inputs(monkeypatch, ["Dr. Adjunct", "adjunct"] + _skip_times_and_prefs())
 
@@ -290,6 +314,7 @@ class TestFacultyCRUDLogic:
         assert added.unique_course_limit == 1
 
     def test_add_faculty_rejects_blank_name(self, monkeypatch, capsys):
+        """Verify that add faculty rejects blank name."""
         session = make_session(faculty=[])
         feed_inputs(monkeypatch, ["", "full"] + _skip_times_and_prefs())
 
@@ -299,6 +324,7 @@ class TestFacultyCRUDLogic:
         assert "blank name" in capsys.readouterr().out.lower()
 
     def test_add_faculty_rejects_duplicate_name(self, monkeypatch, capsys):
+        """Verify that add faculty rejects duplicate name."""
         existing = FakeFacultyConfig(name="Dr. Test")
         session = make_session(faculty=[existing])
         feed_inputs(monkeypatch, ["Dr. Test", "full"] + _skip_times_and_prefs())
@@ -309,6 +335,7 @@ class TestFacultyCRUDLogic:
         assert "already in the system" in capsys.readouterr().out.lower()
 
     def test_add_faculty_rolls_back_on_validation_failure(self, monkeypatch, capsys):
+        """Verify that add faculty rolls back on validation failure."""
         session = make_session(faculty=[], reject=True)
         feed_inputs(monkeypatch, ["Dr. Test", "full"] + _skip_times_and_prefs())
 
@@ -318,6 +345,7 @@ class TestFacultyCRUDLogic:
         assert "could not add faculty" in capsys.readouterr().out.lower()
 
     def test_add_faculty_captures_mandatory_and_maximum_days(self, monkeypatch):
+        """Verify that add faculty captures mandatory and maximum days."""
         session = make_session(faculty=[])
         feed_inputs(monkeypatch, [
             "Dr. Days", "full",
@@ -334,6 +362,7 @@ class TestFacultyCRUDLogic:
         assert added.maximum_days == 2
 
     def test_add_faculty_omits_mandatory_and_maximum_days_when_blank(self, monkeypatch):
+        """Verify that add faculty omits mandatory and maximum days when blank."""
         session = make_session(faculty=[])
         feed_inputs(monkeypatch, [
             "Dr. NoDays", "adjunct",
@@ -352,6 +381,7 @@ class TestFacultyCRUDLogic:
     # ---------- modify_faculty ----------
 
     def test_modify_faculty_applies_valid_change(self, monkeypatch):
+        """Verify that modify faculty applies valid change."""
         existing = FakeFacultyConfig(name="Dr. Test", maximum_credits=12, unique_course_limit=2)
         session = make_session(faculty=[existing])
         feed_inputs(monkeypatch, ["Dr. Test", "Dr. Test", "adjunct"] + _skip_times_and_prefs())
@@ -364,6 +394,7 @@ class TestFacultyCRUDLogic:
         assert faculty[0].unique_course_limit == 1
 
     def test_modify_faculty_nonexistent_name_is_a_no_op(self, monkeypatch, capsys):
+        """Verify that modify faculty nonexistent name is a no op."""
         existing = FakeFacultyConfig(name="Dr. Test")
         session = make_session(faculty=[existing])
         feed_inputs(monkeypatch, ["Nobody"])
@@ -374,6 +405,7 @@ class TestFacultyCRUDLogic:
         assert "does not exist" in capsys.readouterr().out.lower()
 
     def test_modify_faculty_restores_previous_state_on_invalid_edit(self, monkeypatch, capsys):
+        """Verify that modify faculty restores previous state on invalid edit."""
         existing = FakeFacultyConfig(name="Dr. Test", maximum_credits=12)
         session = make_session(faculty=[existing], reject=True)
         feed_inputs(monkeypatch, ["Dr. Test", "Dr. Test", "adjunct"] + _skip_times_and_prefs())
@@ -386,6 +418,7 @@ class TestFacultyCRUDLogic:
         assert "previous version kept" in capsys.readouterr().out.lower()
 
     def test_modify_faculty_updates_mandatory_and_maximum_days(self, monkeypatch):
+        """Verify that modify faculty updates mandatory and maximum days."""
         existing = FakeFacultyConfig(name="Dr. Test", maximum_credits=12, unique_course_limit=2)
         session = make_session(faculty=[existing])
         feed_inputs(monkeypatch, [
@@ -405,6 +438,7 @@ class TestFacultyCRUDLogic:
     # ---------- delete_faculty ----------
 
     def test_delete_faculty_removes_confirmed_record(self, monkeypatch):
+        """Verify that delete faculty removes confirmed record."""
         existing = FakeFacultyConfig(name="Dr. Test")
         session = make_session(faculty=[existing], courses=[])
         feed_inputs(monkeypatch, ["Dr. Test", "y"])
@@ -414,6 +448,7 @@ class TestFacultyCRUDLogic:
         assert session.config.config.faculty == []
 
     def test_delete_faculty_cancel_keeps_record(self, monkeypatch):
+        """Verify that delete faculty cancel keeps record."""
         existing = FakeFacultyConfig(name="Dr. Test")
         session = make_session(faculty=[existing], courses=[])
         feed_inputs(monkeypatch, ["Dr. Test", "n"])
@@ -423,6 +458,7 @@ class TestFacultyCRUDLogic:
         assert session.config.config.faculty == [existing]
 
     def test_delete_faculty_nonexistent_name_is_a_no_op(self, monkeypatch, capsys):
+        """Verify that delete faculty nonexistent name is a no op."""
         existing = FakeFacultyConfig(name="Dr. Test")
         session = make_session(faculty=[existing])
         feed_inputs(monkeypatch, ["Nobody"])
@@ -433,6 +469,7 @@ class TestFacultyCRUDLogic:
         assert "does not exist" in capsys.readouterr().out.lower()
 
     def test_delete_faculty_blocked_by_referencing_course(self, monkeypatch, capsys):
+        """Verify that delete faculty blocked by referencing course."""
         existing = FakeFacultyConfig(name="Dr. Test")
         referencing_course = FakeCourse(course_id="CMSC 999", faculty=["Dr. Test"])
         session = make_session(faculty=[existing], courses=[referencing_course])
@@ -444,6 +481,7 @@ class TestFacultyCRUDLogic:
         assert "CMSC 999" in capsys.readouterr().out
 
     def test_delete_faculty_ignores_courses_with_faculty_set_to_none(self, monkeypatch):
+        """Verify that delete faculty ignores courses with faculty set to none."""
         existing = FakeFacultyConfig(name="Dr. Test")
         unassigned_course = FakeCourse(course_id="CMSC 140")
         unassigned_course.faculty = None
@@ -455,6 +493,7 @@ class TestFacultyCRUDLogic:
         assert session.config.config.faculty == []
 
     def test_delete_faculty_rolls_back_on_validation_failure(self, monkeypatch, capsys):
+        """Verify that delete faculty rolls back on validation failure."""
         existing = FakeFacultyConfig(name="Dr. Test")
         session = make_session(faculty=[existing], courses=[], reject=True)
         feed_inputs(monkeypatch, ["Dr. Test", "y"])
@@ -477,6 +516,7 @@ class TestFacultyDayLimitsAgainstRealLibrary:
 
     @pytest.fixture
     def session(self):
+        """Create a session backed by the real scheduler configuration."""
         if not Path(_EXAMPLE_CONFIG).exists():
             pytest.skip(f"{_EXAMPLE_CONFIG} not found -- run from the repo root")
         s = Session()
@@ -484,6 +524,7 @@ class TestFacultyDayLimitsAgainstRealLibrary:
         return s
 
     def test_add_faculty_with_day_limits_against_real_library(self, session, monkeypatch, capsys):
+        """Verify that add faculty with day limits against real library."""
         feed_inputs(monkeypatch, [
             "Library Test Faculty", "full",
             "", "", "", "", "",
@@ -509,6 +550,7 @@ class TestFacultyDayLimitsAgainstRealLibrary:
         assert added.maximum_days == 3
 
     def test_add_faculty_without_day_limits_against_real_library(self, session, monkeypatch, capsys):
+        """Verify that add faculty without day limits against real library."""
         feed_inputs(monkeypatch, [
             "No Day Limits Library Test", "adjunct",
             "n/a", "n/a", "n/a", "n/a", "n/a",
@@ -528,6 +570,7 @@ class TestFacultyDayLimitsAgainstRealLibrary:
         assert added is not None
 
     def test_modify_faculty_updates_day_limits_against_real_library(self, session, monkeypatch, capsys):
+        """Verify that modify faculty updates day limits against real library."""
         # Deliberately does NOT modify one of the shipped example's
         # existing faculty. Some of those (e.g. the first in the list)
         # have course_preferences that other courses in the example
@@ -570,6 +613,7 @@ class TestFacultyDayLimitsAgainstRealLibrary:
         assert updated.maximum_days == 1
 
     def test_day_limits_survive_save_and_reload(self, session, monkeypatch, tmp_path):
+        """Verify that day limits survive save and reload."""
         feed_inputs(monkeypatch, [
             "Round Trip Faculty", "full",
             "", "", "", "", "",

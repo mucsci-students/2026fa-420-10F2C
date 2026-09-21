@@ -1,3 +1,5 @@
+"""Unit tests for lab create, update, delete, and prompt behavior."""
+
 from app import commands
 from app.crud import apply_edit
 from app.session import Session
@@ -5,21 +7,25 @@ from scheduler.config import LabConfig, Meeting
 
 
 def make_session():
+    """Create an initialized session for a test."""
     session = Session()
     session.new_config()
     return session
 
 
 def add_lab_to_config(session, name="Linux Lab", capacity=28):
+    """Insert a lab directly so another operation can be tested."""
     lab = LabConfig(name=name, capacity=capacity)
 
     def mutate(config):
+        """Apply the test-specific change to the editable configuration."""
         config.config.labs.append(lab)
 
     apply_edit(session.require_config(), "lab", mutate)
 
 
 def test_add_lab_adds_new_lab(monkeypatch, capsys):
+    """Verify that add lab adds new lab."""
     session = make_session()
 
     monkeypatch.setattr(
@@ -39,6 +45,7 @@ def test_add_lab_adds_new_lab(monkeypatch, capsys):
 
 
 def test_add_lab_rejects_duplicate_name(monkeypatch, capsys):
+    """Verify that add lab rejects duplicate name."""
     session = make_session()
     add_lab_to_config(session)
 
@@ -55,6 +62,7 @@ def test_add_lab_rejects_duplicate_name(monkeypatch, capsys):
 
 
 def test_modify_lab_replaces_existing_lab(monkeypatch, capsys):
+    """Verify that modify lab replaces existing lab."""
     session = make_session()
     add_lab_to_config(session, name="Linux Lab", capacity=28)
 
@@ -77,6 +85,7 @@ def test_modify_lab_replaces_existing_lab(monkeypatch, capsys):
 
 
 def test_delete_lab_removes_unreferenced_lab(monkeypatch, capsys):
+    """Verify that delete lab removes unreferenced lab."""
     session = make_session()
     add_lab_to_config(session, name="Linux Lab", capacity=28)
 
@@ -90,9 +99,11 @@ def test_delete_lab_removes_unreferenced_lab(monkeypatch, capsys):
 
 
 def test_delete_lab_does_not_remove_referenced_lab(monkeypatch, capsys):
+    """Verify that delete lab does not remove referenced lab."""
     session = make_session()
 
     def mutate(config):
+        """Apply the test-specific change to the editable configuration."""
         config.config.labs.append(LabConfig(name="Linux Lab", capacity=28))
         config.config.courses[0].lab.append("Linux Lab")
         meeting = config.time_slot_config.classes[0].meetings[0]
@@ -116,6 +127,7 @@ def test_delete_lab_does_not_remove_referenced_lab(monkeypatch, capsys):
 
 
 def test_prompt_lab_fields_retries_after_bad_input(monkeypatch):
+    """Verify that prompt lab fields retries after bad input."""
     inputs = iter(["", "Linux Lab", "zero", "0", "-5", "28", "", ""])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
 
@@ -128,6 +140,7 @@ def test_prompt_lab_fields_retries_after_bad_input(monkeypatch):
 
 
 def test_modify_lab_rejects_missing_lab(monkeypatch, capsys):
+    """Verify that modify lab rejects missing lab."""
     session = make_session()
 
     monkeypatch.setattr("builtins.input", lambda prompt="": "Missing Lab")
@@ -139,6 +152,7 @@ def test_modify_lab_rejects_missing_lab(monkeypatch, capsys):
 
 
 def test_modify_lab_rejects_duplicate_name(monkeypatch, capsys):
+    """Verify that modify lab rejects duplicate name."""
     session = make_session()
     add_lab_to_config(session, name="Linux Lab", capacity=28)
     add_lab_to_config(session, name="Mac Lab", capacity=30)
@@ -162,6 +176,7 @@ def test_modify_lab_rejects_duplicate_name(monkeypatch, capsys):
 
 
 def test_delete_lab_cancellation_keeps_lab(monkeypatch, capsys):
+    """Verify that delete lab cancellation keeps lab."""
     session = make_session()
     add_lab_to_config(session)
 
@@ -178,6 +193,7 @@ def test_delete_lab_cancellation_keeps_lab(monkeypatch, capsys):
 
 
 def test_delete_lab_rejects_missing_lab(monkeypatch, capsys):
+    """Verify that delete lab rejects missing lab."""
     session = make_session()
 
     monkeypatch.setattr("builtins.input", lambda prompt="": "Missing Lab")
