@@ -33,12 +33,15 @@ class FakeMeeting:
     """Stand-in for scheduler.config.Meeting."""
 
     def __init__(self, **kwargs):
+        """Initialize the test double with the supplied values."""
         self.__dict__.update(kwargs)
 
     def __eq__(self, other):
+        """Compare test doubles by their stored attributes."""
         return isinstance(other, FakeMeeting) and self.__dict__ == other.__dict__
 
     def __repr__(self):
+        """Return a diagnostic representation for assertion failures."""
         return f"FakeMeeting({self.__dict__})"
 
 
@@ -46,12 +49,15 @@ class FakeClassPattern:
     """Stand-in for scheduler.config.ClassPattern."""
 
     def __init__(self, **kwargs):
+        """Initialize the test double with the supplied values."""
         self.__dict__.update(kwargs)
 
     def __eq__(self, other):
+        """Compare test doubles by their stored attributes."""
         return isinstance(other, FakeClassPattern) and self.__dict__ == other.__dict__
 
     def __repr__(self):
+        """Return a diagnostic representation for assertion failures."""
         return f"FakeClassPattern({self.__dict__})"
 
 
@@ -61,11 +67,13 @@ class FakeCombinedConfig:
     leaves self untouched if the `with` block raises."""
 
     def __init__(self, classes=None, reject=False):
+        """Initialize the test double with the supplied values."""
         self.time_slot_config = SimpleNamespace(classes=list(classes or []))
         self.reject = reject
 
     @contextmanager
     def edit_mode(self):
+        """Yield an isolated draft and commit it only after validation."""
         draft = FakeCombinedConfig(classes=copy.deepcopy(self.time_slot_config.classes))
         yield draft
         if self.reject:
@@ -75,21 +83,25 @@ class FakeCombinedConfig:
 
 @pytest.fixture(autouse=True)
 def patch_library_types(monkeypatch):
+    """Replace scheduler-library types with controlled test doubles."""
     monkeypatch.setattr(commands, "Meeting", FakeMeeting)
     monkeypatch.setattr(commands, "ClassPattern", FakeClassPattern)
     monkeypatch.setattr(crud, "ValidationError", FakeValidationError)
 
 
 def make_session(classes=None, reject=False):
+    """Create a session configured for the test scenario."""
     session = Session()
     session.config = FakeCombinedConfig(classes=classes, reject=reject)
     return session
 
 
 def feed_inputs(monkeypatch, answers):
+    """Replace input() with a sequence of predetermined answers."""
     it = iter(answers)
 
     def fake_input(prompt=""):
+        """Return the next answer or fail on an unexpected prompt."""
         try:
             return next(it)
         except StopIteration:
@@ -113,6 +125,7 @@ def _pattern_answers(credits="3", meeting_answers=None, add_another="n",
 
 
 def _existing_pattern(credits=3, meetings=None, start_time=None, disabled=False):
+    """Build a valid existing class pattern for a test."""
     return FakeClassPattern(
         credits=credits,
         meetings=meetings or [FakeMeeting(day="MON", duration=150, lab=False,
@@ -125,6 +138,7 @@ def _existing_pattern(credits=3, meetings=None, start_time=None, disabled=False)
 # ---------- add_pattern ----------
 
 def test_add_pattern_happy_path(monkeypatch, capsys):
+    """Verify that add pattern happy path."""
     session = make_session(classes=[])
     feed_inputs(monkeypatch, _pattern_answers())
 
@@ -139,6 +153,7 @@ def test_add_pattern_happy_path(monkeypatch, capsys):
 
 
 def test_add_pattern_with_multiple_meetings(monkeypatch):
+    """Verify that add pattern with multiple meetings."""
     session = make_session(classes=[])
     feed_inputs(monkeypatch, [
         "4",
@@ -158,6 +173,7 @@ def test_add_pattern_with_multiple_meetings(monkeypatch):
 
 
 def test_add_pattern_rejects_zero_credits(monkeypatch, capsys):
+    """Verify that add pattern rejects zero credits."""
     session = make_session(classes=[])
     feed_inputs(monkeypatch, _pattern_answers(credits="0"))
 
@@ -168,6 +184,7 @@ def test_add_pattern_rejects_zero_credits(monkeypatch, capsys):
 
 
 def test_add_pattern_rolls_back_on_validation_failure(monkeypatch, capsys):
+    """Verify that add pattern rolls back on validation failure."""
     session = make_session(classes=[], reject=True)
     feed_inputs(monkeypatch, _pattern_answers())
 
@@ -180,6 +197,7 @@ def test_add_pattern_rolls_back_on_validation_failure(monkeypatch, capsys):
 # ---------- modify_pattern ----------
 
 def test_modify_pattern_applies_valid_change(monkeypatch):
+    """Verify that modify pattern applies valid change."""
     session = make_session(classes=[_existing_pattern(credits=3)])
     feed_inputs(monkeypatch, ["0"] + _pattern_answers(credits="4", meeting_answers=_one_meeting_answers("THU", "90")))
 
@@ -192,6 +210,7 @@ def test_modify_pattern_applies_valid_change(monkeypatch):
 
 
 def test_modify_pattern_rejects_zero_credits(monkeypatch, capsys):
+    """Verify that modify pattern rejects zero credits."""
     original = _existing_pattern(credits=3)
     session = make_session(classes=[original])
     feed_inputs(monkeypatch, ["0"] + _pattern_answers(credits="0"))
@@ -203,6 +222,7 @@ def test_modify_pattern_rejects_zero_credits(monkeypatch, capsys):
 
 
 def test_modify_pattern_invalid_index_is_a_no_op(monkeypatch, capsys):
+    """Verify that modify pattern invalid index is a no op."""
     original = _existing_pattern()
     session = make_session(classes=[original])
     feed_inputs(monkeypatch, ["5"])  # out of range -- only index 0 exists
@@ -214,6 +234,7 @@ def test_modify_pattern_invalid_index_is_a_no_op(monkeypatch, capsys):
 
 
 def test_modify_pattern_restores_previous_state_on_invalid_edit(monkeypatch, capsys):
+    """Verify that modify pattern restores previous state on invalid edit."""
     original = _existing_pattern(credits=3)
     session = make_session(classes=[original], reject=True)
     feed_inputs(monkeypatch, ["0"] + _pattern_answers(credits="4"))
@@ -229,6 +250,7 @@ def test_modify_pattern_restores_previous_state_on_invalid_edit(monkeypatch, cap
 # ---------- delete_pattern ----------
 
 def test_delete_pattern_removes_confirmed_record(monkeypatch):
+    """Verify that delete pattern removes confirmed record."""
     pattern_a = _existing_pattern(credits=3)
     pattern_b = _existing_pattern(credits=4)
     session = make_session(classes=[pattern_a, pattern_b])
@@ -240,6 +262,7 @@ def test_delete_pattern_removes_confirmed_record(monkeypatch):
 
 
 def test_delete_pattern_cancel_keeps_record(monkeypatch):
+    """Verify that delete pattern cancel keeps record."""
     pattern_a = _existing_pattern(credits=3)
     session = make_session(classes=[pattern_a])
     feed_inputs(monkeypatch, ["0", "n"])
@@ -250,6 +273,7 @@ def test_delete_pattern_cancel_keeps_record(monkeypatch):
 
 
 def test_delete_pattern_no_patterns_is_a_no_op(monkeypatch, capsys):
+    """Verify that delete pattern no patterns is a no op."""
     session = make_session(classes=[])
     feed_inputs(monkeypatch, [])
 
@@ -260,6 +284,7 @@ def test_delete_pattern_no_patterns_is_a_no_op(monkeypatch, capsys):
 
 
 def test_delete_pattern_rolls_back_on_validation_failure(monkeypatch, capsys):
+    """Verify that delete pattern rolls back on validation failure."""
     pattern_a = _existing_pattern(credits=3)
     session = make_session(classes=[pattern_a], reject=True)
     feed_inputs(monkeypatch, ["0", "y"])

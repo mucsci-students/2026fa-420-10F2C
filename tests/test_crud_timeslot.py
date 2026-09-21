@@ -31,14 +31,17 @@ class FakeTimeBlock:
     """Stand-in for scheduler.config.TimeBlock."""
 
     def __init__(self, start, end, spacing):
+        """Initialize the test double with the supplied values."""
         self.start = start
         self.end = end
         self.spacing = spacing
 
     def __eq__(self, other):
+        """Compare test doubles by their stored attributes."""
         return isinstance(other, FakeTimeBlock) and self.__dict__ == other.__dict__
 
     def __repr__(self):
+        """Return a diagnostic representation for assertion failures."""
         return f"FakeTimeBlock({self.start}-{self.end}, spacing={self.spacing})"
 
 
@@ -48,6 +51,7 @@ class FakeCombinedConfig:
     leaves self untouched if the `with` block raises."""
 
     def __init__(self, times=None, max_time_gap=30, min_time_overlap=45, reject=False):
+        """Initialize the test double with the supplied values."""
         self.time_slot_config = SimpleNamespace(
             times=dict(times or {}),
             max_time_gap=max_time_gap,
@@ -57,6 +61,7 @@ class FakeCombinedConfig:
 
     @contextmanager
     def edit_mode(self):
+        """Yield an isolated draft and commit it only after validation."""
         draft = FakeCombinedConfig(
             times=copy.deepcopy(self.time_slot_config.times),
             max_time_gap=self.time_slot_config.max_time_gap,
@@ -72,11 +77,13 @@ class FakeCombinedConfig:
 
 @pytest.fixture(autouse=True)
 def patch_library_types(monkeypatch):
+    """Replace scheduler-library types with controlled test doubles."""
     monkeypatch.setattr(commands, "TimeBlock", FakeTimeBlock)
     monkeypatch.setattr(crud, "ValidationError", FakeValidationError)
 
 
 def make_session(times=None, max_time_gap=30, min_time_overlap=45, reject=False):
+    """Create a session configured for the test scenario."""
     session = Session()
     session.config = FakeCombinedConfig(
         times=times, max_time_gap=max_time_gap, min_time_overlap=min_time_overlap, reject=reject
@@ -85,9 +92,11 @@ def make_session(times=None, max_time_gap=30, min_time_overlap=45, reject=False)
 
 
 def feed_inputs(monkeypatch, answers):
+    """Replace input() with a sequence of predetermined answers."""
     it = iter(answers)
 
     def fake_input(prompt=""):
+        """Return the next answer or fail on an unexpected prompt."""
         try:
             return next(it)
         except StopIteration:
@@ -99,6 +108,7 @@ def feed_inputs(monkeypatch, answers):
 # ---------- add_timeslot ----------
 
 def test_add_timeslot_happy_path(monkeypatch, capsys):
+    """Verify that add timeslot happy path."""
     session = make_session(times={})
     feed_inputs(monkeypatch, ["MON", "09:00", "17:00", "60"])
 
@@ -113,6 +123,7 @@ def test_add_timeslot_happy_path(monkeypatch, capsys):
 
 
 def test_add_timeslot_rejects_invalid_day(monkeypatch, capsys):
+    """Verify that add timeslot rejects invalid day."""
     session = make_session(times={})
     feed_inputs(monkeypatch, ["FUNDAY"])
 
@@ -123,6 +134,7 @@ def test_add_timeslot_rejects_invalid_day(monkeypatch, capsys):
 
 
 def test_add_timeslot_rejects_overlap(monkeypatch, capsys):
+    """Verify that add timeslot rejects overlap."""
     existing = FakeTimeBlock("09:00", "12:00", 30)
     session = make_session(times={"MON": [existing]})
     feed_inputs(monkeypatch, ["MON", "10:00", "13:00", "30"])  # overlaps 09:00-12:00
@@ -134,6 +146,7 @@ def test_add_timeslot_rejects_overlap(monkeypatch, capsys):
 
 
 def test_add_timeslot_rejects_bad_spacing(monkeypatch, capsys):
+    """Verify that add timeslot rejects bad spacing."""
     session = make_session(times={})
     feed_inputs(monkeypatch, ["MON", "09:00", "17:00", "not-a-number"])
 
@@ -146,6 +159,7 @@ def test_add_timeslot_rejects_bad_spacing(monkeypatch, capsys):
 # ---------- modify_timeslot ----------
 
 def test_modify_timeslot_applies_valid_change(monkeypatch):
+    """Verify that modify timeslot applies valid change."""
     original = FakeTimeBlock("09:00", "12:00", 30)
     session = make_session(times={"MON": [original]})
     feed_inputs(monkeypatch, ["MON", "0", "10:00", "14:00", "45"])
@@ -159,6 +173,7 @@ def test_modify_timeslot_applies_valid_change(monkeypatch):
 
 
 def test_modify_timeslot_rejects_overlap_with_another_block(monkeypatch, capsys):
+    """Verify that modify timeslot rejects overlap with another block."""
     block_a = FakeTimeBlock("09:00", "11:00", 30)
     block_b = FakeTimeBlock("13:00", "15:00", 30)
     session = make_session(times={"MON": [block_a, block_b]})
@@ -174,6 +189,7 @@ def test_modify_timeslot_rejects_overlap_with_another_block(monkeypatch, capsys)
 
 
 def test_modify_timeslot_no_blocks_on_day_is_a_no_op(monkeypatch, capsys):
+    """Verify that modify timeslot no blocks on day is a no op."""
     session = make_session(times={})
     feed_inputs(monkeypatch, ["TUE"])
 
@@ -183,6 +199,7 @@ def test_modify_timeslot_no_blocks_on_day_is_a_no_op(monkeypatch, capsys):
 
 
 def test_modify_timeslot_invalid_index_is_a_no_op(monkeypatch, capsys):
+    """Verify that modify timeslot invalid index is a no op."""
     original = FakeTimeBlock("09:00", "12:00", 30)
     session = make_session(times={"MON": [original]})
     feed_inputs(monkeypatch, ["MON", "5"])  # out of range
@@ -196,6 +213,7 @@ def test_modify_timeslot_invalid_index_is_a_no_op(monkeypatch, capsys):
 # ---------- delete_timeslot ----------
 
 def test_delete_timeslot_removes_confirmed_block(monkeypatch):
+    """Verify that delete timeslot removes confirmed block."""
     block_a = FakeTimeBlock("09:00", "11:00", 30)
     block_b = FakeTimeBlock("13:00", "15:00", 30)
     session = make_session(times={"MON": [block_a, block_b]})
@@ -207,6 +225,7 @@ def test_delete_timeslot_removes_confirmed_block(monkeypatch):
 
 
 def test_delete_timeslot_cancel_keeps_block(monkeypatch):
+    """Verify that delete timeslot cancel keeps block."""
     block_a = FakeTimeBlock("09:00", "11:00", 30)
     block_b = FakeTimeBlock("13:00", "15:00", 30)
     session = make_session(times={"MON": [block_a, block_b]})
@@ -218,6 +237,7 @@ def test_delete_timeslot_cancel_keeps_block(monkeypatch):
 
 
 def test_delete_timeslot_blocked_when_only_one_remains(monkeypatch, capsys):
+    """Verify that delete timeslot blocked when only one remains."""
     only_block = FakeTimeBlock("09:00", "17:00", 60)
     session = make_session(times={"MON": [only_block]})
     feed_inputs(monkeypatch, ["MON"])  # returns before asking which index / confirming
@@ -231,6 +251,7 @@ def test_delete_timeslot_blocked_when_only_one_remains(monkeypatch, capsys):
 # ---------- modify_timing_options ----------
 
 def test_modify_timing_options_updates_both_values(monkeypatch):
+    """Verify that modify timing options updates both values."""
     session = make_session(max_time_gap=30, min_time_overlap=45)
     feed_inputs(monkeypatch, ["20", "60"])
 
@@ -241,6 +262,7 @@ def test_modify_timing_options_updates_both_values(monkeypatch):
 
 
 def test_modify_timing_options_blank_keeps_current_values(monkeypatch):
+    """Verify that modify timing options blank keeps current values."""
     session = make_session(max_time_gap=30, min_time_overlap=45)
     feed_inputs(monkeypatch, ["", ""])
 
@@ -251,6 +273,7 @@ def test_modify_timing_options_blank_keeps_current_values(monkeypatch):
 
 
 def test_modify_timing_options_rejects_non_numeric_input(monkeypatch, capsys):
+    """Verify that modify timing options rejects non numeric input."""
     session = make_session(max_time_gap=30, min_time_overlap=45)
     feed_inputs(monkeypatch, ["not-a-number", "60"])
 
@@ -263,6 +286,7 @@ def test_modify_timing_options_rejects_non_numeric_input(monkeypatch, capsys):
 
 
 def test_modify_timing_options_rolls_back_on_validation_failure(monkeypatch, capsys):
+    """Verify that modify timing options rolls back on validation failure."""
     session = make_session(max_time_gap=30, min_time_overlap=45, reject=True)
     feed_inputs(monkeypatch, ["20", "60"])
 
