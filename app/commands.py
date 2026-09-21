@@ -1480,8 +1480,11 @@ def _prompt_meeting(existing=None):
     being replaced."""
     while True:
         if existing is not None:
-            print(f"  Day (MON/TUE/WED/THU/FRI) [{existing.day}] (blank to keep):")
-            day = input("  > ").strip().upper() or existing.day
+            print(f"  Day(s) (MON/TUE/WED/THU/FRI, comma-seperated for several):")
+            day = [d.strip().upper() for d in input("  > ").split(",") if d.strip()]
+            if not days:
+                print("  Enter at least one day.")
+                continue
 
             print(f"  Duration in minutes [{existing.duration}] (blank to keep):")
             duration_raw = input("  > ").strip()
@@ -1522,7 +1525,10 @@ def _prompt_meeting(existing=None):
             start_time = input("  > ").strip() or None
 
         try:
-            return Meeting(day=day, duration=duration, lab=lab, delivery=delivery, start_time=start_time)
+            return [
+                Meeting(day=d, duration=duration, lab=lab, delivery=delivery, start_time=start_time)
+                for d in days
+            ]
         except ValidationError as e:
             print(f"Invalid meeting: {e}")
             print("Let's try that meeting again.")
