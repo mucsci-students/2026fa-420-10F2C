@@ -1,4 +1,4 @@
-# tests/test_schedule_export.py
+"""Unit tests for exporting generated schedules to JSON and CSV."""
 
 import pytest
 from pathlib import Path
@@ -20,26 +20,32 @@ class _FakeCourseInstance:
     minimal fake satisfying both call shapes is enough for a unit test."""
 
     def __init__(self, course_id="FAKE 101"):
+        """Create a minimal course instance with a stable identifier."""
         self.course_id = course_id
 
     def as_csv(self):
+        """Return the CSV representation expected by the CSV writer."""
         return f"{self.course_id},Faculty,Room,None,MON 09:00-09:50"
 
     def model_dump(self, by_alias=True, exclude_none=True):
+        """Return serializable fields expected by the JSON writer."""
         return {"course_id": self.course_id, "faculty": "Faculty"}
 
 
 @pytest.fixture
 def one_schedule():
+    """Provide one schedule containing two fake course instances."""
     return [_FakeCourseInstance(), _FakeCourseInstance()]
 
 
 @pytest.fixture
 def two_schedules(one_schedule):
+    """Provide two schedules containing three courses in total."""
     return [one_schedule, [_FakeCourseInstance()]]
 
 
 def test_export_json_creates_valid_utf8_file(tmp_path, one_schedule):
+    """Export JSON to the requested path using UTF-8 encoding."""
     target = tmp_path / "out.json"
     result = schedule_ops.export_schedule([one_schedule], "json", str(target))
 
@@ -50,6 +56,7 @@ def test_export_json_creates_valid_utf8_file(tmp_path, one_schedule):
 
 
 def test_export_csv_creates_valid_utf8_file(tmp_path, one_schedule):
+    """Export CSV to the requested path using UTF-8 encoding."""
     target = tmp_path / "out.csv"
     result = schedule_ops.export_schedule([one_schedule], "csv", str(target))
 
@@ -59,6 +66,7 @@ def test_export_csv_creates_valid_utf8_file(tmp_path, one_schedule):
 
 
 def test_export_whole_set_writes_every_schedule(tmp_path, two_schedules):
+    """Include every course from every schedule in the output."""
     target = tmp_path / "out.json"
     schedule_ops.export_schedule(two_schedules, "json", str(target))
     # Both schedules' course instances should show up somewhere in the
@@ -68,6 +76,7 @@ def test_export_whole_set_writes_every_schedule(tmp_path, two_schedules):
 
 
 def test_export_refuses_existing_file_without_overwrite(tmp_path, one_schedule):
+    """Protect an existing file when overwrite is disabled."""
     target = tmp_path / "out.csv"
     target.write_text("pre-existing content", encoding="utf-8")
 
@@ -79,6 +88,7 @@ def test_export_refuses_existing_file_without_overwrite(tmp_path, one_schedule):
 
 
 def test_export_overwrites_when_flag_set(tmp_path, one_schedule):
+    """Replace an existing file when overwrite is enabled."""
     target = tmp_path / "out.csv"
     target.write_text("stale content", encoding="utf-8")
 
@@ -88,6 +98,7 @@ def test_export_overwrites_when_flag_set(tmp_path, one_schedule):
 
 
 def test_export_rejects_unknown_format(tmp_path, one_schedule):
+    """Reject an unsupported format without creating a file."""
     target = tmp_path / "out.txt"
     with pytest.raises(ValueError):
         schedule_ops.export_schedule([one_schedule], "xml", str(target))

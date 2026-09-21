@@ -36,6 +36,7 @@ class FakeMeeting:
     """Stand-in for scheduler.config.Meeting."""
  
     def __init__(self, **kwargs):
+        """Store arbitrary meeting fields on the fake model."""
         self.__dict__.update(kwargs)
  
  
@@ -45,6 +46,7 @@ class FakePattern:
     print it when showing which pattern to pick."""
  
     def __init__(self, meetings=None, credits=3):
+        """Create a pattern with the fields used by meeting commands."""
         self.meetings = list(meetings or [])
         self.credits = credits
         self.start_time = None
@@ -57,11 +59,13 @@ class FakeCombinedConfig:
     leaves self untouched if the `with` block raises."""
  
     def __init__(self, classes=None, reject=False):
+        """Create a fake configuration that can optionally reject edits."""
         self.time_slot_config = SimpleNamespace(classes=list(classes or []))
         self.reject = reject
  
     @contextmanager
     def edit_mode(self):
+        """Yield a draft and commit it only when validation succeeds."""
         import copy
         draft = FakeCombinedConfig(classes=copy.deepcopy(self.time_slot_config.classes))
         yield draft
@@ -72,20 +76,24 @@ class FakeCombinedConfig:
  
 @pytest.fixture(autouse=True)
 def patch_library_types(monkeypatch):
+    """Replace external scheduler types with controlled test doubles."""
     monkeypatch.setattr(commands, "Meeting", FakeMeeting)
     monkeypatch.setattr(crud, "ValidationError", FakeValidationError)
  
  
 def make_session(classes=None, reject=False):
+    """Build a session containing the fake configuration under test."""
     session = Session()
     session.config = FakeCombinedConfig(classes=classes, reject=reject)
     return session
  
  
 def feed_inputs(monkeypatch, answers):
+    """Make input() return each supplied answer in order."""
     it = iter(answers)
  
     def fake_input(prompt=""):
+        """Return the next answer or fail on an unexpected prompt."""
         try:
             return next(it)
         except StopIteration:
@@ -95,12 +103,14 @@ def feed_inputs(monkeypatch, answers):
  
  
 def _meeting_answers(day="MON", duration="150", lab="n", delivery="in_person", start_time=""):
+    """Return prompt responses for the fields of one meeting."""
     return [day, duration, lab, delivery, start_time]
  
  
 # ---------- add_meeting ----------
  
 def test_add_meeting_happy_path(monkeypatch, capsys):
+    """Add a valid meeting to the selected class pattern."""
     pattern = FakePattern(meetings=[FakeMeeting(day="MON", duration=150, lab=False,
                                                  delivery="in_person", start_time=None)])
     session = make_session(classes=[pattern])
@@ -119,6 +129,7 @@ def test_add_meeting_happy_path(monkeypatch, capsys):
  
  
 def test_add_meeting_no_patterns_is_a_no_op(monkeypatch, capsys):
+    """Leave the configuration unchanged when no pattern exists."""
     session = make_session(classes=[])
     feed_inputs(monkeypatch, [])
  
@@ -129,6 +140,7 @@ def test_add_meeting_no_patterns_is_a_no_op(monkeypatch, capsys):
  
  
 def test_add_meeting_rolls_back_on_validation_failure(monkeypatch, capsys):
+    """Discard a new meeting when whole-config validation fails."""
     pattern = FakePattern(meetings=[FakeMeeting(day="MON", duration=150, lab=False,
                                                  delivery="in_person", start_time=None)])
     session = make_session(classes=[pattern], reject=True)
@@ -143,6 +155,7 @@ def test_add_meeting_rolls_back_on_validation_failure(monkeypatch, capsys):
 # ---------- modify_meeting ----------
  
 def test_modify_meeting_applies_valid_change(monkeypatch):
+    """Replace the selected meeting with valid edited values."""
     pattern = FakePattern(meetings=[
         FakeMeeting(day="MON", duration=150, lab=False, delivery="in_person", start_time=None),
         FakeMeeting(day="WED", duration=75, lab=True, delivery="in_person", start_time="10:00"),
@@ -160,6 +173,7 @@ def test_modify_meeting_applies_valid_change(monkeypatch):
  
  
 def test_modify_meeting_restores_previous_state_on_invalid_edit(monkeypatch, capsys):
+    """Preserve the original meeting when an edit is rejected."""
     original = FakeMeeting(day="MON", duration=150, lab=False, delivery="in_person", start_time=None)
     pattern = FakePattern(meetings=[original])
     session = make_session(classes=[pattern], reject=True)
@@ -174,6 +188,7 @@ def test_modify_meeting_restores_previous_state_on_invalid_edit(monkeypatch, cap
  
  
 def test_modify_meeting_invalid_pattern_index_is_a_no_op(monkeypatch, capsys):
+    """Reject an out-of-range pattern selection without mutation."""
     pattern = FakePattern(meetings=[FakeMeeting(day="MON", duration=150, lab=False,
                                                  delivery="in_person", start_time=None)])
     session = make_session(classes=[pattern])
@@ -188,6 +203,7 @@ def test_modify_meeting_invalid_pattern_index_is_a_no_op(monkeypatch, capsys):
 # ---------- delete_meeting ----------
  
 def test_delete_meeting_removes_confirmed_record(monkeypatch):
+    """Remove the selected meeting after confirmation."""
     pattern = FakePattern(meetings=[
         FakeMeeting(day="MON", duration=150, lab=False, delivery="in_person", start_time=None),
         FakeMeeting(day="WED", duration=75, lab=True, delivery="in_person", start_time=None),
@@ -203,6 +219,7 @@ def test_delete_meeting_removes_confirmed_record(monkeypatch):
  
  
 def test_delete_meeting_cancel_keeps_record(monkeypatch):
+    """Keep all meetings when deletion is not confirmed."""
     pattern = FakePattern(meetings=[
         FakeMeeting(day="MON", duration=150, lab=False, delivery="in_person", start_time=None),
         FakeMeeting(day="WED", duration=75, lab=True, delivery="in_person", start_time=None),
@@ -216,6 +233,7 @@ def test_delete_meeting_cancel_keeps_record(monkeypatch):
  
  
 def test_delete_meeting_blocked_when_only_one_remains(monkeypatch, capsys):
+    """Prevent deletion of a pattern's only meeting."""
     pattern = FakePattern(meetings=[FakeMeeting(day="MON", duration=150, lab=False,
                                                  delivery="in_person", start_time=None)])
     session = make_session(classes=[pattern])
@@ -228,6 +246,7 @@ def test_delete_meeting_blocked_when_only_one_remains(monkeypatch, capsys):
  
  
 def test_delete_meeting_rolls_back_on_validation_failure(monkeypatch, capsys):
+    """Restore a deleted meeting when validation rejects the draft."""
     pattern = FakePattern(meetings=[
         FakeMeeting(day="MON", duration=150, lab=False, delivery="in_person", start_time=None),
         FakeMeeting(day="WED", duration=75, lab=True, delivery="in_person", start_time=None),

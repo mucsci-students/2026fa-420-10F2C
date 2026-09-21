@@ -1,3 +1,5 @@
+"""Unit tests for room create, update, and delete commands."""
+
 from app import commands
 from app.crud import apply_edit
 from app.session import Session
@@ -5,21 +7,25 @@ from scheduler.config import RoomConfig
 
 
 def make_session():
+	"""Return a session initialized with the default configuration."""
 	session = Session()
 	session.new_config()
 	return session
 
 
 def add_room_to_config(session, name="Roddy 136", capacity=28):
+	"""Insert a room directly so another operation can be tested."""
 	room = RoomConfig(name=name, capacity=capacity)
 
 	def mutate(config):
+		"""Append the prepared room to the editable configuration."""
 		config.config.rooms.append(room)
 
 	apply_edit(session.require_config(), "room", mutate)
 
 
 def test_add_room_adds_new_room(monkeypatch, capsys):
+	"""Add a unique room and mark the session as dirty."""
 	session = make_session()
 
 	monkeypatch.setattr(
@@ -38,6 +44,7 @@ def test_add_room_adds_new_room(monkeypatch, capsys):
 
 
 def test_add_room_rejects_duplicate_name(monkeypatch, capsys):
+	"""Reject a room whose name already exists."""
 	session = make_session()
 
 	monkeypatch.setattr(
@@ -53,6 +60,7 @@ def test_add_room_rejects_duplicate_name(monkeypatch, capsys):
 
 
 def test_modify_room_replaces_existing_room(monkeypatch, capsys):
+	"""Update the selected room's fields in place."""
 	session = make_session()
 
 	monkeypatch.setattr("builtins.input", lambda prompt="": "Placeholder Room")
@@ -74,6 +82,7 @@ def test_modify_room_replaces_existing_room(monkeypatch, capsys):
 
 
 def test_modify_room_rejects_missing_room(monkeypatch, capsys):
+	"""Report a missing room without changing the configuration."""
 	session = make_session()
 
 	monkeypatch.setattr("builtins.input", lambda prompt="": "Missing Room")
@@ -85,6 +94,7 @@ def test_modify_room_rejects_missing_room(monkeypatch, capsys):
 
 
 def test_modify_room_rejects_duplicate_name(monkeypatch, capsys):
+	"""Prevent a room update from duplicating another room's name."""
 	session = make_session()
 	add_room_to_config(session)
 
@@ -107,6 +117,7 @@ def test_modify_room_rejects_duplicate_name(monkeypatch, capsys):
 
 
 def test_delete_room_removes_unreferenced_room(monkeypatch, capsys):
+	"""Delete an unreferenced room after user confirmation."""
 	session = make_session()
 	add_room_to_config(session)
 
@@ -125,6 +136,7 @@ def test_delete_room_removes_unreferenced_room(monkeypatch, capsys):
 
 
 def test_delete_room_does_not_remove_referenced_room(monkeypatch, capsys):
+	"""Keep a room that is referenced elsewhere in the configuration."""
 	session = make_session()
 
 	monkeypatch.setattr("builtins.input", lambda prompt="": "Placeholder Room")
