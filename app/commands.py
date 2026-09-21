@@ -1,1670 +1,539 @@
-# ----------------------------------------------------------------------------------------------------------------------- #
-#   app/commands.py                                                                                                       #
-#                                                                                                                         #
-#   Every function here takes `session` (app/session.py) as its first argument   #
-#   instead of doing its own file I/O.                                          #
-#                                                                                 #
-#   Implemented against the real library and tested -- all built on             #
-#   CombinedConfig + edit_mode(), following the same recipe throughout:         #
-#   require_config() -> prompt -> construct the library's real model ->         #
-#   _apply_edit() + _mutate() closure -> catch ValidationFailure;               #
-#   check_no_references() first for any delete_* that can leave a              #
-#   dangling reference (room/lab/faculty/course):                              #
-#     - Config lifecycle (Req #4): new/load/save/print/validate.                #
-#     - Faculty CRUD -- the worked example everything else follows.             #
-#     - Course CRUD (Req #5-7), room/lab CRUD including features + optional     #
-#       weekday availability windows, timeslot CRUD + global timing options,    #
-#       and meeting CRUD.                                                       #
-#     - Class pattern CRUD (add/modify/delete_pattern), identified by list      #
-#       index rather than a name/id -- see the comment block above              #
-#       _list_patterns() for why.                                               #
-#     - Global settings: generation limit, optimizer flags.        #
-#     - Schedule generation/inspection/export (Req #8-10) -- schedule_ops.py    #
-#       does the real work; export_schedule() here bounds-checks --index        #
-#       before touching session.schedules so a bad index degrades to a         #
-#       printed message instead of killing the session (Req #3).               #
-# ----------------------------------------------------------------------------------------------------------------------- #
-
-import re
-
-from app.session import ConfigError
-from app.crud import apply_edit, ReferenceError_, ValidationFailure, check_no_references
-from app import schedule_ops
-
-from scheduler.config import FacultyConfig, TimeBlock, LabConfig, RoomConfig, ValidationError, OptimizerFlags, ClassPattern, Meeting, CourseConfig
-
-_VALID_DAYS = ("MON", "TUE", "WED", "THU", "FRI")
-_VALID_OPTIMIZER_FLAGS = {
-    "faculty_course", "faculty_room", "faculty_lab",
-    "same_room", "same_lab", "pack_rooms", "pack_labs",
-}
-
-def _apply_edit(session, config, area, mutate_fn):
-    """Thin wrapper around crud.apply_edit that also marks the session
-    dirty on success. Every CRUD command below calls this instead of
-    apply_edit() directly, so shell.py can warn before exiting, starting
-    a new config, or loading over unsaved changes -- one choke point for
-    every entity (faculty/course/room/lab/timeslot/pattern/meeting/
-    global settings all funnel through here) instead of repeating the
-    dirty-flag logic in each command."""
-    apply_edit(config, area, mutate_fn)
-    session.dirty = True
-
-
-# =========================================================================== #
-#  Config lifecycle (Req #4)
-# =========================================================================== #
-
-def new_config(session):
-    session.new_config()
-    print("Started a new, empty configuration.")
-
-
-def load_config(session, path):
-    try:
-        session.load(path)
-    except ConfigError as e:
-        # re-raise: shell.handle_command already catches ConfigError and
-        # prints it, and prior valid session.config is untouched because
-        # Session.load() only swaps state in on success.
-        raise e
-    print(f"Loaded and validated '{path}'.")
-
-
-def save_config(session, path=None):
-    target = session.save(path)  # raises ConfigError -> caught by shell
-    print(f"Saved configuration to '{target}'.")
-
-
-def print_config(session):
-    config = session.require_config()
-    # Pydantic gives us readable JSON for free -- no custom printer needed.
-    print(config.model_dump_json(indent=2))
-
-
-def validate_config(session):
-    config = session.require_config()
-    # If it's sitting in session.config at all, it already passed
-    # validation on load/new/every edit_mode() exit. Re-running validation
-    # explicitly (e.g. via model_validate(config.model_dump())) is cheap
-    # reassurance for the user and matches Req #4 ("validate the current
-    # configuration") as an explicit, standalone action rather than an
-    # implicit side effect.
-    try:
-        type(config).model_validate(config.model_dump())
-    except Exception as e:  # noqa: BLE001 -- narrow to ValidationError once confirmed
-        print(f"Configuration is INVALID: {e}")
-        return
-    print("Configuration is valid.")
-
-
-# =========================================================================== #
-#  Faculty CRUD -- worked example against CombinedConfig (replaces the old
-#  facultyModel.py / facultyComm.py entirely; do not import those anymore)
-# =========================================================================== #
-
-_TIME_RANGE_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$")
-
-
-def _prompt_faculty_times():
-    """Availability by weekday (Req: 'Times -- default 9-5, specify a
-    day'). Per day: blank = default 09:00-17:00, 'n/a' = unavailable
-    that day, or a custom HH:MM-HH:MM range."""
-    print("Availability (Times) -- one entry per weekday: MON, TUE, WED, THU, FRI.")
-    print("  Leave blank for the default 09:00-17:00")
-    print("  Type 'n/a' if unavailable that day")
-    print("  Or enter a custom range like 09:30-15:00")
-    times = {}
-    for day in _VALID_DAYS:
-        raw = input(f"  {day}: ").strip()
-        if raw.lower() in ("n/a", "na", "none", "unavailable"):
-            continue
-        if not raw:
-            times[day] = [{"start": "09:00", "end": "17:00"}]
-            continue
-        if not _TIME_RANGE_RE.match(raw):
-            print(f"  '{raw}' isn't a valid HH:MM-HH:MM range -- treating {day} as unavailable.")
-            continue
-        start, end = raw.split("-")
-        times[day] = [{"start": start, "end": end}]
-    return times
-
-
-def _prompt_weighted_preferences(label, valid_names, ask_weight=True, max_weight=10):
-    """Repeatedly asks for a name (and, unless ask_weight is False, a
-    weight) until the user enters a blank name. Used for course/room/lab
-    preferences.
-    CONFIRMED (via a real validation error against the installed
-    library) that a preference must name something that already
-    exists in the config -- courses/rooms/labs that don't exist yet
-    get rejected at save time with an 'unknown_faculty_*_preference'
-    error. This contradicts the written Sprint 1 wording ('a course
-    preference need not exist yet') -- worth confirming with whoever
-    wrote that spec. Shows the valid options and re-prompts
-    immediately on an unrecognized name, instead of silently
-    collecting a name that will only fail much later when the whole
-    record is saved.
-    ask_weight=False skips the weight prompt entirely and stores the
-    default weight (5) for every name -- used for room preferences,
-    where a per-room weight was judged redundant with course weighting.
-    max_weight caps the accepted range (course preferences use 5
-    instead of the general 0-10)."""
-    prefs = {}
-    if valid_names:
-        print(f"  Existing {label}s: {', '.join(sorted(valid_names))}")
-    else:
-        print(f"  (no {label}s defined yet -- add one first if you want a {label} preference)")
-    print(f"  Add {label} preferences (blank name to stop):")
-    while True:
-        name = input(f"  {label.capitalize()} name: ").strip()
-        if not name:
-            break
-        if valid_names and name not in valid_names:
-            print(f"  '{name}' isn't a known {label} -- pick from: {', '.join(sorted(valid_names))}")
-            continue
-        if not ask_weight:
-            prefs[name] = 5
-            continue
-        weight_raw = input(f"  Weight (0-{max_weight}, default 5): ").strip()
-        if weight_raw.isdigit() and 0 <= int(weight_raw) <= max_weight:
-            weight = int(weight_raw)
-        else:
-            print(f"  '{weight_raw}' isn't 0-{max_weight} -- using the default weight of 5.")
-            weight = 5
-        prefs[name] = weight
-    return prefs
-
-
-
-
-
-def _prompt_mandatory_days(times):
-    """Which weekdays this faculty member MUST be scheduled on (Req #5:
-    the Faculty row explicitly lists 'mandatory days' as required
-    editable data). Previously missing entirely -- _format_faculty()
-    displayed f.mandatory_days but nothing ever prompted for it, so
-    every faculty member got the model's default regardless of intent.
-
-    CONFIRMED against the scheduler library's own example.json
-    (github.com/mucsci/Scheduler, matches the course-constraint-scheduler
-    version pinned in pyproject.toml): mandatory_days is an OPTIONAL
-    list of the same day-code strings used in `times`
-    (e.g. ["MON", "WED", "FRI"]) -- several faculty entries in that
-    example have no mandatory_days key at all, and it's fine to omit it.
-
-    Restricted here to days the faculty is actually available on: every
-    faculty entry with mandatory_days in the confirmed example data also
-    has a non-empty `times` block for each of those days, and a
-    mandatory day with no available time would be rejected by edit_mode()
-    anyway -- this just surfaces that as an immediate, specific message.
-
-    Returns None (omit the field, let the library default apply) if the
-    user leaves this blank.
-    """
-    available_days = [d for d in _VALID_DAYS if times.get(d)]
-    if not available_days:
-        print("  No available days set -- skipping mandatory days.")
-        return None
-
-    print(f"  Mandatory days (must be scheduled every term) -- choose from: {', '.join(available_days)}")
-    print("  Comma-separated, or blank for none:")
-    raw = input("  > ").strip()
-    if not raw:
-        return None
-
-    days = []
-    for token in raw.split(","):
-        day = token.strip().upper()
-        if not day:
-            continue
-        if day not in available_days:
-            print(f"  Skipping '{day}' -- not one of this faculty member's available days.")
-            continue
-        if day not in days:
-            days.append(day)
-    return days or None
-
-
-def _prompt_faculty_fields(config):
-    """Same interactive prompts as the old facultyComm.py -- reuse that
-    UX, just stop building a plain dict for a hand-rolled validator and
-    build kwargs for the library's real Faculty model instead."""
-    print("Enter the faculty's name:")
-    name = input().strip()
-
-    print('Are they full-time or adjunct? (Enter "full" or "adjunct") (Default: full)')
-    kind = input().lower().replace(" ", "")
-    if kind == "adjunct":
-        max_credits, unique_course_limit = 4, 1
-    else:
-        max_credits, unique_course_limit = 12, 2
-
-    times = _prompt_faculty_times()
-    mandatory_days = _prompt_mandatory_days(times)
-
-    course_ids = {c.course_id for c in config.config.courses}
-    room_names = {r.name for r in config.config.rooms}
-    lab_names = {l.name for l in config.config.labs}
-
-    print("Preferences:")
-    course_preferences = _prompt_weighted_preferences("course", course_ids, max_weight=5)
-    room_preferences = _prompt_weighted_preferences("room", room_names, ask_weight=False)
-    lab_preferences = _prompt_weighted_preferences("lab", lab_names)
-
-    fields = {
-        "name": name,
-        "maximum_credits": max_credits,
-        "minimum_credits": 0,
-        "unique_course_limit": unique_course_limit,
-        "times": times,
-        "course_preferences": course_preferences,
-        "room_preferences": room_preferences,
-        "lab_preferences": lab_preferences,
-    }
-    if mandatory_days is not None:
-        fields["mandatory_days"] = mandatory_days
-    return fields
-
-
-def add_faculty(session):
-    config = session.require_config()
-    fields = _prompt_faculty_fields(config)
-    if not fields["name"]:
-        print("You entered a blank name!")
-        return
-    if any(f.name == fields["name"] for f in config.config.faculty):
-        print("Faculty is already in the system!")
-        return
-
-    new_faculty = FacultyConfig(**fields)
-
-    def _mutate(cfg):
-        cfg.config.faculty.append(new_faculty)
-
-    try:
-        _apply_edit(session, config, "faculty", _mutate)
-        print("Faculty added.")
-    except ValidationFailure as e:
-        # config is guaranteed unchanged here -- edit_mode() rolled back
-        # before this exception ever reached us.
-        print(f"Could not add faculty: {e}")
-
-
-def modify_faculty(session):
-    config = session.require_config()
-    print("What is the name of the faculty you'd like to edit?")
-    target_name = input().strip()
-
-    existing = next((f for f in config.config.faculty if f.name == target_name), None)
-    if existing is None:
-        print("Faculty does not exist!")
-        return
-
-    # Collect edited fields the same way add_faculty does, seeded with the
-    # existing record's values (mirrors the old modify_faculty's
-    # "pull the record out, ask what to change" flow).
-    updated_fields = _prompt_faculty_fields(config)
-
-    def _mutate(cfg):
-        faculty_list = cfg.config.faculty
-        faculty_list.remove(existing)
-        faculty_list.append(FacultyConfig(**updated_fields))
-
-    try:
-        _apply_edit(session, config, "faculty", _mutate)
-        print("Faculty updated.")
-    except ValidationFailure as e:
-        # Nothing to manually restore -- edit_mode() already rolled the
-        # whole config back to its pre-mutate state (Req #4/#6).
-        print(f"Could not save changes, previous version kept: {e}")
-
-
-def delete_faculty(session):
-    config = session.require_config()
-    print("What is the name of the faculty you want to remove?")
-    name = input().strip()
-
-    existing = next((f for f in config.config.faculty if f.name == name), None)
-    if existing is None:
-        print("Faculty does not exist!")
-        return
-
-    # Req #7: don't silently leave dangling references. A course whose
-    # `faculty` list names this person is a reference; scan for those
-    # before deleting.
-    referencing_courses = [c.course_id for c in config.config.courses if name in (getattr(c, "faculty", None) or [])]
-    try:
-        check_no_references(name, referencing_courses)
-    except Exception as e:  # ReferenceError_ from app.crud
-        print(f"{e} -- remove or reassign those first, or add a --cascade option if you want one.")
-        return
-
-    print("Are you sure you want to delete this faculty? This cannot be undone. (y/n)")
-    if input().lower().strip() not in ("y", "yes"):
-        print("Removal cancelled")
-        return
-
-    def _mutate(cfg):
-        cfg.config.faculty.remove(existing)
-
-    try:
-        _apply_edit(session, config, "faculty", _mutate)
-        print("Faculty removed.")
-    except ValidationFailure as e:
-        print(f"Could not remove faculty: {e}")
-
-
-def _field(obj, key):
-    """Reads a field whether obj is a dict or a pydantic model instance
-    (times/preferences can come back as either)."""
-    if isinstance(obj, dict):
-        return obj.get(key)
-    return getattr(obj, key, None)
-
-
-_DAY_LABELS = {"MON": "Mon", "TUE": "Tue", "WED": "Wed", "THU": "Thu", "FRI": "Fri"}
-
-
-def _format_faculty(f):
-    kind = "Adjunct" if f.unique_course_limit <= 1 else "Full-Time"
-    header = f"{f.name} \u2014 {kind}"
-    lines = [header, "-" * len(header)]
-
-    lines.append(f"  Credits: {f.minimum_credits}-{f.maximum_credits}"
-                  f"   Unique courses: {f.unique_course_limit}"
-                  f"   Max days/week: {f.maximum_days}")
-
-    if f.mandatory_days:
-        lines.append(f"  Mandatory days: {', '.join(f.mandatory_days)}")
-
-    availability_lines = []
-    for day in ["MON", "TUE", "WED", "THU", "FRI"]:
-        blocks = _field(f.times, day)
-        if not blocks:
-            continue
-        ranges = ", ".join(f"{_field(b, 'start')}-{_field(b, 'end')}" for b in blocks)
-        availability_lines.append(f"    {_DAY_LABELS[day]}  {ranges}")
-
-    lines.append("  Availability:")
-    lines.extend(availability_lines if availability_lines else ["    (none set)"])
-
-    for label, prefs in (
-        ("Course preferences", f.course_preferences),
-        ("Room preferences", f.room_preferences),
-        ("Lab preferences", f.lab_preferences),
-    ):
-        if prefs:
-            formatted = ", ".join(f"{name} ({weight})" for name, weight in prefs.items())
-            lines.append(f"  {label}: {formatted}")
-
-    return "\n".join(lines)
-
-
-def view_faculty(session):
-    config = session.require_config()
-    if not config.config.faculty:
-        print("(no faculty defined)")
-        return
-    for i, f in enumerate(config.config.faculty):
-        if i > 0:
-            print()
-        print(_format_faculty(f))
-
-# =========================================================================== #
-#  Course CRUD (Req #5, #6, #7).
-#  - Repeated course_id values are legal (they create sections), so
-#    modify/delete pick by list index like patterns do, not by name.
-#  - modify assigns in place: section numbers come from list position,
-#    so remove+append would renumber other sections of the same id.
-#  - delete only checks references when removing the LAST section of a
-#    course_id -- conflicts/preferences point at the id, not a section.
-# =========================================================================== #
-
-def _enabled_pattern_credits(config):
-    """Credit values that have at least one enabled class pattern."""
-    return sorted({p.credits for p in config.time_slot_config.classes if not p.disabled})
- 
- 
-def _course_display_name(course, seen_counts):
-    """'CS 101.A' or 'CS 101.01' -- matches the library's own section naming."""
-    count = seen_counts.get(course.course_id, 0) + 1
-    seen_counts[course.course_id] = count
-    return f"{course.course_id}.{course.section_id or f'{count:02d}'}"
- 
- 
-def _format_course(index, course, display):
-    bits = [f"[{index}] {display}  --  {course.credits} credits, capacity {course.capacity}"]
-    bits.append(f"      Modality: {course.modality}")
-    if course.room:
-        bits.append(f"      Rooms: {', '.join(course.room)}")
-    if course.required_room_features:
-        bits.append(f"      Required room features: {', '.join(sorted(course.required_room_features))}")
-    if course.lab:
-        bits.append(f"      Labs: {', '.join(course.lab)}")
-        bits.append(f"      Reserves room during lab: {'yes' if course.reserve_room_during_lab else 'no'}")
-    if course.required_lab_features:
-        bits.append(f"      Required lab features: {', '.join(sorted(course.required_lab_features))}")
-    if course.conflicts:
-        bits.append(f"      Conflicts: {', '.join(course.conflicts)}")
-    if course.faculty is None:
-        bits.append("      Faculty: (derived from faculty course preferences)")
-    else:
-        bits.append(f"      Faculty: {', '.join(course.faculty)}")
-    return "\n".join(bits)
- 
- 
-def _list_courses(config):
-    courses = config.config.courses
-    if not courses:
-        print("(no courses defined)")
-        return courses
-    seen = {}
-    for i, c in enumerate(courses):
-        print(_format_course(i, c, _course_display_name(c, seen)))
-    return courses
- 
- 
-def _prompt_course_index(count):
-    raw = input("Enter the course's index: ").strip()
-    if not raw.isdigit():
-        print("Please enter a valid integer index.")
-        return None
-    idx = int(raw)
-    if not (0 <= idx < count):
-        print(f"No course at index {idx}. Valid range: 0-{count - 1}.")
-        return None
-    return idx
- 
- 
-def _prompt_name_list(label, valid_names):
-    """Collects names from `valid_names` until a blank line."""
-    if valid_names:
-        print(f"  Existing {label}s: {', '.join(sorted(valid_names))}")
-    else:
-        print(f"  (no {label}s defined yet)")
-    print(f"  Add {label}s one at a time (blank to stop):")
- 
-    chosen = []
-    while True:
-        name = input(f"  {label.capitalize()}: ").strip()
-        if not name:
-            break
-        if valid_names and name not in valid_names:
-            print(f"  '{name}' isn't a known {label} -- pick from: {', '.join(sorted(valid_names))}")
-            continue
-        if name in chosen:
-            print(f"  '{name}' is already on the list.")
-            continue
-        chosen.append(name)
-    return chosen
- 
- 
-def _prompt_feature_set(label):
-    raw = input(f"  Required {label} features (comma-separated, blank for none): ").strip()
-    return {part.strip() for part in raw.split(",") if part.strip()} if raw else set()
- 
- 
-def _prompt_positive_int(prompt_text, label):
-    while True:
-        raw = input(prompt_text).strip()
+import argparse
+from app.session import Session, ConfigError
+from app import commands
+# Handles the interactive shell. Owns one Session for the whole run and
+# passes it into every command function.
+# run() is a guided numbered-menu flow (welcome -> pick area -> pick
+# action) that just calls the same commands.py functions handle_command()
+# used before -- no CRUD logic is duplicated here. The old argparse
+# command-string path (handle_command/_dispatch) is left in below too.
+class SchedulerShell:
+
+    def __init__(self):
+        self.parser = self.create_parser()
+        self.session = Session()
+
+# Builds the argparse parser for raw command-string input (unchanged).
+    def create_parser(self):
+        parser = argparse.ArgumentParser(
+                description="Course scheduling configuration tool"
+            )
+
+        subparsers = parser.add_subparsers(
+                dest="command",
+                required=True
+            )
+
+        faculty_parser = subparsers.add_parser("faculty")
+        faculty_subparsers = faculty_parser.add_subparsers(dest="action", required=True)
+        faculty_subparsers.add_parser("add")
+        faculty_subparsers.add_parser("modify")
+        faculty_subparsers.add_parser("delete")
+        faculty_subparsers.add_parser("view")
+
+        course_parser = subparsers.add_parser("course")
+        course_subparsers = course_parser.add_subparsers(dest="action", required=True)
+        course_subparsers.add_parser("modify")
+        course_subparsers.add_parser("add")
+        course_subparsers.add_parser("delete")
+
+        lab_parser = subparsers.add_parser("lab")
+        lab_subparsers = lab_parser.add_subparsers(dest="action", required=True)
+        lab_subparsers.add_parser("add")
+        lab_subparsers.add_parser("modify")
+        lab_subparsers.add_parser("delete")
+
+        room_parser = subparsers.add_parser("room")
+        room_subparsers = room_parser.add_subparsers(dest="action", required=True)
+        room_subparsers.add_parser("add")
+        room_subparsers.add_parser("modify")
+        room_subparsers.add_parser("delete")
+
+        timeslot_parser = subparsers.add_parser("timeslot")
+        timeslot_subparsers = timeslot_parser.add_subparsers(dest="action", required=True)
+        timeslot_subparsers.add_parser("add")
+        timeslot_subparsers.add_parser("modify")
+        timeslot_subparsers.add_parser("delete")
+        timeslot_subparsers.add_parser("timing")
+
+        pattern_parser = subparsers.add_parser("pattern")
+        pattern_subparsers = pattern_parser.add_subparsers(dest="action", required=True)
+        pattern_subparsers.add_parser("add")
+        pattern_subparsers.add_parser("modify")
+        pattern_subparsers.add_parser("delete")
+
+        meeting_parser = subparsers.add_parser("meeting")
+        meeting_subparsers = meeting_parser.add_subparsers(dest="action", required=True)
+        meeting_subparsers.add_parser("add")
+        meeting_subparsers.add_parser("modify")
+        meeting_subparsers.add_parser("delete")
+
+        config_parser = subparsers.add_parser("config")
+        config_subparsers = config_parser.add_subparsers(dest="action", required=True)
+        config_subparsers.add_parser("new")
+        config_subparsers.add_parser("print")
+        p_save = config_subparsers.add_parser("save")
+        p_save.add_argument("path", nargs="?", default=None)
+        p_load = config_subparsers.add_parser("load")
+        p_load.add_argument("path")
+        config_subparsers.add_parser("validate")
+
+        settings_parser = subparsers.add_parser("settings")
+        settings_subparsers = settings_parser.add_subparsers(dest="action", required=True)
+        p_limit = settings_subparsers.add_parser("limit")
+        p_limit.add_argument("value", nargs="?", type=int, default=None)
+        p_limit.add_argument("--reset", action="store_true")
+        p_flag_on = settings_subparsers.add_parser("enable-flag")
+        p_flag_on.add_argument("flag")
+        p_flag_off = settings_subparsers.add_parser("disable-flag")
+        p_flag_off.add_argument("flag")
+
+        help_parser = subparsers.add_parser("help", help="Display available commands")
+
+        schedule_parser = subparsers.add_parser("schedule")
+        schedule_subparsers = schedule_parser.add_subparsers(dest="action", required=True)
+        p_gen = schedule_subparsers.add_parser("generate")
+        p_gen.add_argument("--limit", type=int, default=None)
+        schedule_subparsers.add_parser("summary")
+        p_view = schedule_subparsers.add_parser("view")
+        p_view.add_argument("index", type=int)
+        schedule_subparsers.add_parser("clear")
+        p_export = schedule_subparsers.add_parser("export")
+        p_export.add_argument("format", choices=["json", "csv"])
+        p_export.add_argument("path")
+        p_export.add_argument("--index", type=int, default=None,
+                               help="Export one schedule by index instead of the whole set")
+        p_export.add_argument("--overwrite", action="store_true")
+
+        return parser
+
+
+# Parses a raw command string and dispatches it (unchanged).
+    def handle_command(self, command):
         try:
-            value = int(raw)
-            if value > 0:
-                return value
-        except ValueError:
-            pass
-        print(f"{label} must be a positive whole number!")
- 
- 
-def _prompt_course_fields(config):
-    scheduler_config = config.config
- 
-    while True:
-        course_id = input("Course ID (e.g. 'CS 101'): ").strip()
-        if course_id:
-            break
-        print("Course ID cannot be blank.")
- 
-    section_id = input("Section ID (blank = auto-number by input order): ").strip() or None
- 
-    available = _enabled_pattern_credits(config)
-    if available:
-        print(f"  Credit values with an enabled class pattern: {', '.join(str(c) for c in available)}")
-    else:
-        print("  (warning: no enabled class patterns exist -- any course will be rejected)")
-    credits = _prompt_positive_int("Credits: ", "Credits")
-    if available and credits not in available:
-        print(f"  Note: no enabled pattern has {credits} credits, so this will be rejected "
-              f"until you add one (Class Meeting Patterns -> Add).")
- 
-    capacity = _prompt_positive_int("Expected enrollment (capacity): ", "Capacity")
- 
-    while True:
-        modality = (input("Modality (in_person/online/hybrid, default in_person): ").strip().lower()
-                    or "in_person")
-        if modality in ("in_person", "online", "hybrid"):
-            break
-        print("  Modality must be one of: in_person, online, hybrid.")
- 
-    rooms, labs = [], []
-    required_room_features, required_lab_features = set(), set()
-    reserve_room_during_lab = True
- 
-    # Online courses may not carry rooms, labs, or room features, so don't ask.
-    if modality == "online":
-        print("  (online course -- skipping rooms, labs, and feature requirements)")
-    else:
-        print("Candidate rooms (blank list is valid only for patterns that occupy no room):")
-        rooms = _prompt_name_list("room", [r.name for r in scheduler_config.rooms])
-        if rooms:
-            required_room_features = _prompt_feature_set("room")
- 
-        print("Candidate labs (leave empty if this course has no lab meeting):")
-        labs = _prompt_name_list("lab", [lab.name for lab in scheduler_config.labs])
-        if labs:
-            required_lab_features = _prompt_feature_set("lab")
-            answer = input("  Should the lab meeting also occupy the lecture room? (y/n, default y): ")
-            reserve_room_during_lab = answer.strip().lower() not in ("n", "no")
- 
-    print("Conflicting courses (sections of these can never overlap):")
-    conflicts = _prompt_name_list(
-        "conflict course",
-        sorted({c.course_id for c in scheduler_config.courses if c.course_id != course_id}),
-    )
- 
-    print("Faculty candidates (leave empty to derive them from faculty course preferences):")
-    faculty = _prompt_name_list("faculty", [f.name for f in scheduler_config.faculty])
- 
-    return {
-        "course_id": course_id,
-        "section_id": section_id,
-        "credits": credits,
-        "capacity": capacity,
-        "room": rooms,
-        "lab": labs,
-        "conflicts": conflicts,
-        "faculty": faculty or None,  # [] is rejected; None = derive from preferences
-        "modality": modality,
-        "required_room_features": required_room_features,
-        "required_lab_features": required_lab_features,
-        "reserve_room_during_lab": reserve_room_during_lab,
-    }
- 
- 
-def add_course(session):
-    config = session.require_config()
-    fields = _prompt_course_fields(config)
- 
-    try:
-        new_course = CourseConfig(**fields)
-    except ValidationError as e:
-        print(f"Could not add course: {e}")
-        return
- 
-    def _mutate(cfg):
-        cfg.config.courses.append(new_course)
- 
-    try:
-        _apply_edit(session, config, "course", _mutate)
-        print("Course added.")
-    except ValidationFailure as e:
-        print(f"Could not add course: {e}")
- 
- 
-def modify_course(session):
-    config = session.require_config()
-    courses = _list_courses(config)
-    if not courses:
-        return
- 
-    index = _prompt_course_index(len(courses))
-    if index is None:
-        return
- 
-    fields = _prompt_course_fields(config)
- 
-    try:
-        updated_course = CourseConfig(**fields)
-    except ValidationError as e:
-        print(f"Could not save changes, previous version kept: {e}")
-        return
- 
-    def _mutate(cfg):
-        cfg.config.courses[index] = updated_course
- 
-    try:
-        _apply_edit(session, config, "course", _mutate)
-        print("Course updated.")
-    except ValidationFailure as e:
-        print(f"Could not save changes, previous version kept: {e}")
- 
- 
-def delete_course(session):
-    config = session.require_config()
-    courses = _list_courses(config)
-    if not courses:
-        return
- 
-    index = _prompt_course_index(len(courses))
-    if index is None:
-        return
- 
-    existing = courses[index]
-    course_id = existing.course_id
- 
-    last_section = not any(c.course_id == course_id for i, c in enumerate(courses) if i != index)
-    if last_section:
-        referenced_by = [
-            f"course '{c.course_id}' (conflicts)"
-            for i, c in enumerate(courses)
-            if i != index and course_id in c.conflicts
-        ]
-        referenced_by += [
-            f"faculty '{f.name}' (course preference)"
-            for f in config.config.faculty
-            if course_id in f.course_preferences
-        ]
-        try:
-            check_no_references(course_id, referenced_by)
-        except ReferenceError_ as e:
-            print(f"{e} -- remove those references first.")
+            args = self.parser.parse_args(command.split())
+        except SystemExit:
+            print("Type 'help' to see available commands")
             return
- 
-    print("Are you sure you want to delete this course? This cannot be undone. (y/n)")
-    if input().strip().lower() not in ("y", "yes"):
-        print("Removal cancelled")
-        return
- 
-    def _mutate(cfg):
-        del cfg.config.courses[index]
- 
-    try:
-        _apply_edit(session, config, "course", _mutate)
-        print("Course removed.")
-    except ValidationFailure as e:
-        print(f"Could not remove course: {e}")
- 
- 
-def view_course(session):
-    config = session.require_config()
-    if not config.config.courses:
-        print("(no courses defined)")
-        return
-    seen = {}
-    for i, c in enumerate(config.config.courses):
-        if i > 0:
-            print()
-        print(_format_course(i, c, _course_display_name(c, seen)))
 
-def _prompt_lab_fields():
-    while True:
-        name = input("Enter the lab's name: ").strip()
-        if name:
-            break
-        print("Lab name cannot be blank.")
-
-    while True:
-        capacity_input = input("Enter the lab's max student capacity: ").strip()
         try:
-            capacity = int(capacity_input)
-            if capacity > 0:
+            self._dispatch(args)
+        except ConfigError as e:
+            # Every backbone command raises ConfigError for user-facing
+            # problems (no config loaded, bad file, failed validation).
+            # Catching it here means one bad command never kills the
+            # session (Req #3: 'recover from invalid input without
+            # terminating the session').
+            print(f"Error: {e}")
+
+    def _dispatch(self, args):
+        session = self.session
+
+        if args.command == "faculty":
+            {
+                "add": commands.add_faculty,
+                "modify": commands.modify_faculty,
+                "delete": commands.delete_faculty,
+                "view": commands.view_faculty,
+            }[args.action](session)
+
+        elif args.command == "course":
+            {
+                "add": commands.add_course,
+                "modify": commands.modify_course,
+                "delete": commands.delete_course,
+            }[args.action](session)
+
+        elif args.command == "lab":
+            {
+                "add": commands.add_lab,
+                "modify": commands.modify_lab,
+                "delete": commands.delete_lab,
+            }[args.action](session)
+
+        elif args.command == "room":
+            {
+                "add": commands.add_room,
+                "modify": commands.modify_room,
+                "delete": commands.delete_room,
+            }[args.action](session)
+
+        elif args.command == "timeslot":
+            {
+                "add": commands.add_timeslot,
+                "modify": commands.modify_timeslot,
+                "delete": commands.delete_timeslot,
+                "timing": commands.modify_timing_options,
+            }[args.action](session)
+
+        elif args.command == "pattern":
+            {
+                "add": commands.add_pattern,
+                "modify": commands.modify_pattern,
+                "delete": commands.delete_pattern,
+            }[args.action](session)
+
+        elif args.command == "meeting":
+            {
+                "add": commands.add_meeting,
+                "modify": commands.modify_meeting,
+                "delete": commands.delete_meeting,
+            }[args.action](session)
+
+        elif args.command == "schedule":
+            if args.action == "generate":
+                commands.generate_schedule(session, limit_override=args.limit)
+            elif args.action == "summary":
+                commands.schedule_summary(session)
+            elif args.action == "view":
+                commands.view_schedule(session, args.index)
+            elif args.action == "clear":
+                commands.clear_schedules(session)
+            elif args.action == "export":
+                commands.export_schedule(session, args.format, args.path,
+                                          index=args.index, overwrite=args.overwrite)
+
+        elif args.command == "config":
+            if args.action == "new":
+                commands.new_config(session)
+            elif args.action == "print":
+                commands.print_config(session)
+            elif args.action == "save":
+                commands.save_config(session, args.path)
+            elif args.action == "load":
+                commands.load_config(session, args.path)
+            elif args.action == "validate":
+                commands.validate_config(session)
+
+        elif args.command == "settings":
+            if args.action == "limit":
+                if args.reset:
+                    commands.reset_generation_limit(session)
+                elif args.value is not None:
+                    commands.set_generation_limit(session, args.value)
+                else:
+                    print("Usage: settings limit <value> | settings limit --reset")
+            elif args.action == "enable-flag":
+                commands.enable_optimizer_flag(session, args.flag)
+            elif args.action == "disable-flag":
+                commands.disable_optimizer_flag(session, args.flag)
+
+        elif args.command == "help":
+            self.show_help()
+
+
+    def _confirm_discard_if_dirty(self, action_label):
+        """Called before anything that would throw away unsaved changes
+        (exiting, starting a new config, loading over the current one).
+        Returns True if it's safe to proceed, False if the user backed
+        out. Offers to save right here instead of making the user
+        cancel, go save, then come back and retry."""
+        if not self.session.dirty:
+            return True
+
+        print(f"You have unsaved changes. {action_label} will lose them.")
+        choice = input("Save first? (y = save, n = discard and continue, c = cancel): ").strip().lower()
+
+        if choice in ("c", "cancel"):
+            return False
+        if choice in ("y", "yes"):
+            path = input("Path to save to (blank = reuse last path): ").strip()
+            try:
+                commands.save_config(self.session, path or None)
+            except ConfigError as e:
+                print(f"Error: {e}")
+                print("Not proceeding, since the save failed -- your changes are still unsaved.")
+                return False
+            return True
+        # "n"/anything else: proceed without saving
+        return True
+
+    # Guided entry point: welcome -> main menu -> submenus.
+    def run(self):
+        self._welcome()
+        self._auto_load_example_config()
+        while True:
+            print("\nPlease select an option:\n")
+            print("1. Configuration")
+            print("2. Run Scheduler")
+            print("3. View / Export Schedules")
+            print("4. Config File (new / load / save / print / validate)")
+            print("0. Exit\n")
+            choice = input("Select: ").strip()
+
+            if choice == "0":
+                if not self._confirm_discard_if_dirty("Exiting"):
+                    continue
+                print("Goodbye!")
                 break
-        except ValueError:
-            pass
-        print("Lab capacity must be a positive whole number!")
+            elif choice == "1":
+                self._configuration_menu()
+            elif choice == "2":
+                self._run_scheduler_menu()
+            elif choice == "3":
+                self._schedules_menu()
+            elif choice == "4":
+                self._config_file_menu()
+            else:
+                print("Please enter a number from the menu.")
 
-    features = _prompt_supplied_features("lab")
-    times = _prompt_resource_availability("lab")
+    def _welcome(self):
+        print("=" * 60)
+        print("   Welcome to the Scheduler Management Shell!")
+        print("=" * 60)
+        print("This tool manages a scheduler configuration, generates")
+        print("schedules, and exports the results.")
+        print("Type 'help' any time you see a prompt for the raw command")
+        print("syntax instead, if you'd rather type commands directly.\n")
 
-    fields = {
-        "name": name,
-        "capacity": capacity,
-        "features": features,
-    }
-    if times is not None:
-        fields["times"] = times
-    return fields
-
-
-def add_lab(session):
-    config = session.require_config()
-    fields = _prompt_lab_fields()
-
-    if any(lab.name == fields["name"] for lab in config.config.labs):
-        print("Lab is already in the system!")
-        return
-
-    new_lab = LabConfig(**fields)
-
-    def _mutate(cfg):
-        cfg.config.labs.append(new_lab)
-
-    try:
-        _apply_edit(session, config, "lab", _mutate)
-        print("Lab added.")
-    except ValidationFailure as e:
-        print(f"Could not add lab: {e}")
-
-
-def modify_lab(session):
-    config = session.require_config()
-    target_name = input("What is the name of the lab you would like to edit? ").strip()
-    existing = next(
-        (lab for lab in config.config.labs if lab.name == target_name),
-        None,
-    )
-
-    if existing is None:
-        print("Lab does not exist!")
-        return
-
-    fields = _prompt_lab_fields()
-
-    if fields["name"] != target_name and any(
-        lab.name == fields["name"] for lab in config.config.labs):
-        print("Lab name is already in the system!")
-        return
-
-    updated_lab = LabConfig(**fields)
-
-    def _mutate(cfg):
-        lab_list = cfg.config.labs
-        lab_list.remove(existing)
-        lab_list.append(updated_lab)
-
-    try:
-        _apply_edit(session, config, "lab", _mutate)
-        print("Lab updated.")
-    except ValidationFailure as e:
-        print(f"Could not save changes, previous version kept: {e}")
-
-
-def delete_lab(session):
-    config = session.require_config()
-
-    name = input("What is the name of the lab you want to remove? ")
-
-    existing = next(
-        (lab for lab in config.config.labs if lab.name == name),
-        None,
-    )
-    if existing is None:
-        print("Lab does not exist!")
-        return
-    referencing_courses = [
-        course.course_id
-        for course in config.config.courses
-        if name in course.lab
-    ]
-
-    try:
-        check_no_references(name, referencing_courses)
-    except ReferenceError_ as e:
-        print(f"{e} -- remove this lab from those courses first")
-        return
-
-    print("Are you sure you want to delete this lab? This cannot be undone (y/n)")
-    if input().lower().strip() not in ("yes", "y"):
-        print("Removal cancelled")
-        return
-
-    def _mutate(cfg):
-        cfg.config.labs.remove(existing)
-
-    try:
-        _apply_edit(session, config, "lab", _mutate)
-        print("Lab removed.")
-    except ValidationFailure as e:
-        print(f"Could not remove lab: {e}")
-
-def _format_lab(index, lab):
-    lines = [f"[{index}] {lab.name} -- capacity {lab.capacity}"]
-    if lab.features:
-        lines.append(f"      Features: {', '.join(sorted(lab.features))}")
-    if lab.times:
-        lines.append("      Availability:")
-        for day in _VALID_DAYS:
-            blocks = _field(lab.times, day)
-            if not blocks:
-                continue
-            ranges = ", ".join(f"{_field(b, 'start')}-{_field(b, 'end')}" for b in blocks)
-            lines.append(f"        {_DAY_LABELS[day]}  {ranges}")
-    else:
-        lines.append("      Availability: unrestricted")
-    return "\n".join(lines)
-
-
-def view_lab(session):
-    config = session.require_config()
-    if not config.config.labs:
-        print("(no labs defined)")
-        return
-    for i, l in enumerate(config.config.labs):
-        if i > 0:
-            print()
-        print(_format_lab(i, l))
-
-def _prompt_supplied_features(label):
-    """Features/equipment tags this room or lab itself SUPPLIES
-    (RoomConfig.features / LabConfig.features -- confirmed via
-    model_json_schema(): list[str], unique). Distinct from
-    _prompt_feature_set(), which collects a COURSE's *required*
-    features -- this collects what the resource itself provides."""
-    raw = input(f"  Features this {label} provides (comma-separated, blank for none): ").strip()
-    return sorted({part.strip() for part in raw.split(",") if part.strip()}) if raw else []
-
-
-def _prompt_resource_availability(label):
-    """Optional weekday availability windows for a room/lab
-    (RoomConfig.times / LabConfig.times -- confirmed via
-    model_json_schema(): optional dict[Day, list[TimeRange]],
-    default null = unrestricted).
-
-    ASSUMPTION, not yet confirmed the way Faculty.times' semantics
-    were: a weekday left out of the mapping means the resource is
-    NOT available that day, mirroring Faculty.times on the same
-    TimeRange shape. Re-check against a real validation/schedule
-    result before trusting this if a generated schedule looks wrong
-    for a restricted room/lab.
-    """
-    restrict = input(
-        f"  Restrict this {label}'s availability? (y/n, default n = available any time): "
-    ).strip().lower() in ("y", "yes")
-    if not restrict:
-        return None
-
-    print(f"  Enter availability for this {label}, one entry per weekday: MON, TUE, WED, THU, FRI.")
-    print("  Leave blank if unavailable that day, or enter a range like 09:00-17:00")
-    times = {}
-    for day in _VALID_DAYS:
-        raw = input(f"  {day}: ").strip()
-        if not raw:
-            continue
-        if not _TIME_RANGE_RE.match(raw):
-            print(f"  '{raw}' isn't a valid HH:MM-HH:MM range -- treating {day} as unavailable.")
-            continue
-        start, end = raw.split("-")
-        times[day] = [{"start": start, "end": end}]
-    return times or None
-
-
-def _prompt_room_fields():
-    while True:
-        name = input("Enter the room's name: ").strip()
-        if name:
-            break
-        print("Room name cannot be blank.")
-
-    while True:
-        capacity_input = input("Enter the room's max student capacity: ").strip()
+    def _auto_load_example_config(self):
+        """Every session starts with the example dataset (17 courses, 9
+        faculty, rooms/labs/time slots) already loaded, instead of
+        empty, so CRUD has real data to work with immediately. Falls
+        back to an empty session (still auto-provisioned on demand by
+        _ensure_config()) if the file is missing or fails validation --
+        never crashes the shell on startup."""
+        example_path = "app/examples/config_example.json"
         try:
-            capacity = int(capacity_input)
-            if capacity > 0:
-                break
-        except ValueError:
-            pass
-        print("Room capacity must be a positive whole number!")
+            self.session.load(example_path)
+            print(f"Loaded example configuration from '{example_path}'.\n")
+        except ConfigError as e:
+            print(f"(Could not auto-load example config: {e})\n")
 
-    features = _prompt_supplied_features("room")
-    times = _prompt_resource_availability("room")
+    # Pick a configuration area.
+    def _configuration_menu(self):
+        while True:
+            print("\n--- Configuration ---")
+            print("1. Faculty")
+            print("2. Courses")
+            print("3. Rooms")
+            print("4. Labs")
+            print("5. Time Slots")
+            print("6. Class Meeting Patterns")
+            print("7. Meetings")
+            print("8. Global Settings (generation limit / optimizer flags)")
+            print("0. Back")
+            choice = input("Select: ").strip()
 
-    fields = {
-        "name": name,
-        "capacity": capacity,
-        "features": features,
-    }
-    if times is not None:
-        fields["times"] = times
-    return fields
+            try:
+                if choice == "0":
+                    return
+                elif choice == "1":
+                    self._entity_menu("Faculty", commands.add_faculty, commands.modify_faculty,
+                                       commands.delete_faculty, view=commands.view_faculty)
+                elif choice == "2":
+                    self._entity_menu("Course", commands.add_course, commands.modify_course,
+                                       commands.delete_course, view=commands.view_course)
+                elif choice == "3":
+                    self._entity_menu("Room", commands.add_room, commands.modify_room,
+                                       commands.delete_room, view=commands.view_room)
+                elif choice == "4":
+                    self._entity_menu("Lab", commands.add_lab, commands.modify_lab,
+                                       commands.delete_lab, view=commands.view_lab)
+                elif choice == "5":
+                    self._entity_menu("Time Slot", commands.add_timeslot, commands.modify_timeslot,
+                                       commands.delete_timeslot,
+                                       extra_actions={"Modify global timing options (gap/overlap)":
+                                                       commands.modify_timing_options})
+                elif choice == "6":
+                    self._entity_menu("Class Pattern", commands.add_pattern, commands.modify_pattern,
+                                       commands.delete_pattern)
+                elif choice == "7":
+                    self._entity_menu("Meeting", commands.add_meeting, commands.modify_meeting,
+                                       commands.delete_meeting)
+                elif choice == "8":
+                    self._settings_menu()
+                else:
+                    print("Please enter a number from the menu.")
+            except ConfigError as e:
+                print(f"Error: {e}")
 
+    def _ensure_config(self):
+        """Entity/settings menus no longer require an explicit 'start a
+        new configuration' step first -- the first time one is opened
+        with nothing loaded yet, silently provision a blank config so
+        the user can go straight to add/modify/delete. Explicit
+        new/load/save/print/validate still live in the top-level Config
+        File menu for resetting or working with a real file."""
+        if self.session.config is None:
+            commands.new_config(self.session)
 
-def add_room(session):
-    config = session.require_config()
-    fields = _prompt_room_fields()
+    # Add/modify/delete/view for one entity; reused for every entity type.
+    # extra_actions is an optional {label: fn} dict for entity-specific
+    # actions beyond plain CRUD (e.g. time slots' global timing options).
+    def _entity_menu(self, label, add_fn, modify_fn, delete_fn, view=None, extra_actions=None):
+        self._ensure_config()
+        extra_actions = extra_actions or {}
+        while True:
+            print(f"\n--- {label} ---")
+            print(f"1. Add {label}")
+            print(f"2. Modify {label}")
+            print(f"3. Delete {label}")
+            next_num = 4
+            view_num = None
+            if view is not None:
+                print(f"{next_num}. View all {label} records")
+                view_num = next_num
+                next_num += 1
+            extra_nums = {}
+            for extra_label, fn in extra_actions.items():
+                print(f"{next_num}. {extra_label}")
+                extra_nums[str(next_num)] = fn
+                next_num += 1
+            print("0. Back")
+            choice = input("Select: ").strip()
 
-    if any(room.name == fields["name"] for room in config.config.rooms):
-        print("Room is already in the system!")
-        return
+            try:
+                if choice == "0":
+                    return
+                elif choice == "1":
+                    add_fn(self.session)
+                elif choice == "2":
+                    modify_fn(self.session)
+                elif choice == "3":
+                    delete_fn(self.session)
+                elif view_num is not None and choice == str(view_num):
+                    view(self.session)
+                elif choice in extra_nums:
+                    extra_nums[choice](self.session)
+                else:
+                    print("Please enter a number from the menu.")
+            except ConfigError as e:
+                print(f"Error: {e}")
 
-    new_room = RoomConfig(**fields)
+    def _config_file_menu(self):
+        while True:
+            print("\n--- Config File ---")
+            print("1. Start a new configuration")
+            print("2. Load a configuration from a file")
+            print("3. Save the current configuration")
+            print("4. Print the current configuration")
+            print("5. Validate the current configuration")
+            print("0. Back")
+            choice = input("Select: ").strip()
 
-    def _mutate(cfg):
-        cfg.config.rooms.append(new_room)
+            try:
+                if choice == "0":
+                    return
+                elif choice == "1":
+                    if not self._confirm_discard_if_dirty("Starting a new configuration"):
+                        continue
+                    commands.new_config(self.session)
+                    return
+                elif choice == "2":
+                    if not self._confirm_discard_if_dirty("Loading a different configuration"):
+                        continue
+                    path = input("Path to load (blank = example config): ").strip()
+                    path = path or "app/examples/config_example.json"
+                    commands.load_config(self.session, path)
+                elif choice == "3":
+                    path = input("Path to save to (blank = reuse last path): ").strip()
+                    commands.save_config(self.session, path or None)
+                elif choice == "4":
+                    commands.print_config(self.session)
+                elif choice == "5":
+                    commands.validate_config(self.session)
+                else:
+                    print("Please enter a number from the menu.")
+            except ConfigError as e:
+                print(f"Error: {e}")
 
-    try:
-        _apply_edit(session, config, "room", _mutate)
-        print("Room added.")
-    except ValidationFailure as e:
-        print(f"Could not add room: {e}")
+    def _settings_menu(self):
+        self._ensure_config()
+        while True:
+            print("\n--- Global Settings ---")
+            print("1. Set generation limit")
+            print("2. Reset generation limit to default")
+            print("3. Enable an optimizer flag")
+            print("4. Disable an optimizer flag")
+            print("0. Back")
+            choice = input("Select: ").strip()
 
-def modify_room(session):
-    config = session.require_config()
-    target_name = input("What is the name of the room you would like to edit? ").strip()
-    existing = next(
-        (room for room in config.config.rooms if room.name == target_name),
-        None,
-    )
+            try:
+                if choice == "0":
+                    return
+                elif choice == "1":
+                    value_input = input("New generation limit: ").strip()
+                    if not value_input.lstrip("-").isdigit():
+                        print("Please enter a whole number.")
+                        continue
+                    commands.set_generation_limit(self.session, int(value_input))
+                elif choice == "2":
+                    commands.reset_generation_limit(self.session)
+                elif choice == "3":
+                    flag = input("Flag to enable (e.g. faculty_course, same_room, pack_labs): ").strip()
+                    commands.enable_optimizer_flag(self.session, flag)
+                elif choice == "4":
+                    flag = input("Flag to disable: ").strip()
+                    commands.disable_optimizer_flag(self.session, flag)
+                else:
+                    print("Please enter a number from the menu.")
+            except ConfigError as e:
+                print(f"Error: {e}")
 
-    if existing is None:
-        print("Room does not exist!")
-        return
-
-    fields = _prompt_room_fields()
-    if fields["name"] != target_name and any(
-        room.name == fields["name"] for room in config.config.rooms
-    ):
-        print("Room name is already in the system!")
-        return
-
-    updated_room = RoomConfig(**fields)
-
-    def _mutate(cfg):
-        room_list = cfg.config.rooms
-        room_list.remove(existing)
-        room_list.append(updated_room)
-
-    try:
-        _apply_edit(session, config, "room", _mutate)
-        print("Room updated.")
-    except ValidationFailure as e:
-        print(f"Could not save changes, previous version kept: {e}")
-
-
-def delete_room(session):
-    config = session.require_config()
-    name = input("What is the name of the room you want to remove? ").strip()
-
-    existing = next(
-        (room for room in config.config.rooms if room.name == name),
-        None,
-    )
-    if existing is None:
-        print("Room does not exist!")
-        return
-
-    referencing_courses = [
-        course.course_id
-        for course in config.config.courses
-        if name in (getattr(course, "room", None) or [])
-    ]
-    try:
-        check_no_references(name, referencing_courses)
-    except ReferenceError_ as e:
-        print(f"{e} -- remove this room from those courses first.")
-        return
-
-    print("Are you sure you want to delete this room? This cannot be undone. (y/n)")
-    if input().strip().lower() not in ("y", "yes"):
-        print("Removal cancelled")
-        return
-
-    def _mutate(cfg):
-        cfg.config.rooms.remove(existing)
-
-    try:
-        _apply_edit(session, config, "room", _mutate)
-        print("Room removed.")
-    except ValidationFailure as e:
-        print(f"Could not remove room: {e}")
-
-def _format_room(index, room):
-    lines = [f"[{index}] {room.name} -- capacity {room.capacity}"]
-    if room.features:
-        lines.append(f"      Features: {', '.join(sorted(room.features))}")
-    if room.times:
-        lines.append("      Availability:")
-        for day in _VALID_DAYS:
-            blocks = _field(room.times, day)
-            if not blocks:
-                continue
-            ranges = ", ".join(f"{_field(b, 'start')}-{_field(b, 'end')}" for b in blocks)
-            lines.append(f"        {_DAY_LABELS[day]}  {ranges}")
-    else:
-        lines.append("      Availability: unrestricted")
-    return "\n".join(lines)
-
-
-def view_room(session):
-    config = session.require_config()
-    if not config.config.rooms:
-        print("(no rooms defined)")
-        return
-    for i, r in enumerate(config.config.rooms):
-        if i > 0:
-            print()
-        print(_format_room(i, r))
-
-def _prompt_time_block():
-    print("Start time (HH:MM)?")
-    start = input().strip()
-    print("End time (HH:MM)?")
-    end = input().strip()
-    print("Spacing between slots, in minutes?")
-    spacing_raw = input().strip()
-
-    try:
-        spacing = int(spacing_raw)
-    except ValueError:
-        print(f"'{spacing_raw}' is not a valid number of minutes.")
-        return None
-
-    try:
-        return TimeBlock(start=start, spacing=spacing, end=end)
-    except ValidationError as e:
-        print(f"Invalid time block: {e}")
-        return None
-
-
-def _blocks_overlap(a, b):
-    return a.start < b.end and b.start < a.end
-
-
-def add_timeslot(session):
-    config = session.require_config()
-    print(f"Which day? ({'/'.join(_VALID_DAYS)})")
-    day = input().strip().upper()
-    if day not in _VALID_DAYS:
-        print(f"'{day}' is not a valid day.")
-        return
-
-    new_block = _prompt_time_block()
-    if new_block is None:
-        return
-
-    existing = config.time_slot_config.times.get(day, [])
-    conflict = next((b for b in existing if _blocks_overlap(b, new_block)), None)
-    if conflict:
-        print(f"Time Conflict: overlaps existing block {conflict.start}-{conflict.end}")
-        return
-
-    def _mutate(cfg):
-        cfg.time_slot_config.times.setdefault(day, []).append(new_block)
-
-    try:
-        _apply_edit(session, config, "timeslot", _mutate)
-        print("Time Slot Added Successfully")
-    except ValidationFailure as e:
-        print(f"Could not add time slot: {e}")
-
-
-def modify_timeslot(session):
-    config = session.require_config()
-    print(f"Which day is the time slot on? ({'/'.join(_VALID_DAYS)})")
-    day = input().strip().upper()
-    blocks = config.time_slot_config.times.get(day, [])
-    if not blocks:
-        print(f"No time slots defined for {day}.")
-        return
-
-    for i, b in enumerate(blocks):
-        print(f"  [{i}] {b.start}-{b.end} (spacing {b.spacing}m)")
-    print("Which one do you want to change? (index)")
-    try:
-        idx = int(input().strip())
-        blocks[idx]
-    except (ValueError, IndexError):
-        print("Not a valid selection.")
-        return
-
-    print("Enter the new time slot:")
-    new_block = _prompt_time_block()
-    if new_block is None:
-        return
-
-    conflict = next(
-        (b for j, b in enumerate(blocks) if j != idx and _blocks_overlap(b, new_block)),
-        None,
-    )
-    if conflict:
-        print(f"Time Conflict: overlaps existing block {conflict.start}-{conflict.end}")
-        return
-
-    def _mutate(cfg):
-        cfg.time_slot_config.times[day][idx] = new_block
-
-    try:
-        _apply_edit(session, config, "timeslot", _mutate)
-        print("Time Changed Successfully")
-    except ValidationFailure as e:
-        print(f"Could not save changes, previous version kept: {e}")
-
-
-def delete_timeslot(session):
-    config = session.require_config()
-    print(f"Which day is the time slot on? ({'/'.join(_VALID_DAYS)})")
-    day = input().strip().upper()
-    blocks = config.time_slot_config.times.get(day, [])
-    if not blocks:
-        print(f"No time slots defined for {day}.")
-        return
-    if len(blocks) == 1:
-        print(f"Can't delete the only time block on {day} -- every weekday needs at least one.")
-        return
-
-    for i, b in enumerate(blocks):
-        print(f"  [{i}] {b.start}-{b.end} (spacing {b.spacing}m)")
-    print("Which one do you want to delete? (index)")
-    try:
-        idx = int(input().strip())
-        blocks[idx]
-    except (ValueError, IndexError):
-        print("Not a valid selection.")
-        return
-
-    print("Are you sure? Type confirm or cancel")
-    if input().strip().lower() != "confirm":
-        print("Cancelled.")
-        return
-
-    def _mutate(cfg):
-        del cfg.time_slot_config.times[day][idx]
-
-    try:
-        _apply_edit(session, config, "timeslot", _mutate)
-        print("Time slot deleted.")
-    except ValidationFailure as e:
-        print(f"Could not delete: {e}")
-
-
-def modify_timing_options(session):
-    """The 'global timing options' half of the Time slots requirement:
-    TimeSlotConfig.max_time_gap / min_time_overlap."""
-    config = session.require_config()
-    current = config.time_slot_config
-    print(f"Max time gap in minutes [{current.max_time_gap}] (blank to keep):")
-    gap_input = input().strip()
-    print(f"Min time overlap in minutes [{current.min_time_overlap}] (blank to keep):")
-    overlap_input = input().strip()
-
-    try:
-        new_gap = int(gap_input) if gap_input else None
-        new_overlap = int(overlap_input) if overlap_input else None
-    except ValueError:
-        print("Please enter whole numbers.")
-        return
-
-    def _mutate(cfg):
-        if new_gap is not None:
-            cfg.time_slot_config.max_time_gap = new_gap
-        if new_overlap is not None:
-            cfg.time_slot_config.min_time_overlap = new_overlap
-
-    try:
-        _apply_edit(session, config, "timeslot", _mutate)
-        print("Timing options updated.")
-    except ValidationFailure as e:
-        print(f"Could not update timing options: {e}")
-
-
-# ---------------------------------------------------------------- #
-#  Class pattern CRUD (time_slot_config.classes)                    #
-#                                                                    #
-#  Same apply_edit()/ValidationFailure recipe as faculty above, with #
-#  one structural difference: entries here have no name/id field    #
-#  (confirmed against config_example.json -- a "class" entry is     #
-#  just {credits, meetings[, start_time][, disabled]}), so add/     #
-#  modify/delete identify a pattern by its position in the list     #
-#  instead of a lookup key. No check_no_references() call for       #
-#  delete_pattern: nothing else in the schema points at a pattern   #
-#  by index, unlike rooms/labs/faculty being named from courses     #
-#  (Req #7 only calls those four out explicitly).                   #
-# ---------------------------------------------------------------- #
-
-def _prompt_meeting():
-    """One meeting entry: day, duration, lab flag, delivery mode, and an
-    optional fixed start time -- matches the shape confirmed in
-    config_example.json's time_slot_config.classes[].meetings
-    ({day, duration, lab, delivery, start_time}).
-    NOTE: "in_person" is the only delivery value actually confirmed in
-    the example data; other values (online/hybrid/etc) are a guess --
-    double check the real enum via scheduler.config before relying on
-    anything but "in_person" here.
-    Loops on invalid input (Req #3/#6: recover from bad input without
-    terminating the session) instead of letting Meeting(...)'s
-    ValidationError propagate uncaught and crash the app."""
-    while True:
-        print("  Day (MON/TUE/WED/THU/FRI):")
-        day = input("  > ").strip().upper()
-
-        print("  Duration in minutes:")
-        duration_raw = input("  > ").strip()
-        duration = int(duration_raw) if duration_raw.isdigit() else 0
-
-        print("  Is this meeting a lab session? (y/n, default n)")
-        lab = input("  > ").strip().lower() in ("y", "yes")
-
-        print("  Delivery mode (in_person/online/hybrid, default in_person):")
-        delivery = input("  > ").strip().lower() or "in_person"
-
-        print("  Fixed start time for this meeting, e.g. 09:00 (blank = none):")
-        start_time = input("  > ").strip() or None
-
+    # Main menu option 2.
+    def _run_scheduler_menu(self):
+        self._ensure_config()
+        print("\n--- Run Scheduler ---")
+        limit_input = input("Schedule generation limit (blank = use config's limit): ").strip()
+        limit_override = int(limit_input) if limit_input.isdigit() else None
         try:
-            return Meeting(day=day, duration=duration, lab=lab, delivery=delivery, start_time=start_time)
-        except ValidationError as e:
-            print(f"Invalid meeting: {e}")
-            print("Let's try that meeting again.")
-
-
-def _prompt_pattern_fields():
-    """Prompts for one full class-pattern record: credits, one-or-more
-    meetings, and the two optional fields (start_time, disabled) seen on
-    some entries in config_example.json."""
-    print("Credits for this pattern:")
-    credits_raw = input().strip()
-    credits = int(credits_raw) if credits_raw.isdigit() else 0
-
-    meetings = []
-    print("Now enter the meetings for this pattern (at least one required).")
-    while True:
-        meetings.append(_prompt_meeting())
-        print("Add another meeting? (y/n, default n)")
-        if input().strip().lower() not in ("y", "yes"):
-            break
-
-    print("Fixed start time for this pattern, e.g. 16:00 (blank = none):")
-    start_time = input().strip() or None
-
-    print("Should this pattern start disabled? (y/n, default n)")
-    disabled = input().strip().lower() in ("y", "yes")
-
-    return {
-        "credits": credits,
-        "meetings": meetings,
-        "start_time": start_time,
-        "disabled": disabled,
-    }
-
-
-def _format_pattern(index, pattern):
-    meeting_bits = ", ".join(
-        f"{_DAY_LABELS.get(m.day, m.day)} {m.duration}min" + (" (lab)" if getattr(m, "lab", False) else "")
-        for m in pattern.meetings
-    )
-    extras = []
-    if getattr(pattern, "start_time", None):
-        extras.append(f"starts at {pattern.start_time}")
-    if getattr(pattern, "disabled", False):
-        extras.append("disabled")
-    extra_str = f"  ({'; '.join(extras)})" if extras else ""
-    return f"[{index}] {pattern.credits} credits: {meeting_bits}{extra_str}"
-
-
-def _list_patterns(config):
-    """Prints every existing pattern with its index (there's no standalone
-    'pattern view' command -- see shell.py's pattern subparser -- so
-    modify/delete show the list themselves right before asking which one
-    to act on)."""
-    patterns = config.time_slot_config.classes
-    if not patterns:
-        print("(no class patterns defined)")
-        return patterns
-    for i, p in enumerate(patterns):
-        print(_format_pattern(i, p))
-    return patterns
-
-
-def _prompt_pattern_index(count):
-    raw = input("Enter the pattern's index: ").strip()
-    if not raw.isdigit():
-        print("Please enter a valid integer index.")
-        return None
-    idx = int(raw)
-    if not (0 <= idx < count):
-        print(f"No pattern at index {idx}. Valid range: 0-{count - 1}.")
-        return None
-    return idx
-
-
-def add_pattern(session):
-    config = session.require_config()
-    fields = _prompt_pattern_fields()
-    if fields["credits"] <= 0:
-        print("Credits must be a positive integer.")
-        return
-    if not fields["meetings"]:
-        print("A pattern needs at least one meeting.")
-        return
-
-    new_pattern = ClassPattern(**fields)
-
-    def _mutate(cfg):
-        cfg.time_slot_config.classes.append(new_pattern)
-
-    try:
-        _apply_edit(session, config, "pattern", _mutate)
-        print("Class pattern added.")
-    except ValidationFailure as e:
-        print(f"Could not add pattern: {e}")
-
-
-def modify_pattern(session):
-    config = session.require_config()
-    patterns = _list_patterns(config)
-    if not patterns:
-        return
-
-    print("Which pattern would you like to edit?")
-    idx = _prompt_pattern_index(len(patterns))
-    if idx is None:
-        return
-
-    updated_fields = _prompt_pattern_fields()
-    if updated_fields["credits"] <= 0:
-        print("Credits must be a positive integer.")
-        return
-    if not updated_fields["meetings"]:
-        print("A pattern needs at least one meeting.")
-        return
-
-    updated_pattern = ClassPattern(**updated_fields)
-
-    def _mutate(cfg):
-        cfg.time_slot_config.classes[idx] = updated_pattern
-
-    try:
-        _apply_edit(session, config, "pattern", _mutate)
-        print("Class pattern updated.")
-    except ValidationFailure as e:
-        # Nothing to manually restore -- edit_mode() already rolled the
-        # whole config back to its pre-mutate state (Req #4/#6).
-        print(f"Could not save changes, previous version kept: {e}")
-
-
-def delete_pattern(session):
-    config = session.require_config()
-    patterns = _list_patterns(config)
-    if not patterns:
-        return
-
-    print("Which pattern would you like to delete?")
-    idx = _prompt_pattern_index(len(patterns))
-    if idx is None:
-        return
-
-    print("Are you sure you want to delete this pattern? This cannot be undone. (y/n)")
-    if input().lower().strip() not in ("y", "yes"):
-        print("Removal cancelled")
-        return
-
-    def _mutate(cfg):
-        del cfg.time_slot_config.classes[idx]
-
-    try:
-        _apply_edit(session, config, "pattern", _mutate)
-        print("Class pattern removed.")
-    except ValidationFailure as e:
-        print(f"Could not remove pattern: {e}")
-
-
-def _list_meetings(pattern):
-    """Prints one pattern's meetings with their index (mirrors
-    _list_patterns()'s role for patterns themselves -- add/modify/delete
-    show the list right before asking which meeting to act on)."""
-    if not pattern.meetings:
-        print("(no meetings on this pattern)")
-        return pattern.meetings
-    for i, m in enumerate(pattern.meetings):
-        day = _DAY_LABELS.get(m.day, m.day)
-        lab_str = " (lab session)" if getattr(m, "lab", False) else ""
-        extras = []
-        if getattr(m, "delivery", None):
-            extras.append(f"delivery: {m.delivery}")
-        if getattr(m, "start_time", None):
-            extras.append(f"starts at {m.start_time}")
-        extra_str = f"  ({'; '.join(extras)})" if extras else ""
-        print(f"  [{i}] {day}, {m.duration} min{lab_str}{extra_str}")
-    return pattern.meetings
-
-
-def _prompt_meeting_index(count):
-    raw = input("Enter the meeting's index: ").strip()
-    if not raw.isdigit():
-        print("Please enter a valid integer index.")
-        return None
-    idx = int(raw)
-    if not (0 <= idx < count):
-        print(f"No meeting at index {idx}. Valid range: 0-{count - 1}.")
-        return None
-    return idx
-
-
-def _choose_pattern_and_meeting(config):
-    """Shared by modify_meeting/delete_meeting: pick a pattern, then a
-    meeting within it. Returns (pattern_index, meeting_index) or None if
-    the user backed out / entered something invalid at any step."""
-    patterns = _list_patterns(config)
-    if not patterns:
-        return None
-
-    print("Which pattern is the meeting on?")
-    p_idx = _prompt_pattern_index(len(patterns))
-    if p_idx is None:
-        return None
-
-    meetings = _list_meetings(patterns[p_idx])
-    if not meetings:
-        return None
-
-    print("Which meeting?")
-    m_idx = _prompt_meeting_index(len(meetings))
-    if m_idx is None:
-        return None
-
-    return p_idx, m_idx
-
-
-def add_meeting(session):
-    config = session.require_config()
-    patterns = _list_patterns(config)
-    if not patterns:
-        print("Add a class pattern first -- meetings belong to a pattern.")
-        return
-
-    print("Which pattern do you want to add a meeting to?")
-    idx = _prompt_pattern_index(len(patterns))
-    if idx is None:
-        return
-
-    new_meeting = _prompt_meeting()
-
-    def _mutate(cfg):
-        cfg.time_slot_config.classes[idx].meetings.append(new_meeting)
-
-    try:
-        _apply_edit(session, config, "meeting", _mutate)
-        print("Meeting added.")
-    except ValidationFailure as e:
-        print(f"Could not add meeting: {e}")
-
-
-def modify_meeting(session):
-    config = session.require_config()
-    choice = _choose_pattern_and_meeting(config)
-    if choice is None:
-        return
-    p_idx, m_idx = choice
-
-    updated_meeting = _prompt_meeting()
-
-    def _mutate(cfg):
-        cfg.time_slot_config.classes[p_idx].meetings[m_idx] = updated_meeting
-
-    try:
-        _apply_edit(session, config, "meeting", _mutate)
-        print("Meeting updated.")
-    except ValidationFailure as e:
-        # Nothing to manually restore -- edit_mode() already rolled the
-        # whole config back to its pre-mutate state (Req #4/#6).
-        print(f"Could not save changes, previous version kept: {e}")
-
-
-def delete_meeting(session):
-    config = session.require_config()
-    patterns = _list_patterns(config)
-    if not patterns:
-        return
-
-    print("Which pattern is the meeting on?")
-    p_idx = _prompt_pattern_index(len(patterns))
-    if p_idx is None:
-        return
-
-    meetings = _list_meetings(patterns[p_idx])
-    if not meetings:
-        return
-    if len(meetings) == 1:
-        print("Can't delete the only meeting on this pattern -- delete the pattern instead if you don't need it.")
-        return
-
-    print("Which meeting would you like to delete?")
-    m_idx = _prompt_meeting_index(len(meetings))
-    if m_idx is None:
-        return
-
-    print("Are you sure you want to delete this meeting? This cannot be undone. (y/n)")
-    if input().lower().strip() not in ("y", "yes"):
-        print("Removal cancelled")
-        return
-
-    def _mutate(cfg):
-        del cfg.time_slot_config.classes[p_idx].meetings[m_idx]
-
-    try:
-        _apply_edit(session, config, "meeting", _mutate)
-        print("Meeting removed.")
-    except ValidationFailure as e:
-        print(f"Could not remove meeting: {e}")
-
-
-# =========================================================================== #
-#  Global settings CRUD (Req #28-30): generation limit + optimizer flags
-# =========================================================================== #
-
-def set_generation_limit(session, value):
-    config = session.require_config()
-    if value <= 0:
-        print("Error: generation limit needs to be positive.")
-        return
-
-    def _mutate(cfg):
-        cfg.limit = value
-
-    try:
-        _apply_edit(session, config, "global_settings", _mutate)
-        print(f"Generation limit set to {value}.")
-    except ValidationFailure as e:
-        print(f"Could not set limit: {e}")
-
-
-def reset_generation_limit(session):
-    config = session.require_config()
-
-    def _mutate(cfg):
-        cfg.limit = 10  # confirmed library default
-
-    try:
-        _apply_edit(session, config, "global_settings", _mutate)
-        print("Generation limit reset to default (10).")
-    except ValidationFailure as e:
-        print(f"Could not reset limit: {e}")
-
-
-def enable_optimizer_flag(session, flag):
-    config = session.require_config()
-    if flag not in _VALID_OPTIMIZER_FLAGS:
-        print(f"Error: '{flag}' is not a valid optimizer flag.")
-        return
-    if flag in config.optimizer_flags:
-        print(f"'{flag}' is already enabled.")
-        return
-
-    def _mutate(cfg):
-        cfg.optimizer_flags.append(OptimizerFlags(flag))
-
-    try:
-        _apply_edit(session, config, "global_settings", _mutate)
-        print(f"Optimizer flag '{flag}' added.")
-    except ValidationFailure as e:
-        print(f"Could not add flag: {e}")
-
-
-def disable_optimizer_flag(session, flag):
-    config = session.require_config()
-    if flag not in config.optimizer_flags:
-        print(f"'{flag}' is not currently enabled.")
-        return
-
-    def _mutate(cfg):
-        cfg.optimizer_flags.remove(flag)
-
-    try:
-        _apply_edit(session, config, "global_settings", _mutate)
-        print(f"Optimizer flag '{flag}' removed.")
-    except ValidationFailure as e:
-        print(f"Could not remove flag: {e}")
-
-
-# =========================================================================== #
-#  Schedule generation / inspection / export (Req #8, #9, #10)
-# =========================================================================== #
-
-def generate_schedule(session, limit_override=None):
-    config = session.require_config()
-    result = schedule_ops.generate_schedules(config, limit_override)
-
-    if result.outcome == schedule_ops.GenerationOutcome.SUCCESS:
-        session.schedules = result.schedules
-        print(result.message)
-    elif result.outcome == schedule_ops.GenerationOutcome.NO_FEASIBLE_SCHEDULE:
-        session.schedules = []
-        print(f"No feasible schedule: {result.message}")
-    elif result.outcome == schedule_ops.GenerationOutcome.INVALID_CONFIG:
-        print(f"Configuration is not valid for generation: {result.message}")
-    else:  # RUNTIME_ERROR
-        print(f"Unexpected error during generation: {result.message}")
-
-
-def schedule_summary(session):
-    if not session.schedules:
-        print("No generated schedules in this session. Run 'schedule generate' first.")
-        return
-    for i, sched in enumerate(session.schedules):
-        print(f"--- Schedule {i} ({len(sched)} course assignments) ---")
-
-
-def view_schedule(session, index):
-    if not session.schedules:
-        print("No generated schedules in this session.")
-        return
-    if not (0 <= index < len(session.schedules)):
-        print(f"No schedule at index {index}. Valid range: 0-{len(session.schedules) - 1}.")
-        return
-    print(schedule_ops.summarize_schedule(session.schedules[index]))
-
-
-def clear_schedules(session):
-    session.schedules = []
-    print("Cleared generated schedules.")
-
-
-def export_schedule(session, fmt, path, index=None, overwrite=False):
-    if not session.schedules:
-        print("No generated schedules to export. Run 'schedule generate' first.")
-        return
-
-    if index is not None:
-        if not (0 <= index < len(session.schedules)):
-            print(f"No schedule at index {index}. Valid range: 0-{len(session.schedules) - 1}.")
-            return
-        payload = [session.schedules[index]]
-    else:
-        payload = session.schedules
-
-    try:
-        target = schedule_ops.export_schedule(payload, fmt, path, overwrite=overwrite)
-        print(f"Exported to '{target}'.")
-    except FileExistsError as e:
-        print(f"{e} (pass --overwrite to replace it).")
-    except ValueError as e:
-        print(f"Export failed: {e}")
+            commands.generate_schedule(self.session, limit_override=limit_override)
+        except ConfigError as e:
+            print(f"Error: {e}")
+
+    # Main menu option 3.
+    def _schedules_menu(self):
+        while True:
+            print("\n--- Schedules ---")
+            print("1. Summary of generated schedules")
+            print("2. View one schedule by index")
+            print("3. Export schedules")
+            print("4. Clear generated schedules")
+            print("0. Back")
+            choice = input("Select: ").strip()
+
+            try:
+                if choice == "0":
+                    return
+                elif choice == "1":
+                    commands.schedule_summary(self.session)
+                elif choice == "2":
+                    idx = input("Schedule index: ").strip()
+                    if idx.isdigit():
+                        commands.view_schedule(self.session, int(idx))
+                    else:
+                        print("Please enter a valid integer index.")
+                elif choice == "3":
+                    fmt = input("Format (json/csv): ").strip().lower()
+                    if fmt not in ("json", "csv"):
+                        print("Please enter 'json' or 'csv'.")
+                        continue
+                    path = input("Output file path: ").strip()
+                    idx_input = input("Export a single index, or blank for all: ").strip()
+                    index = int(idx_input) if idx_input.isdigit() else None
+                    overwrite_input = input("Overwrite if it exists? (y/n): ").strip().lower()
+                    commands.export_schedule(self.session, fmt, path, index=index,
+                                              overwrite=overwrite_input in ("y", "yes"))
+                elif choice == "4":
+                    commands.clear_schedules(self.session)
+                else:
+                    print("Please enter a number from the menu.")
+            except ConfigError as e:
+                print(f"Error: {e}")
+
+    def show_help(self):
+        print("\n"
+              "Available commands:\n\n"
+              "faculty     <add,modify,delete,view>\n"
+              "course      <add,modify,delete>\n"
+              "lab         <add,modify,delete>\n"
+              "room        <add,modify,delete>\n"
+              "timeslot    <add,modify,delete,timing>\n"
+              "settings    <limit N,limit --reset,enable-flag F,disable-flag F>\n"
+              "pattern     <add,modify,delete>\n"
+              "meeting     <add,modify,delete>\n"
+              "config      <new,print,load <path>,save [path],validate>\n"
+              "schedule    <generate [--limit N],summary,view <index>,clear,export <json|csv> <path>>\n"
+              "help        Display available commands\n"
+              "exit        Exit the scheduler shell")
