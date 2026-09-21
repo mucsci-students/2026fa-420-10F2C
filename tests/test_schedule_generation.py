@@ -28,16 +28,19 @@ from app.session import Session
 
 
 def make_session():
+    """Create a session configured for the test scenario."""
     session = Session()
     session.config = SimpleNamespace()  # generate_schedule() just passes this through
     return session
 
 
 def fake_result(outcome, message="", schedules=None):
+    """Build a scheduler result with the requested outcome and data."""
     return schedule_ops.GenerationResult(outcome, message, schedules or [])
 
 
 def test_generate_schedule_success_stores_schedules(monkeypatch, capsys):
+    """Verify that generate schedule success stores schedules."""
     session = make_session()
     fake_schedules = [["course_instance_1"], ["course_instance_2"]]
     monkeypatch.setattr(
@@ -54,6 +57,7 @@ def test_generate_schedule_success_stores_schedules(monkeypatch, capsys):
 
 
 def test_generate_schedule_no_feasible_schedule_clears_session_schedules(monkeypatch, capsys):
+    """Verify that generate schedule no feasible schedule clears session schedules."""
     session = make_session()
     session.schedules = ["stale", "schedules", "from", "last", "run"]
     monkeypatch.setattr(
@@ -71,6 +75,7 @@ def test_generate_schedule_no_feasible_schedule_clears_session_schedules(monkeyp
 
 
 def test_generate_schedule_invalid_config_does_not_touch_schedules(monkeypatch, capsys):
+    """Verify that generate schedule invalid config does not touch schedules."""
     session = make_session()
     session.schedules = ["previous", "valid", "schedules"]
     monkeypatch.setattr(
@@ -89,6 +94,7 @@ def test_generate_schedule_invalid_config_does_not_touch_schedules(monkeypatch, 
 
 
 def test_generate_schedule_runtime_error_does_not_touch_schedules(monkeypatch, capsys):
+    """Verify that generate schedule runtime error does not touch schedules."""
     session = make_session()
     session.schedules = ["previous", "valid", "schedules"]
     monkeypatch.setattr(
@@ -105,10 +111,12 @@ def test_generate_schedule_runtime_error_does_not_touch_schedules(monkeypatch, c
 
 
 def test_generate_schedule_passes_limit_override_through(monkeypatch):
+    """Verify that generate schedule passes limit override through."""
     session = make_session()
     captured = {}
 
     def fake_generate(config, limit_override):
+        """Capture the generation limit and return a controlled result."""
         captured["limit_override"] = limit_override
         return fake_result(schedule_ops.GenerationOutcome.SUCCESS, "Generated 1 schedule(s).", [["x"]])
 
@@ -120,10 +128,12 @@ def test_generate_schedule_passes_limit_override_through(monkeypatch):
 
 
 def test_generate_schedule_default_limit_override_is_none(monkeypatch):
+    """Verify that generate schedule default limit override is none."""
     session = make_session()
     captured = {}
 
     def fake_generate(config, limit_override):
+        """Capture the generation limit and return a controlled result."""
         captured["limit_override"] = limit_override
         return fake_result(schedule_ops.GenerationOutcome.SUCCESS, "Generated 1 schedule(s).", [["x"]])
 

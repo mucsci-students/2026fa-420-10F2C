@@ -29,9 +29,11 @@ class FakeCombinedConfig:
     """Stand-in for scheduler.config.CombinedConfig."""
 
     def __init__(self, **kwargs):
+        """Initialize the test double with the supplied values."""
         self.__dict__.update(kwargs)
 
     def model_dump_json(self, indent=2):
+        """Serialize the fake configuration for save tests."""
         # Just needs to return *something* writable -- save()'s job is
         # to get bytes onto disk and manage config_path/dirty, not to
         # produce a byte-perfect JSON document (that's the real
@@ -41,25 +43,30 @@ class FakeCombinedConfig:
 
 @pytest.fixture(autouse=True)
 def patch_library_types(monkeypatch):
+    """Replace scheduler-library types with controlled test doubles."""
     monkeypatch.setattr(session_module, "CombinedConfig", FakeCombinedConfig)
     monkeypatch.setattr(session_module, "ValidationError", FakeValidationError)
 
 
 def fake_loader_success(cls, path):
+    """Return a valid fake configuration for a successful load."""
     return cls(name=f"loaded-from-{path}")
 
 
 def fake_loader_invalid_schema(cls, path):
+    """Simulate schema validation failure while loading."""
     raise FakeValidationError(f"'{path}' failed schema validation")
 
 
 def fake_loader_bad_json(cls, path):
+    """Simulate malformed JSON while loading."""
     raise ValueError(f"'{path}' is not valid JSON")
 
 
 # ---------- new_config ----------
 
 def test_new_config_sets_a_config_and_resets_state():
+    """Verify that new config sets a config and resets state."""
     session = Session()
     session.schedules = ["stale"]
     session.dirty = True
@@ -73,7 +80,9 @@ def test_new_config_sets_a_config_and_resets_state():
 
 
 def test_new_config_raises_config_error_on_validation_failure(monkeypatch):
+    """Verify that new config raises config error on validation failure."""
     def bad_constructor(**kwargs):
+        """Simulate validation failure during configuration creation."""
         raise FakeValidationError("seed data rejected")
     monkeypatch.setattr(session_module, "CombinedConfig", bad_constructor)
 
@@ -85,6 +94,7 @@ def test_new_config_raises_config_error_on_validation_failure(monkeypatch):
 # ---------- load ----------
 
 def test_load_missing_file_raises_and_leaves_prior_config_untouched(tmp_path):
+    """Verify that load missing file raises and leaves prior config untouched."""
     session = Session()
     session.new_config()
     original_config = session.config
@@ -96,6 +106,7 @@ def test_load_missing_file_raises_and_leaves_prior_config_untouched(tmp_path):
 
 
 def test_load_invalid_schema_raises_and_leaves_prior_config_untouched(monkeypatch, tmp_path):
+    """Verify that load invalid schema raises and leaves prior config untouched."""
     session = Session()
     session.new_config()
     original_config = session.config
@@ -111,6 +122,7 @@ def test_load_invalid_schema_raises_and_leaves_prior_config_untouched(monkeypatc
 
 
 def test_load_bad_json_raises_and_leaves_prior_config_untouched(monkeypatch, tmp_path):
+    """Verify that load bad json raises and leaves prior config untouched."""
     session = Session()
     session.new_config()
     original_config = session.config
@@ -126,6 +138,7 @@ def test_load_bad_json_raises_and_leaves_prior_config_untouched(monkeypatch, tmp
 
 
 def test_load_success_swaps_in_new_config_and_resets_dirty(monkeypatch, tmp_path):
+    """Verify that load success swaps in new config and resets dirty."""
     session = Session()
     session.new_config()
     session.dirty = True
@@ -146,12 +159,14 @@ def test_load_success_swaps_in_new_config_and_resets_dirty(monkeypatch, tmp_path
 # ---------- save ----------
 
 def test_save_with_no_config_raises_config_error():
+    """Verify that save with no config raises config error."""
     session = Session()
     with pytest.raises(ConfigError):
         session.save("somewhere.json")
 
 
 def test_save_with_no_path_and_no_prior_path_raises_config_error():
+    """Verify that save with no path and no prior path raises config error."""
     session = Session()
     session.new_config()  # config_path stays None until a load/save
     with pytest.raises(ConfigError):
@@ -159,6 +174,7 @@ def test_save_with_no_path_and_no_prior_path_raises_config_error():
 
 
 def test_save_writes_file_and_resets_dirty(tmp_path):
+    """Verify that save writes file and resets dirty."""
     session = Session()
     session.new_config()
     session.dirty = True
@@ -173,6 +189,7 @@ def test_save_writes_file_and_resets_dirty(tmp_path):
 
 
 def test_save_reuses_last_path_when_none_given(tmp_path):
+    """Verify that save reuses last path when none given."""
     session = Session()
     session.new_config()
     target = tmp_path / "out.json"
@@ -187,12 +204,14 @@ def test_save_reuses_last_path_when_none_given(tmp_path):
 # ---------- require_config ----------
 
 def test_require_config_raises_when_nothing_loaded():
+    """Verify that require config raises when nothing loaded."""
     session = Session()
     with pytest.raises(ConfigError):
         session.require_config()
 
 
 def test_require_config_returns_config_when_present():
+    """Verify that require config returns config when present."""
     session = Session()
     session.new_config()
     assert session.require_config() is session.config
