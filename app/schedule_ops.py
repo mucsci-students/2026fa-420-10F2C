@@ -40,6 +40,7 @@ from typing import Optional
 from scheduler import Scheduler
 from scheduler.writers import CSVWriter, JSONWriter
 
+DEFAULT_EXPORT_DIR = Path.cwd() / "exports"
 
 class GenerationOutcome:
     """Distinguishes the four cases Req #8 explicitly calls out, instead of
@@ -105,28 +106,14 @@ def summarize_schedule(schedule) -> str:
     return "\n".join(lines)
 
 
-def export_schedule(schedules: list, fmt: str, out_path: str, overwrite: bool = False) -> Path:
-    """Writes generated schedule(s) to JSON or CSV via the library's own
-    writers (Req #10). `schedules` is always a list of schedules (each a
-    list[CourseInstance]) -- the caller wraps a single selected schedule
-    in a one-element list so this function never has to sniff which case
-    it's in.
-
-    CONFIRMED via `inspect` against course-constraint-scheduler 3.0.0:
-      scheduler.writers.{JSONWriter,CSVWriter}(filename: str | None = None)
-      is a context manager; call .add_schedule(schedule) once per
-      schedule inside the `with` block. filename=None writes to stdout,
-      which we never use here since out_path is always provided.
-
-    Overwrite protection: refuse if the target already exists and
-    overwrite=False -- this app's documented approach (see README). This
-    has a benign TOCTOU race against the writer's own file open, which is
-    acceptable for a single-user interactive CLI.
-    """
+def export_schedule(schedules: list, fmt: str, out_path: Optional[str], overwrite: bool = False) -> Path:
     if fmt not in ("json", "csv"):
         raise ValueError(f"Unknown export format: {fmt!r} (expected 'json' or 'csv')")
 
-    target = Path(out_path)
+    target = Path(out_path) if out_path and out_path.strip() else DEFAULT_EXPORT_DIR / f"schedule.{fmt}"
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+
     if target.exists() and not overwrite:
         raise FileExistsError(f"'{target}' already exists. Re-run with overwrite confirmed to replace it.")
 

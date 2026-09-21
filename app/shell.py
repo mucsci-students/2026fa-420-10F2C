@@ -1,6 +1,6 @@
 import argparse
 from app.session import Session, ConfigError
-from app import commands
+from app import commands, schedule_ops
 # Handles the interactive shell. Owns one Session for the whole run and
 # passes it into every command function.
 # run() is a guided numbered-menu flow (welcome -> pick area -> pick
@@ -819,7 +819,7 @@ class SchedulerShell:
                     if fmt not in ("json", "csv"):
                         print("Please enter 'json' or 'csv'.")
                         continue
-                    path = input("Output file path: ").strip()
+                    path = input(f"Output file path (blank = {schedule_ops.DEFAULT_EXPORT_DIR / ('schedule.' + fmt)}): ").strip()                    
                     idx_input = input("Export a single index, or blank for all: ").strip()
                     index = int(idx_input) if idx_input.isdigit() else None
                     overwrite_input = input("Overwrite if it exists? (y/n): ").strip().lower()

@@ -1984,3 +1984,5 @@ def export_schedule(session, fmt, path, index=None, overwrite=False):
         print(f"{e} (pass --overwrite to replace it).")
     except ValueError as e:
         print(f"Export failed: {e}")
+    except OSError as e:
+        print(f"Export failed: could not write to that location ({e}).")
