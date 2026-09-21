@@ -1240,7 +1240,10 @@ def _prompt_meeting():
         start_time = input("  > ").strip() or None
 
         try:
-            return Meeting(day=day, duration=duration, lab=lab, delivery=delivery, start_time=start_time)
+            return [
+                Meeting(day=d, duration=duration, lab=lab, delivery=delivery, start_time=start_time)
+                for d in days
+            ]
         except ValidationError as e:
             print(f"Invalid meeting: {e}")
             print("Let's try that meeting again.")
