@@ -128,98 +128,101 @@ class SchedulerShell:
 
     def _dispatch(self, args):
         session = self.session
+        match args.command:
+            case "faculty":
+                {
+                    "add": commands.add_faculty,
+                    "modify": commands.modify_faculty,
+                    "delete": commands.delete_faculty,
+                    "view": commands.view_faculty,
+                }[args.action](session)
 
-        if args.command == "faculty":
-            {
-                "add": commands.add_faculty,
-                "modify": commands.modify_faculty,
-                "delete": commands.delete_faculty,
-                "view": commands.view_faculty,
-            }[args.action](session)
+            case "course":
+                {
+                    "add": commands.add_course,
+                    "modify": commands.modify_course,
+                    "delete": commands.delete_course,
+                }[args.action](session)
 
-        elif args.command == "course":
-            {
-                "add": commands.add_course,
-                "modify": commands.modify_course,
-                "delete": commands.delete_course,
-            }[args.action](session)
+            case "lab":
+                {
+                    "add": commands.add_lab,
+                    "modify": commands.modify_lab,
+                    "delete": commands.delete_lab,
+                }[args.action](session)
 
-        elif args.command == "lab":
-            {
-                "add": commands.add_lab,
-                "modify": commands.modify_lab,
-                "delete": commands.delete_lab,
-            }[args.action](session)
+            case "room":
+                {
+                    "add": commands.add_room,
+                    "modify": commands.modify_room,
+                    "delete": commands.delete_room,
+                }[args.action](session)
 
-        elif args.command == "room":
-            {
-                "add": commands.add_room,
-                "modify": commands.modify_room,
-                "delete": commands.delete_room,
-            }[args.action](session)
+            case "timeslot":
+                {
+                    "add": commands.add_timeslot,
+                    "modify": commands.modify_timeslot,
+                    "delete": commands.delete_timeslot,
+                    "timing": commands.modify_timing_options,
+                }[args.action](session)
 
-        elif args.command == "timeslot":
-            {
-                "add": commands.add_timeslot,
-                "modify": commands.modify_timeslot,
-                "delete": commands.delete_timeslot,
-                "timing": commands.modify_timing_options,
-            }[args.action](session)
+            case "pattern":
+                {
+                    "add": commands.add_pattern,
+                    "modify": commands.modify_pattern,
+                    "delete": commands.delete_pattern,
+                }[args.action](session)
 
-        elif args.command == "pattern":
-            {
-                "add": commands.add_pattern,
-                "modify": commands.modify_pattern,
-                "delete": commands.delete_pattern,
-            }[args.action](session)
+            case "meeting":
+                {
+                    "add": commands.add_meeting,
+                    "modify": commands.modify_meeting,
+                    "delete": commands.delete_meeting,
+                }[args.action](session)
 
-        elif args.command == "meeting":
-            {
-                "add": commands.add_meeting,
-                "modify": commands.modify_meeting,
-                "delete": commands.delete_meeting,
-            }[args.action](session)
+            case "schedule":
+                match args.action: 
+                    case "generate":
+                        commands.generate_schedule(session, limit_override=args.limit)
+                    case "summary":
+                        commands.schedule_summary(session)
+                    case "view":
+                        commands.view_schedule(session, args.index)
+                    case "clear":
+                        commands.clear_schedules(session)
+                    case "export":
+                        commands.export_schedule(session, args.format, args.path,
+                                                index=args.index, overwrite=args.overwrite)
 
-        elif args.command == "schedule":
-            if args.action == "generate":
-                commands.generate_schedule(session, limit_override=args.limit)
-            elif args.action == "summary":
-                commands.schedule_summary(session)
-            elif args.action == "view":
-                commands.view_schedule(session, args.index)
-            elif args.action == "clear":
-                commands.clear_schedules(session)
-            elif args.action == "export":
-                commands.export_schedule(session, args.format, args.path,
-                                          index=args.index, overwrite=args.overwrite)
+            case "config":
+                match args.action: 
+                    case "new":
+                        commands.new_config(session)
+                    case  "print":
+                        commands.print_config(session)
+                    case "save":
+                        commands.save_config(session, args.path)
+                    case "load":
+                        commands.load_config(session, args.path)
+                    case "validate":
+                        commands.validate_config(session)
 
-        elif args.command == "config":
-            if args.action == "new":
-                commands.new_config(session)
-            elif args.action == "print":
-                commands.print_config(session)
-            elif args.action == "save":
-                commands.save_config(session, args.path)
-            elif args.action == "load":
-                commands.load_config(session, args.path)
-            elif args.action == "validate":
-                commands.validate_config(session)
+            case "settings":
+                match args.action:
+                    case "limit":
+                        if args.reset:
+                            commands.reset_generation_limit(session)
+                        elif args.value is not None:
+                            commands.set_generation_limit(session, args.value)
+                        else:
+                            print("Usage: settings limit <value> | settings limit --reset")
+                    case "enable-flag":
+                        commands.enable_optimizer_flag(session, args.flag)
+                    case "disable-flag":
+                        commands.disable_optimizer_flag(session, args.flag)
 
-        elif args.command == "settings":
-            if args.action == "limit":
-                if args.reset:
-                    commands.reset_generation_limit(session)
-                elif args.value is not None:
-                    commands.set_generation_limit(session, args.value)
-                else:
-                    print("Usage: settings limit <value> | settings limit --reset")
-            elif args.action == "enable-flag":
-                commands.enable_optimizer_flag(session, args.flag)
-            elif args.action == "disable-flag":
-                commands.disable_optimizer_flag(session, args.flag)
-
-        elif args.command == "help":
-            self.show_help()
+            case "help":
+                self.show_help()
 
 
     def _confirm_discard_if_dirty(self, action_label):
@@ -261,23 +264,24 @@ class SchedulerShell:
             print("0. Exit\n")
             choice = input("Select: ").strip()
 
-            if choice == "0":
-                if not self._confirm_discard_if_dirty("Exiting"):
-                    continue
-                print("Goodbye!")
-                break
-            elif choice == "1":
-                self._configuration_menu()
-            elif choice == "2":
-                self._run_scheduler_menu()
-            elif choice == "3":
-                self._schedules_menu()
-            elif choice == "4":
-                self._config_file_menu()
-            elif choice == "help":
-                self._help_main()
-            else:
-                print("Please enter a number from the menu.")
+            match choice: 
+                case "0":
+                    if not self._confirm_discard_if_dirty("Exiting"):
+                        continue
+                    print("Goodbye!")
+                    break
+                case "1":
+                    self._configuration_menu()
+                case "2":
+                    self._run_scheduler_menu()
+                case "3":
+                    self._schedules_menu()
+                case  "4":
+                    self._config_file_menu()
+                case "help":
+                    self._help_main()
+                case _:
+                    print("Please enter a number from the menu.")
 
     def _welcome(self):
         print("=" * 60)
@@ -352,44 +356,45 @@ class SchedulerShell:
             choice = input("Select: ").strip()
 
             try:
-                if choice == "0":
-                    return
-                elif choice == "1":
-                    self._entity_menu("Faculty", commands.add_faculty, commands.modify_faculty,
-                                       commands.delete_faculty, view=commands.view_faculty,
-                                       help_text=self._ENTITY_HELP["Faculty"])
-                elif choice == "2":
-                    self._entity_menu("Course", commands.add_course, commands.modify_course,
-                                       commands.delete_course, view=commands.view_course,
-                                       help_text=self._ENTITY_HELP["Course"])
-                elif choice == "3":
-                    self._entity_menu("Room", commands.add_room, commands.modify_room,
-                                       commands.delete_room, view=commands.view_room,
-                                       help_text=self._ENTITY_HELP["Room"])
-                elif choice == "4":
-                    self._entity_menu("Lab", commands.add_lab, commands.modify_lab,
-                                       commands.delete_lab, view=commands.view_lab,
-                                       help_text=self._ENTITY_HELP["Lab"])
-                elif choice == "5":
-                    self._entity_menu("Time Slot", commands.add_timeslot, commands.modify_timeslot,
-                                       commands.delete_timeslot,
-                                       extra_actions={"Modify global timing options (gap/overlap)":
-                                                       commands.modify_timing_options},
-                                       help_text=self._ENTITY_HELP["Time Slot"])
-                elif choice == "6":
-                    self._entity_menu("Class Pattern", commands.add_pattern, commands.modify_pattern,
-                                       commands.delete_pattern,
-                                       help_text=self._ENTITY_HELP["Class Pattern"])
-                elif choice == "7":
-                    self._entity_menu("Meeting", commands.add_meeting, commands.modify_meeting,
-                                       commands.delete_meeting,
-                                       help_text=self._ENTITY_HELP["Meeting"])
-                elif choice == "8":
-                    self._settings_menu()
-                elif choice == "help":
-                    self._help_configuration()
-                else:
-                    print("Please enter a number from the menu.")
+                match choice:
+                    case "0":
+                        return
+                    case "1":
+                        self._entity_menu("Faculty", commands.add_faculty, commands.modify_faculty,
+                                        commands.delete_faculty, view=commands.view_faculty,
+                                        help_text=self._ENTITY_HELP["Faculty"])
+                    case "2":
+                        self._entity_menu("Course", commands.add_course, commands.modify_course,
+                                        commands.delete_course, view=commands.view_course,
+                                        help_text=self._ENTITY_HELP["Course"])
+                    case "3":
+                        self._entity_menu("Room", commands.add_room, commands.modify_room,
+                                        commands.delete_room, view=commands.view_room,
+                                        help_text=self._ENTITY_HELP["Room"])
+                    case "4":
+                        self._entity_menu("Lab", commands.add_lab, commands.modify_lab,
+                                        commands.delete_lab, view=commands.view_lab,
+                                        help_text=self._ENTITY_HELP["Lab"])
+                    case "5":
+                        self._entity_menu("Time Slot", commands.add_timeslot, commands.modify_timeslot,
+                                        commands.delete_timeslot,
+                                        extra_actions={"Modify global timing options (gap/overlap)":
+                                                        commands.modify_timing_options},
+                                        help_text=self._ENTITY_HELP["Time Slot"])
+                    case "6":
+                        self._entity_menu("Class Pattern", commands.add_pattern, commands.modify_pattern,
+                                        commands.delete_pattern,
+                                        help_text=self._ENTITY_HELP["Class Pattern"])
+                    case "7":
+                        self._entity_menu("Meeting", commands.add_meeting, commands.modify_meeting,
+                                        commands.delete_meeting,
+                                        help_text=self._ENTITY_HELP["Meeting"])
+                    case "8":
+                        self._settings_menu()
+                    case "help":
+                        self._help_configuration()
+                    case _:
+                        print("Please enter a number from the menu.")
             except ConfigError as e:
                 print(f"Error: {e}")
 
@@ -469,22 +474,23 @@ class SchedulerShell:
             choice = input("Select: ").strip()
 
             try:
-                if choice == "0":
-                    return
-                elif choice == "1":
-                    add_fn(self.session)
-                elif choice == "2":
-                    modify_fn(self.session)
-                elif choice == "3":
-                    delete_fn(self.session)
-                elif view_num is not None and choice == str(view_num):
-                    view(self.session)
-                elif choice in extra_nums:
-                    extra_nums[choice](self.session)
-                elif choice == "help":
-                    self._print_help(label, help_text or f"No detailed help is written for {label} yet.")
-                else:
-                    print("Please enter a number from the menu.")
+                match choice:
+                    case "0":
+                        return
+                    case "1":
+                        add_fn(self.session)
+                    case "2":
+                        modify_fn(self.session)
+                    case "3":
+                        delete_fn(self.session)
+                    case selected if view_num is not None and selected == str(view_num):
+                        view(self.session)
+                    case selected if selected in extra_nums:
+                        extra_nums[selected](self.session)
+                    case "help":
+                        self._print_help(label, help_text or f"No detailed help is written for {label} yet.")
+                    case _:
+                        print("Please enter a number from the menu.")
             except ConfigError as e:
                 print(f"Error: {e}")
 
@@ -658,30 +664,31 @@ class SchedulerShell:
             choice = input("Select: ").strip()
 
             try:
-                if choice == "0":
-                    return
-                elif choice == "1":
-                    if not self._confirm_discard_if_dirty("Starting a new configuration"):
-                        continue
-                    commands.new_config(self.session)
-                    return
-                elif choice == "2":
-                    if not self._confirm_discard_if_dirty("Loading a different configuration"):
-                        continue
-                    path = input("Path to load (blank = example config): ").strip()
-                    path = path or "app/examples/config_example.json"
-                    commands.load_config(self.session, path)
-                elif choice == "3":
-                    path = input("Path to save to (blank = reuse last path): ").strip()
-                    commands.save_config(self.session, path or None)
-                elif choice == "4":
-                    commands.print_config(self.session)
-                elif choice == "5":
-                    commands.validate_config(self.session)
-                elif choice == "help":
-                    self._help_config_file()
-                else:
-                    print("Please enter a number from the menu.")
+                match choice: 
+                    case "0":
+                        return
+                    case "1":
+                        if not self._confirm_discard_if_dirty("Starting a new configuration"):
+                            continue
+                        commands.new_config(self.session)
+                        return
+                    case "2":
+                        if not self._confirm_discard_if_dirty("Loading a different configuration"):
+                            continue
+                        path = input("Path to load (blank = example config): ").strip()
+                        path = path or "app/examples/config_example.json"
+                        commands.load_config(self.session, path)
+                    case "3":
+                        path = input("Path to save to (blank = reuse last path): ").strip()
+                        commands.save_config(self.session, path or None)
+                    case "4":
+                        commands.print_config(self.session)
+                    case "5":
+                        commands.validate_config(self.session)
+                    case "help":
+                        self._help_config_file()
+                    case _:
+                        print("Please enter a number from the menu.")
             except ConfigError as e:
                 print(f"Error: {e}")
 
@@ -722,26 +729,27 @@ class SchedulerShell:
             choice = input("Select: ").strip()
 
             try:
-                if choice == "0":
-                    return
-                elif choice == "1":
-                    value_input = input("New generation limit: ").strip()
-                    if not value_input.lstrip("-").isdigit():
-                        print("Please enter a whole number.")
-                        continue
-                    commands.set_generation_limit(self.session, int(value_input))
-                elif choice == "2":
-                    commands.reset_generation_limit(self.session)
-                elif choice == "3":
-                    flag = input("Flag to enable (e.g. faculty_course, same_room, pack_labs): ").strip()
-                    commands.enable_optimizer_flag(self.session, flag)
-                elif choice == "4":
-                    flag = input("Flag to disable: ").strip()
-                    commands.disable_optimizer_flag(self.session, flag)
-                elif choice == "help":
-                    self._help_settings()
-                else:
-                    print("Please enter a number from the menu.")
+                match choice: 
+                    case "0":
+                        return
+                    case "1":
+                        value_input = input("New generation limit: ").strip()
+                        if not value_input.lstrip("-").isdigit():
+                            print("Please enter a whole number.")
+                            continue
+                        commands.set_generation_limit(self.session, int(value_input))
+                    case "2":
+                        commands.reset_generation_limit(self.session)
+                    case "3":
+                        flag = input("Flag to enable (e.g. faculty_course, same_room, pack_labs): ").strip()
+                        commands.enable_optimizer_flag(self.session, flag)
+                    case "4":
+                        flag = input("Flag to disable: ").strip()
+                        commands.disable_optimizer_flag(self.session, flag)
+                    case "help":
+                        self._help_settings()
+                    case _:
+                        print("Please enter a number from the menu.")
             except ConfigError as e:
                 print(f"Error: {e}")
 
@@ -804,35 +812,36 @@ class SchedulerShell:
             choice = input("Select: ").strip()
 
             try:
-                if choice == "0":
-                    return
-                elif choice == "1":
-                    commands.schedule_summary(self.session)
-                elif choice == "2":
-                    idx = input("Schedule index: ").strip()
-                    if idx.isdigit():
-                        commands.view_schedule(self.session, int(idx))
-                    else:
-                        print("Please enter a valid integer index.")
-                elif choice == "3":
-                    fmt = input("Format (json/csv): ").strip().lower()
-                    if fmt not in ("json", "csv"):
-                        print("Please enter 'json' or 'csv'.")
-                        continue
-                    path = input(
-                        f"Output file path (blank = {schedule_ops.DEFAULT_EXPORT_DIR / ('schedule.' + fmt)}): "
-                    ).strip()
-                    idx_input = input("Export a single index, or blank for all: ").strip()
-                    index = int(idx_input) if idx_input.isdigit() else None
-                    overwrite_input = input("Overwrite if it exists? (y/n): ").strip().lower()
-                    commands.export_schedule(self.session, fmt, path, index=index,
-                                              overwrite=overwrite_input in ("y", "yes"))
-                elif choice == "4":
-                    commands.clear_schedules(self.session)
-                elif choice == "help":
-                    self._help_schedules()
-                else:
-                    print("Please enter a number from the menu.")
+                match choice:
+                    case "0":
+                        return
+                    case "1":
+                        commands.schedule_summary(self.session)
+                    case "2":
+                        idx = input("Schedule index: ").strip()
+                        if idx.isdigit():
+                            commands.view_schedule(self.session, int(idx))
+                        else:
+                            print("Please enter a valid integer index.")
+                    case "3":
+                        fmt = input("Format (json/csv): ").strip().lower()
+                        if fmt not in ("json", "csv"):
+                            print("Please enter 'json' or 'csv'.")
+                            continue
+                        path = input(
+                            f"Output file path (blank = {schedule_ops.DEFAULT_EXPORT_DIR / ('schedule.' + fmt)}): "
+                        ).strip()
+                        idx_input = input("Export a single index, or blank for all: ").strip()
+                        index = int(idx_input) if idx_input.isdigit() else None
+                        overwrite_input = input("Overwrite if it exists? (y/n): ").strip().lower()
+                        commands.export_schedule(self.session, fmt, path, index=index,
+                                                overwrite=overwrite_input in ("y", "yes"))
+                    case "4":
+                        commands.clear_schedules(self.session)
+                    case "help":
+                        self._help_schedules()
+                    case _:
+                        print("Please enter a number from the menu.")
             except ConfigError as e:
                 print(f"Error: {e}")
 
