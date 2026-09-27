@@ -1,0 +1,17 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Schedule Viewer{% endblock %}
+{% block content %}
+<h1>Schedule Viewer <span class="badge">Not yet implemented</span></h1>
+<p>Present generated or imported schedules in a readable format (Sections 15&ndash;18).</p>
+<div class="todo-list">
+<strong>TODO before this mode is complete:</strong>
+<ul>
+    <li>Show schedule count; navigate among multiple schedules; identify which one is displayed (Section 15)</li>
+    <li>Room-oriented view &mdash; includes both rooms and labs, with course/faculty/day/time/duration (Section 16.1)</li>
+    <li>Faculty-oriented view &mdash; course/room-or-lab/day/time/duration (Section 16.2)</li>
+    <li>Load schedule JSON through a GUI file picker, with validation and error reporting (Section 17)</li>
+    <li>Export one schedule or the full set as JSON; keep Sprint 1's CSV export available too (Section 18)</li>
+    <li>Clear / replace the currently available results (Section 15)</li>
+</ul>
+</div>
+{% endblock %}

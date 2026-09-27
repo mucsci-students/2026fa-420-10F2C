@@ -16,7 +16,7 @@
 #                                                                                                                         #
 #   STILL UNCONFIRMED -- new_config()'s seed data below:                                                                 #
 #   `CombinedConfig(config={"rooms": [], ...})` raised 9 pydantic ValidationErrors        #
-#   requiring >=1 room/course/faculty, a time block for every weekday, and    #
+#   requiring >=1 room/course/faculty, a time block for every weekday, and               #
 #   >=1 class pattern -- an empty config is not a valid CombinedConfig. The              #
 #   seed values below are my best reconstruction from the JSON shapes seen               #
 #   in the Sprint 1 slides/docs (course_id, credits, room/lab lists, times as             #
