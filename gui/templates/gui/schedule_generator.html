@@ -1,0 +1,17 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Schedule Generator{% endblock %}
+{% block content %}
+<h1>Schedule Generator <span class="badge">Not yet implemented</span></h1>
+<p>Generate schedules from the current valid configuration (Sections 13&ndash;14).</p>
+<div class="todo-list">
+<strong>TODO before this mode is complete:</strong>
+<ul>
+    <li>Visible "Generate" action, disabled/guarded without a valid configuration (Section 13)</li>
+    <li>Generation-limit override field &mdash; affects only this run, saved config's limit stays untouched (Section 14)</li>
+    <li>Optimizer-flag override controls &mdash; same one-run-only rule (Section 14)</li>
+    <li>Visible in-progress state; guard against duplicate/overlapping generate requests (Section 13)</li>
+    <li>Distinct result messages: success w/ count, no feasible schedule, invalid config, invalid override, unexpected error (Section 13)</li>
+    <li>Successful results become available in the Schedule Viewer (Section 13)</li>
+</ul>
+</div>
+{% endblock %}

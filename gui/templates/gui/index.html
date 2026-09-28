@@ -1,0 +1,12 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Home{% endblock %}
+{% block content %}
+<h1>Course Scheduler</h1>
+<p>Sprint 2 requires three clearly identifiable modes (Section 1):</p>
+<ul class="mode-links">
+    <li><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> — create, load, edit, validate, and save a scheduler configuration.</li>
+    <li><a href="{% url 'gui:schedule_generator' %}">Schedule Generator</a> — generate schedules from the current valid configuration.</li>
+    <li><a href="{% url 'gui:schedule_viewer' %}">Schedule Viewer</a> — inspect, navigate, and export generated schedules.</li>
+</ul>
+<p><em>Status: navigation and page structure are in place. Each mode page lists the work still required to satisfy Sprint 2.</em></p>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Configuration Editor{% endblock %}
+{% block content %}
+<h1>Configuration Editor <span class="badge">Not yet implemented</span></h1>
+<p>Create, inspect, and modify a complete scheduler configuration (Sections 6&ndash;12).</p>
+<div class="todo-list">
+<strong>TODO before this mode is complete:</strong>
+<ul>
+    <li>New / Load / Save / Validate configuration actions, with unsaved-changes protection on load (Section 8&ndash;9)</li>
+    <li>CRUD forms for: Rooms, Labs, Courses, Faculty, Time Slots, Class Patterns, Meetings, Global Settings (Section 7)</li>
+    <li>Validation errors shown on the form itself; previous valid config preserved on any failure (Section 10)</li>
+    <li>Draft vs. valid state separation &mdash; Cancel must leave the stored config unchanged (Section 11)</li>
+    <li>Safe deletion &mdash; block or confirm when an item is still referenced elsewhere, and show what references it (Section 12)</li>
+    <li>Empty / loading / error states specific to this page (Section 19)</li>
+</ul>
+</div>
+{% endblock %}
