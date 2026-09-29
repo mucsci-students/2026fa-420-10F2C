@@ -22,7 +22,6 @@ ALLOWED_HOSTS: list[str] = ["*"]  # course project, no production deployment (Se
 INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.sessions",
-    "django.contrib.messages",
     "gui",
 ]
 
@@ -31,14 +30,7 @@ MIDDLEWARE = [
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
-    "django.contrib.messages.middleware.MessageMiddleware",
 ]
-
-# Flash messages ("Time Slot Added Successfully", ...) are kept in a cookie
-# rather than in request.session, so showing a message never rewrites the
-# session cookie that identifies the user's in-memory Session
-# (see gui/session_store.py).
-MESSAGE_STORAGE = "django.contrib.messages.storage.cookie.CookieStorage"
 
 ROOT_URLCONF = "config.urls"
 
@@ -51,8 +43,6 @@ TEMPLATES = [
             "context_processors": [
                 "django.template.context_processors.debug",
                 "django.template.context_processors.request",
-                "django.contrib.messages.context_processors.messages",
-                "gui.context_processors.config_status",
             ],
         },
     },

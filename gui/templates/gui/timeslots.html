@@ -1,0 +1,99 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Time Slots{% endblock %}
+{% block content %}
+<p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; Time Slots</p>
+<h1>Time Slots</h1>
+<p>
+    A time block tells the scheduler when classes may start on a weekday: beginning at the block's
+    start time, a class may start every <em>spacing</em> minutes, and its meeting must finish by the
+    block's end time. Blocks on the same day may touch but not overlap, and every weekday needs at least one.
+</p>
+
+{% if not data.has_config %}
+<div class="empty-state" role="status">
+    <h2>No configuration is loaded</h2>
+    <p>Create or load a configuration in the <a href="{% url 'gui:config_editor' %}">Configuration Editor</a> before editing time slots.</p>
+</div>
+{% else %}
+
+<h2>Weekly overview</h2>
+<div class="week-grid" style="--hour-pct: {{ data.hour_pct }}%;" role="img"
+     aria-label="Weekly overview of time blocks. The tables below list the same blocks.">
+    <div class="week-grid__col">
+        <div class="week-grid__day-name">&nbsp;</div>
+        <div class="week-grid__track week-grid__track--axis">
+            {% for hour in data.hours %}<span class="week-grid__hour" style="top: {{ hour.top }}%;">{{ hour.label }}</span>{% endfor %}
+        </div>
+    </div>
+    {% for day in data.days %}
+    <div class="week-grid__col">
+        <div class="week-grid__day-name">{{ day.day }}</div>
+        <div class="week-grid__track">
+            {% for block in day.blocks %}
+            <div class="week-grid__block"
+                 style="top: {{ block.top }}%; height: {{ block.height }}%;{% if block.tick %} --tick: {{ block.tick }}%;{% endif %}"
+                 title="{{ day.name }} {{ block.start }}-{{ block.end }}, start times every {{ block.spacing }} minutes">
+                <span class="week-grid__label">{{ block.start }}&ndash;{{ block.end }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+<p class="help">White lines inside a block mark the possible start times (every <em>spacing</em> minutes).</p>
+
+<h2>Time blocks by day</h2>
+{% for day in data.days %}
+<section class="day-section">
+    <h3>{{ day.name }} ({{ day.day }})</h3>
+    <table class="data-table">
+        <thead>
+            <tr><th scope="col">Time block</th><th scope="col">Spacing</th><th scope="col">Actions</th></tr>
+        </thead>
+        <tbody>
+        {% for block in day.blocks %}
+            <tr>
+                <td>{{ day.day }} {{ block.start }}-{{ block.end }}</td>
+                <td>every {{ block.spacing }} min</td>
+                <td class="actions">
+                    <a class="btn" href="{% url 'gui:timeslot_edit' day.day block.index %}">Edit</a>
+                    {% if day.only_block %}
+                    <span class="btn btn-disabled" aria-disabled="true">Delete</span>
+                    <span class="help">Only block on {{ day.day }}; add another before deleting it.</span>
+                    {% else %}
+                    <a class="btn btn-danger" href="{% url 'gui:timeslot_delete' day.day block.index %}">Delete</a>
+                    {% endif %}
+                </td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="3">No time blocks defined for {{ day.day }}. Every weekday needs at least one &mdash; add one below.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% endfor %}
+
+<h2>Add a time block</h2>
+<form method="post" action="{% url 'gui:timeslot_add' %}" class="edit-form">
+    {% csrf_token %}
+    {% with form=add_form %}{% include "gui/components/form_errors.html" %}{% endwith %}
+    {% include "gui/components/field.html" with field=add_form.day %}
+    {% include "gui/components/field.html" with field=add_form.start %}
+    {% include "gui/components/field.html" with field=add_form.end %}
+    {% include "gui/components/field.html" with field=add_form.spacing %}
+    <button type="submit" class="btn btn-primary">Add time block</button>
+</form>
+
+<h2>Timing options</h2>
+<details class="timing-options"{% if options_form.errors %} open{% endif %}>
+    <summary>Global timing options (advanced)</summary>
+    <form method="post" action="{% url 'gui:timing_options' %}" class="edit-form">
+        {% csrf_token %}
+        {% with form=options_form %}{% include "gui/components/form_errors.html" %}{% endwith %}
+        {% include "gui/components/field.html" with field=options_form.max_time_gap %}
+        {% include "gui/components/field.html" with field=options_form.min_time_overlap %}
+        <button type="submit" class="btn btn-primary">Apply timing options</button>
+    </form>
+</details>
+{% endif %}
+{% endblock %}

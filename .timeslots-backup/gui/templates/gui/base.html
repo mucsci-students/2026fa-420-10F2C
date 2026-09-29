@@ -3,7 +3,6 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Scheduler{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'gui/css/style.css' %}">
 </head>
@@ -13,25 +12,9 @@
     <a href="{% url 'gui:config_editor' %}" class="{% if active == 'config' %}active{% endif %}">Configuration Editor</a>
     <a href="{% url 'gui:schedule_generator' %}" class="{% if active == 'generator' %}active{% endif %}">Schedule Generator</a>
     <a href="{% url 'gui:schedule_viewer' %}" class="{% if active == 'viewer' %}active{% endif %}">Schedule Viewer</a>
-    <span class="nav-status" role="status">
-        Configuration:
-        {% if not config_loaded %}none loaded
-        {% elif config_dirty %}<strong>Unsaved changes</strong>
-        {% else %}no unsaved changes{% endif %}
-    </span>
 </nav>
 <main>
-{% if messages %}
-<div class="messages" aria-live="polite">
-    {% for message in messages %}
-    <div class="alert alert-{{ message.level_tag }}" role="{% if message.level_tag == 'error' %}alert{% else %}status{% endif %}">
-        <strong>{{ message.level_tag|title }}:</strong> {{ message }}
-    </div>
-    {% endfor %}
-</div>
-{% endif %}
 {% block content %}{% endblock %}
 </main>
-{% block scripts %}{% endblock %}
 </body>
 </html>

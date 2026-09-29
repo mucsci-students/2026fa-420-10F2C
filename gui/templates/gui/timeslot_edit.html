@@ -1,0 +1,19 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Edit Time Block{% endblock %}
+{% block content %}
+<p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; <a href="{% url 'gui:timeslots' %}">Time Slots</a> &rsaquo; Edit</p>
+<h1>Edit time block</h1>
+<p>
+    {{ day_name }} ({{ slot.day }}): currently <strong>{{ slot.start }}-{{ slot.end }}</strong>,
+    start times every {{ slot.spacing }} minutes. Nothing changes until you apply your edits.
+</p>
+<form method="post" class="edit-form">
+    {% csrf_token %}
+    {% include "gui/components/form_errors.html" %}
+    {% include "gui/components/field.html" with field=form.start %}
+    {% include "gui/components/field.html" with field=form.end %}
+    {% include "gui/components/field.html" with field=form.spacing %}
+    <button type="submit" class="btn btn-primary">Apply changes</button>
+    <a class="btn" href="{% url 'gui:timeslots' %}">Cancel</a>
+</form>
+{% endblock %}

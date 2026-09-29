@@ -1,0 +1,9 @@
+{% comment %}
+    Errors that belong to the form as a whole (for example "Time Conflict: ...").
+    Include it inside a form (or with form=...) so that "form" is defined.
+{% endcomment %}
+{% if form.non_field_errors %}
+<div class="alert alert-error" role="alert">
+    {% for error in form.non_field_errors %}<p><strong>Error:</strong> {{ error }}</p>{% endfor %}
+</div>
+{% endif %}
