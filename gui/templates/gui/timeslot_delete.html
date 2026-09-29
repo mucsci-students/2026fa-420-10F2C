@@ -1,0 +1,24 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Delete Time Block{% endblock %}
+{% block content %}
+<p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; <a href="{% url 'gui:timeslots' %}">Time Slots</a> &rsaquo; Delete</p>
+<h1>Delete time block</h1>
+{% if slot.is_only_block %}
+<div class="alert alert-error" role="alert">
+    <strong>Cannot delete:</strong> this is the only time block on {{ day_name }} ({{ slot.day }}).
+    Every weekday needs at least one, so add another block first.
+</div>
+<a class="btn" href="{% url 'gui:timeslots' %}">Back to time slots</a>
+{% else %}
+<p>
+    Are you sure you want to delete <strong>{{ slot.day }} {{ slot.start }}-{{ slot.end }}</strong>
+    (start times every {{ slot.spacing }} minutes)? This removes that time from the available
+    slots and cannot be undone.
+</p>
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" name="action" value="confirm" class="btn btn-danger">Delete time block</button>
+    <button type="submit" name="action" value="cancel" class="btn">Cancel</button>
+</form>
+{% endif %}
+{% endblock %}
