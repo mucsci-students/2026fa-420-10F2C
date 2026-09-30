@@ -1,0 +1,10 @@
+{% comment %}
+    A whole form's contents: form-level errors, then every field (label,
+    required marker, input, help text, errors) in order. Use it inside any
+    <form> so a form's layout follows its Form class automatically:
+        include "gui/components/form_fields.html" with form=add_form
+    Fields added at runtime (for example the confirm_replace checkbox from
+    ConfirmReplaceMixin) appear only when the form has them.
+{% endcomment %}
+{% include "gui/components/form_errors.html" %}
+{% for field in form %}{% include "gui/components/field.html" with field=field %}{% endfor %}

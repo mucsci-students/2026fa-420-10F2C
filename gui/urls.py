@@ -14,4 +14,5 @@ urlpatterns = [
     path("configuration/timeslots/<str:day>/<int:index>/delete/", views.timeslot_delete, name="timeslot_delete"),
     path("generate/", views.schedule_generator, name="schedule_generator"),
     path("schedules/", views.schedule_viewer, name="schedule_viewer"),
+    path("schedules/import/", views.schedule_import, name="schedule_import"),
 ]

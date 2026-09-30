@@ -14,13 +14,14 @@ template.
 """
 
 from django.contrib import messages
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
 
 from gui.constants import DAY_NAMES
+from gui.controllers import schedule_controller
 from gui.controllers import timeslots as timeslot_controller
 from gui.controllers.errors import ControllerError
-from gui.forms import AddTimeBlockForm, TimeBlockFieldsForm, TimingOptionsForm
+from gui.forms import AddTimeBlockForm, ScheduleImportForm, TimeBlockFieldsForm, TimingOptionsForm
 
 
 def index(request):
@@ -41,10 +42,43 @@ def schedule_generator(request):
     return render(request, "gui/schedule_generator.html", {"active": "generator"})
 
 
-def schedule_viewer(request):
-    """Schedule Viewer mode (Sections 15-18). Placeholder page today;
-    see gui/controllers/schedule_controller.py."""
-    return render(request, "gui/schedule_viewer.html", {"active": "viewer"})
+def schedule_viewer(request, import_form=None):
+    """Schedule Viewer mode (Sections 15-18). Loading schedules from JSON
+    works; navigation, room/faculty views, and export are still to come
+    (see gui/controllers/schedule_controller.py)."""
+    count = schedule_controller.schedule_count(request)
+    if import_form is None:
+        import_form = ScheduleImportForm(schedule_count=count)
+    return render(
+        request,
+        "gui/schedule_viewer.html",
+        {"active": "viewer", "schedule_count": count, "import_form": import_form},
+    )
+
+
+def schedule_import(request):
+    """Load schedules from an uploaded JSON file (Section 17).
+
+    Success: redirect to the viewer with a message. Failure: re-render the
+    viewer with the errors on the upload form; the schedules already loaded
+    are untouched (the controller only replaces them after a full check).
+    """
+    if request.method != "POST":
+        return redirect("gui:schedule_viewer")
+    form = ScheduleImportForm(
+        request.POST, request.FILES, schedule_count=schedule_controller.schedule_count(request)
+    )
+    if form.is_valid():
+        uploaded = form.cleaned_data["schedule_file"]
+        try:
+            count = schedule_controller.load_schedule_json(request, uploaded)
+        except ControllerError as error:
+            _attach_errors(form, error)
+        else:
+            noun = "schedule" if count == 1 else "schedules"
+            messages.success(request, f"Loaded {count} {noun} from {uploaded.name}.")
+            return redirect("gui:schedule_viewer")
+    return schedule_viewer(request, import_form=form)
 
 
 # ---------------------------------------------------------------------- #
@@ -61,6 +95,20 @@ def _attach_errors(form, error):
     for item in error.errors:
         target = item.field if item.field in form.fields else None
         form.add_error(target, item.message)
+
+
+def download_response(filename: str, content: str | bytes, content_type: str) -> HttpResponse:
+    """Send `content` as a file download (config save, schedule export).
+
+    Downloads let the browser choose where the file goes and ask before
+    replacing an existing file, so the app never overwrites anything on
+    disk -- the documented overwrite protection for Sections 9 and 18.
+    Text is sent as UTF-8; include "; charset=utf-8" in `content_type`.
+    """
+    body = content.encode("utf-8") if isinstance(content, str) else content
+    response = HttpResponse(body, content_type=content_type)
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 
 def _flash_warnings(request, warnings):
