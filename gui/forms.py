@@ -7,6 +7,7 @@ to the scheduler library.
 
 Done:
     - AddTimeBlockForm / TimeBlockFieldsForm / TimingOptionsForm (time slots)
+    - ScheduleImportForm (Schedule Viewer: load schedules from a JSON file)
 
 TODO: one Form class per remaining area, matching the "Required editable data"
 column in Section 7's table:
@@ -84,3 +85,65 @@ class TimingOptionsForm(forms.Form):
         min_value=0,
         help_text="Global scheduler timing option; see the scheduler library documentation.",
     )
+
+
+
+class ConfirmReplaceMixin:
+    """Adds a "confirm_replace" checkbox that must be ticked, but only when
+    submitting the form would replace or discard something (Sections 8, 17).
+
+    Use it for any action that overwrites data: loading schedules over the
+    current ones, loading a configuration over unsaved changes, etc. Call
+    require_confirmation() from the form's __init__; when `needed` is False
+    the checkbox is not added at all, so nothing extra is shown.
+
+        class ConfigLoadForm(ConfirmReplaceMixin, forms.Form):
+            config_file = forms.FileField(label="Configuration JSON file")
+
+            def __init__(self, *args, has_unsaved_changes=False, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.require_confirmation(
+                    has_unsaved_changes,
+                    label="Discard my unsaved changes",
+                    error="Tick this box to confirm discarding your unsaved changes.",
+                )
+    """
+
+    confirm_field = "confirm_replace"
+
+    def require_confirmation(self, needed: bool, *, label: str, error: str, help_text: str = ""):
+        self._confirm_error = error if needed else None
+        if needed:
+            self.fields[self.confirm_field] = forms.BooleanField(
+                required=False, label=label, help_text=help_text
+            )
+
+    def clean_confirm_replace(self):
+        confirmed = self.cleaned_data.get(self.confirm_field)
+        if getattr(self, "_confirm_error", None) and not confirmed:
+            raise forms.ValidationError(self._confirm_error)
+        return confirmed
+
+
+class ScheduleImportForm(ConfirmReplaceMixin, forms.Form):
+    """Schedule Viewer: load schedules from a JSON file (Section 17).
+
+    Only checks that a file was chosen and, when schedules are already
+    loaded, that the user agreed to replace them. Whether the file is a
+    usable schedule file is decided by app.schedule_io via the controller.
+    """
+
+    schedule_file = forms.FileField(
+        label="Schedule JSON file",
+        help_text="A .json file exported from the Schedule Viewer, holding one schedule or a full set.",
+        widget=forms.ClearableFileInput(attrs={"accept": ".json,application/json"}),
+    )
+
+    def __init__(self, *args, schedule_count=0, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.require_confirmation(
+            bool(schedule_count),
+            label=f"Replace the {schedule_count} schedule(s) currently loaded",
+            help_text="Loading a file replaces the schedules in the viewer. Export them first to keep them.",
+            error="Tick this box to confirm replacing the schedules that are loaded now.",
+        )
