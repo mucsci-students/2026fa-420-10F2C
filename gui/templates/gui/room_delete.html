@@ -1,0 +1,26 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Delete Room{% endblock %}
+{% block content %}
+<p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; <a href="{% url 'gui:rooms' %}">Rooms</a> &rsaquo; Delete</p>
+<h1>Delete room</h1>
+{% if not room.can_delete %}
+<div class="alert alert-error" role="alert">
+    <p><strong>Cannot delete:</strong> {{ room.name }} is still used by:</p>
+    <ul>
+        {% for item in room.referenced_by %}<li>{{ item }}</li>{% endfor %}
+    </ul>
+    <p>Remove this room from those records first.</p>
+</div>
+<a class="btn" href="{% url 'gui:rooms' %}">Back to rooms</a>
+{% else %}
+<p>
+    Are you sure you want to delete <strong>{{ room.name }}</strong> (capacity {{ room.capacity }})?
+    This cannot be undone.
+</p>
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" name="action" value="confirm" class="btn btn-danger">Delete room</button>
+    <button type="submit" name="action" value="cancel" class="btn">Cancel</button>
+</form>
+{% endif %}
+{% endblock %}

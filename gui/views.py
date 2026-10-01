@@ -49,8 +49,8 @@ def index(request):
 # needs to link to it.
 _CONFIG_AREAS = (
     ("time_blocks", "Time Slots", "gui:timeslots"),
-    ("rooms", "Rooms", None),
-    ("labs", "Labs", None),
+    ("rooms", "Rooms", "gui:rooms"),
+    ("labs", "Labs", "gui:labs"),
     ("courses", "Courses", None),
     ("faculty", "Faculty", None),
     ("patterns", "Class Patterns", None),
