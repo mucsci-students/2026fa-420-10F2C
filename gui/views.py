@@ -21,7 +21,13 @@ from gui.constants import DAY_NAMES
 from gui.controllers import schedule_controller
 from gui.controllers import timeslots as timeslot_controller
 from gui.controllers.errors import ControllerError
-from gui.forms import AddTimeBlockForm, ScheduleImportForm, TimeBlockFieldsForm, TimingOptionsForm
+from gui.forms import (
+    AddTimeBlockForm,
+    ScheduleExportForm,
+    ScheduleImportForm,
+    TimeBlockFieldsForm,
+    TimingOptionsForm,
+)
 
 
 def index(request):
@@ -44,16 +50,34 @@ def schedule_generator(request):
 
 def schedule_viewer(request, import_form=None):
     """Schedule Viewer mode (Sections 15-18). Loading schedules from JSON
-    works; navigation, room/faculty views, and export are still to come
-    (see gui/controllers/schedule_controller.py)."""
+    and exporting one as JSON work; navigation and the room/faculty views
+    are still to come (see gui/controllers/schedule_controller.py).
+
+    ?schedule=N (1-based) selects the current schedule; anything missing or
+    out of range falls back to schedule 1.
+    """
     count = schedule_controller.schedule_count(request)
+    current = _current_schedule_number(request, count)
     if import_form is None:
         import_form = ScheduleImportForm(schedule_count=count)
+    export_form = ScheduleExportForm(schedule_count=count, initial={"schedule": current})
     return render(
         request,
         "gui/schedule_viewer.html",
-        {"active": "viewer", "schedule_count": count, "import_form": import_form},
+        {
+            "active": "viewer",
+            "schedule_count": count,
+            "current_schedule": current,
+            "import_form": import_form,
+            "export_form": export_form,
+        },
     )
+
+
+def _current_schedule_number(request, count):
+    raw = request.GET.get("schedule", "")
+    number = int(raw) if raw.isdigit() else 1
+    return number if 1 <= number <= count else 1
 
 
 def schedule_import(request):
@@ -79,6 +103,32 @@ def schedule_import(request):
             messages.success(request, f"Loaded {count} {noun} from {uploaded.name}.")
             return redirect("gui:schedule_viewer")
     return schedule_viewer(request, import_form=form)
+
+
+def schedule_export_json(request):
+    """Download one schedule as JSON (Section 18).
+
+    A GET form, since nothing changes. Success sends the file as a browser
+    download (download_response), so the browser picks where it goes and
+    asks before replacing an existing file. Problems (no schedules, a
+    schedule number that no longer exists) go back to the viewer with an
+    error message.
+    """
+    count = schedule_controller.schedule_count(request)
+    form = ScheduleExportForm(request.GET, schedule_count=count)
+    if not form.is_valid():
+        if count == 0:
+            messages.error(request, schedule_controller.NO_SCHEDULES_MESSAGE)
+        else:
+            messages.error(request, f"Choose a schedule from 1 to {count} to export.")
+        return redirect("gui:schedule_viewer")
+
+    try:
+        export = schedule_controller.export_schedule_json(request, form.cleaned_data["index"])
+    except ControllerError as error:
+        messages.error(request, error.message)
+        return redirect("gui:schedule_viewer")
+    return download_response(export.filename, export.content, export.content_type)
 
 
 # ---------------------------------------------------------------------- #

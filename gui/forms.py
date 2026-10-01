@@ -8,6 +8,7 @@ to the scheduler library.
 Done:
     - AddTimeBlockForm / TimeBlockFieldsForm / TimingOptionsForm (time slots)
     - ScheduleImportForm (Schedule Viewer: load schedules from a JSON file)
+    - ScheduleExportForm (Schedule Viewer: pick the schedule to export)
 
 TODO: one Form class per remaining area, matching the "Required editable data"
 column in Section 7's table:
@@ -147,3 +148,31 @@ class ScheduleImportForm(ConfirmReplaceMixin, forms.Form):
             help_text="Loading a file replaces the schedules in the viewer. Export them first to keep them.",
             error="Tick this box to confirm replacing the schedules that are loaded now.",
         )
+
+
+class ScheduleExportForm(forms.Form):
+    """Schedule Viewer: which schedule to export (Section 18).
+
+    Submitted with GET, since exporting changes nothing. `schedule` is the
+    1-based number the user sees ("Schedule 2 of 5"); cleaned_data["index"]
+    is the 0-based index the controller takes. Pass initial={"schedule": n}
+    to preselect the schedule currently shown in the viewer.
+    """
+
+    schedule = forms.TypedChoiceField(
+        label="Schedule",
+        coerce=int,
+        help_text="The schedule to save as a JSON file you can load back into the viewer later.",
+    )
+
+    def __init__(self, *args, schedule_count=0, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["schedule"].choices = [
+            (number, f"Schedule {number} of {schedule_count}") for number in range(1, schedule_count + 1)
+        ]
+
+    def clean(self):
+        cleaned = super().clean()
+        if "schedule" in cleaned:
+            cleaned["index"] = cleaned["schedule"] - 1
+        return cleaned

@@ -20,12 +20,15 @@ Who uses what:
     view_schedule()     -> get_schedule(request, index), then group by room/faculty
     exports             -> get_schedule / get_schedules + app.schedule_io writers
     load_schedule_json  -> done (Section 17)
+    export_schedule_json -> done (Section 18); returns an ExportFile for the view
 
 Like every controller, these raise ControllerError for anything the user
 can fix and never build HTTP responses (Section 20).
 """
 
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 from app import schedule_io
 from app.schedule_io import Assignment
@@ -35,6 +38,17 @@ from gui.session_store import get_session
 
 IMPORT_FIELD = "schedule_file"
 NO_SCHEDULES_MESSAGE = "There are no schedules yet. Generate schedules or load a schedule file first."
+JSON_CONTENT_TYPE = "application/json; charset=utf-8"
+
+
+@dataclass(frozen=True)
+class ExportFile:
+    """A file ready to download: the view passes these to download_response()."""
+
+    filename: str
+    content: str
+    content_type: str
+    schedule_count: int
 
 
 # ---------------------------------------------------------------------- #
@@ -136,10 +150,27 @@ def load_schedule_json(request, uploaded_file) -> int:
     return len(schedules)
 
 
-def export_schedule_json(request, index=None):
-    """TODO (Section 18): get_schedule(request, index) or get_schedules(request),
-    then app.schedule_io.schedules_to_json(...)."""
-    raise NotImplementedError
+def export_schedule_json(request, index: int | None = None) -> ExportFile:
+    """Section 18: one schedule (0-based `index`) or, with index=None, every
+    schedule, in the documented JSON format that load_schedule_json reads
+    back. Raises ControllerError when there is nothing to export or the
+    index doesn't exist. Nothing in the session changes.
+
+    File names: schedule-<n>.json (n as shown to the user, 1-based) or
+    schedules-all-<count>.json.
+    """
+    if index is None:
+        schedules = get_schedules(request)
+        filename = f"schedules-all-{len(schedules)}.json"
+    else:
+        schedules = [get_schedule(request, index)]
+        filename = f"schedule-{index + 1}.json"
+    return ExportFile(
+        filename=filename,
+        content=schedule_io.schedules_to_json(schedules),
+        content_type=JSON_CONTENT_TYPE,
+        schedule_count=len(schedules),
+    )
 
 
 def export_schedule_csv(request, index=None):

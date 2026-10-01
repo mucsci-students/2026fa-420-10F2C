@@ -21,6 +21,22 @@
 </div>
 {% endif %}
 
+<h2 id="export-schedules">Export</h2>
+{% if schedule_count %}
+<form method="get" action="{% url 'gui:schedule_export_json' %}" class="edit-form">
+    {% include "gui/components/form_fields.html" with form=export_form %}
+    <button type="submit" class="btn btn-primary">Export this schedule (JSON)</button>
+</form>
+{% else %}
+<p class="help" id="export-unavailable">Nothing to export yet. Export becomes available once schedules are generated or loaded.</p>
+<button type="button" class="btn btn-disabled" disabled aria-describedby="export-unavailable">Export this schedule (JSON)</button>
+{% endif %}
+<p class="help">
+    Exports download through your browser, which chooses where the file goes and asks before replacing
+    an existing file (or renames the new one). This app never writes over files on your computer.
+    Exported files can be loaded back into this viewer later.
+</p>
+
 <h2 id="load-schedules">Load schedules from a file</h2>
 <p class="help">
     The whole file is checked before anything changes. If it has a problem, you'll see what is wrong
@@ -38,7 +54,7 @@
     <li>Navigate among schedules; identify which one is displayed (Section 15)</li>
     <li>Room-oriented view &mdash; includes both rooms and labs (Section 16.1)</li>
     <li>Faculty-oriented view (Section 16.2)</li>
-    <li>Export one schedule or the full set as JSON, plus CSV (Section 18)</li>
+    <li>Export the full set as JSON, plus CSV (Section 18)</li>
     <li>Clear / replace the currently available results (Section 15)</li>
 </ul>
 </div>
