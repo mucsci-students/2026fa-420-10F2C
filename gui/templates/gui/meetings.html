@@ -1,0 +1,71 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Meetings{% endblock %}
+{% block content %}
+<p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; Meetings</p>
+<h1>Meetings</h1>
+<p>
+    A meeting is one weekly session of a <a href="{% url 'gui:patterns' %}">class pattern</a>: a day, how
+    long it lasts, whether it is a lab session, how it is delivered, and optionally a fixed start time.
+    Every pattern keeps at least one meeting.
+</p>
+
+{% if not data.has_config %}
+<div class="empty-state" role="status">
+    <h2>No configuration is loaded</h2>
+    <p>Create or load a configuration in the <a href="{% url 'gui:config_editor' %}">Configuration Editor</a> before editing meetings.</p>
+</div>
+{% else %}
+
+<h2>Meetings by class pattern</h2>
+{% for pattern in data.patterns %}
+<section class="day-section">
+    <h3>Pattern {{ pattern.index }}: {{ pattern.credits }} credits{% if not pattern.enabled %} (disabled){% endif %}</h3>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th scope="col">#</th>
+                <th scope="col">Day</th>
+                <th scope="col">Duration</th>
+                <th scope="col">Lab</th>
+                <th scope="col">Delivery</th>
+                <th scope="col">Fixed start time</th>
+                <th scope="col">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for meeting in pattern.meetings %}
+            <tr>
+                <td>{{ meeting.index }}</td>
+                <td>{{ meeting.day_name }} ({{ meeting.day }})</td>
+                <td>{{ meeting.duration }} min</td>
+                <td>{% if meeting.lab %}Yes{% else %}No{% endif %}</td>
+                <td>{{ meeting.delivery_label }}</td>
+                <td>{% if meeting.start_time %}{{ meeting.start_time }}{% else %}&mdash;{% endif %}</td>
+                <td class="actions">
+                    <a class="btn" href="{% url 'gui:meeting_edit' pattern.index meeting.index %}">Edit</a>
+                    {% if pattern.only_meeting %}
+                    <span class="btn btn-disabled" aria-disabled="true">Delete</span>
+                    <span class="help">Only meeting on this pattern.</span>
+                    {% else %}
+                    <a class="btn btn-danger" href="{% url 'gui:meeting_delete' pattern.index meeting.index %}">Delete</a>
+                    {% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% empty %}
+<p>There are no class patterns yet. Add one on the <a href="{% url 'gui:patterns' %}">Class Patterns</a> page; meetings belong to a pattern.</p>
+{% endfor %}
+
+{% if data.patterns %}
+<h2>Add a meeting</h2>
+<form method="post" action="{% url 'gui:meeting_add' %}" class="edit-form">
+    {% csrf_token %}
+    {% include "gui/components/form_fields.html" with form=add_form %}
+    <button type="submit" class="btn btn-primary">Add meeting</button>
+</form>
+{% endif %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Edit Meeting{% endblock %}
+{% block content %}
+<p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; <a href="{% url 'gui:meetings' %}">Meetings</a> &rsaquo; Edit</p>
+<h1>Edit meeting</h1>
+<p>
+    Editing meeting {{ meeting.index }} of <strong>pattern {{ meeting.pattern_index }}</strong>
+    ({{ meeting.pattern_credits }} credits), currently <strong>{{ meeting.summary }}</strong>.
+    Nothing changes until you apply your edits.
+</p>
+<form method="post" class="edit-form">
+    {% csrf_token %}
+    {% include "gui/components/form_fields.html" with form=form %}
+    <button type="submit" class="btn btn-primary">Apply changes</button>
+    <a class="btn" href="{% url 'gui:meetings' %}">Cancel</a>
+</form>
+{% endblock %}

@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views, views_labs, views_rooms
+from . import views, views_labs, views_meetings, views_patterns, views_rooms, views_settings
 
 app_name = "gui"
 
@@ -24,6 +24,25 @@ urlpatterns = [
     path("configuration/labs/add/", views_labs.lab_add, name="lab_add"),
     path("configuration/labs/<path:lab_name>/edit/", views_labs.lab_edit, name="lab_edit"),
     path("configuration/labs/<path:lab_name>/delete/", views_labs.lab_delete, name="lab_delete"),
+    path("configuration/patterns/", views_patterns.patterns, name="patterns"),
+    path("configuration/patterns/add/", views_patterns.pattern_add, name="pattern_add"),
+    path("configuration/patterns/<int:pattern_index>/edit/", views_patterns.pattern_edit, name="pattern_edit"),
+    path("configuration/patterns/<int:pattern_index>/delete/", views_patterns.pattern_delete, name="pattern_delete"),
+    path("configuration/meetings/", views_meetings.meetings, name="meetings"),
+    path("configuration/meetings/add/", views_meetings.meeting_add, name="meeting_add"),
+    path(
+        "configuration/meetings/<int:pattern_index>/<int:meeting_index>/edit/",
+        views_meetings.meeting_edit,
+        name="meeting_edit",
+    ),
+    path(
+        "configuration/meetings/<int:pattern_index>/<int:meeting_index>/delete/",
+        views_meetings.meeting_delete,
+        name="meeting_delete",
+    ),
+    path("configuration/settings/", views_settings.global_settings, name="settings"),
+    path("configuration/settings/save/", views_settings.settings_update, name="settings_update"),
+    path("configuration/settings/reset-limit/", views_settings.settings_reset_limit, name="settings_reset_limit"),
     path("generate/", views.schedule_generator, name="schedule_generator"),
     path("schedules/", views.schedule_viewer, name="schedule_viewer"),
     path("schedules/import/", views.schedule_import, name="schedule_import"),
