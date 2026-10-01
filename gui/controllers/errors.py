@@ -119,3 +119,41 @@ def to_controller_error(exc: Exception, form_fields: Iterable[str] = ()) -> Cont
     if isinstance(exc, (ReferenceError_, ConfigError)):
         return ControllerError(str(exc))
     return ControllerError(translate_validation_error(exc, form_fields))
+
+
+def describe_problems(exc: Exception, limit: int | None = None) -> list[str]:
+    """Plain-language problem list for a whole-configuration failure.
+
+    Unlike translate_validation_error() (which attaches errors to form
+    fields), every item here names WHERE the problem is, e.g.
+    "This field is required. (at config > rooms > 0 > capacity)", because a
+    loaded or saved configuration has no form to hang the errors on
+    (Section 10: name the affected area). `limit` caps the list and adds
+    an "...and N more" line, so a badly broken file stays readable.
+    """
+    source = exc
+    if isinstance(exc, ValidationFailure) and exc.__cause__ is not None:
+        source = exc.__cause__
+
+    raw_errors = None
+    errors_method = getattr(source, "errors", None)
+    if callable(errors_method):
+        try:
+            raw_errors = list(errors_method())
+        except Exception:  # pragma: no cover - defensive, fall back to text
+            raw_errors = None
+
+    if not raw_errors:
+        text = str(exc).strip()[:300]
+        return [text or "The configuration is not valid."]
+
+    items: list[str] = []
+    for error in raw_errors:
+        location = [str(part) for part in error.get("loc", ())]
+        message, _ = _friendly_message(error)
+        items.append(f"{message} (at {' > '.join(location)})" if location else message)
+
+    if limit is not None and len(items) > limit:
+        extra = len(items) - limit
+        items = items[:limit] + [f"...and {extra} more problem{'' if extra == 1 else 's'}."]
+    return items

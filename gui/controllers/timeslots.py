@@ -27,12 +27,11 @@ from __future__ import annotations
 
 from scheduler.config import TimeBlock, ValidationError
 
-from app.commands.common import VALID_DAYS, apply_session_edit
+from app.commands.common import VALID_DAYS
 from app.commands.timeslots import blocks_overlap
-from app.crud import ValidationFailure
-from app.session import ConfigError
 from gui.constants import DAY_NAMES
-from gui.controllers.errors import ControllerError, to_controller_error, translate_validation_error
+from gui.controllers.common import apply_config_edit, require_config
+from gui.controllers.errors import ControllerError, translate_validation_error
 from gui.session_store import get_session
 
 TIME_FIELDS = ("start", "end", "spacing")
@@ -53,12 +52,7 @@ def _sort_key(block):
 
 
 def _require_config(session):
-    try:
-        return session.require_config()
-    except ConfigError as error:
-        raise ControllerError(
-            "No configuration is loaded. Create or load one before editing time slots."
-        ) from error
+    return require_config(session, "editing time slots")
 
 
 def _check_day(day: str) -> str:
@@ -97,10 +91,7 @@ def _check_overlap(blocks, new_block, ignore_index: int | None = None) -> None:
 
 
 def _apply(session, config, mutate) -> None:
-    try:
-        apply_session_edit(session, config, "timeslot", mutate)
-    except ValidationFailure as error:
-        raise to_controller_error(error, form_fields=TIME_FIELDS + OPTION_FIELDS) from error
+    apply_config_edit(session, config, "timeslot", mutate, form_fields=TIME_FIELDS + OPTION_FIELDS)
 
 
 def _day_of(meeting) -> str:

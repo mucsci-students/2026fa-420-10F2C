@@ -1,17 +1,48 @@
 from django.urls import path
 
-from . import views
+from . import views, views_labs, views_meetings, views_patterns, views_rooms, views_settings
 
 app_name = "gui"
 
 urlpatterns = [
     path("", views.index, name="index"),
     path("configuration/", views.config_editor, name="config_editor"),
+    path("configuration/new/", views.config_new, name="config_new"),
+    path("configuration/load/", views.config_load, name="config_load"),
+    path("configuration/save/", views.config_save, name="config_save"),
+    path("configuration/validate/", views.config_validate, name="config_validate"),
     path("configuration/timeslots/", views.timeslots, name="timeslots"),
     path("configuration/timeslots/add/", views.timeslot_add, name="timeslot_add"),
     path("configuration/timeslots/options/", views.timing_options, name="timing_options"),
     path("configuration/timeslots/<str:day>/<int:index>/edit/", views.timeslot_edit, name="timeslot_edit"),
     path("configuration/timeslots/<str:day>/<int:index>/delete/", views.timeslot_delete, name="timeslot_delete"),
+    path("configuration/rooms/", views_rooms.rooms, name="rooms"),
+    path("configuration/rooms/add/", views_rooms.room_add, name="room_add"),
+    path("configuration/rooms/<path:room_name>/edit/", views_rooms.room_edit, name="room_edit"),
+    path("configuration/rooms/<path:room_name>/delete/", views_rooms.room_delete, name="room_delete"),
+    path("configuration/labs/", views_labs.labs, name="labs"),
+    path("configuration/labs/add/", views_labs.lab_add, name="lab_add"),
+    path("configuration/labs/<path:lab_name>/edit/", views_labs.lab_edit, name="lab_edit"),
+    path("configuration/labs/<path:lab_name>/delete/", views_labs.lab_delete, name="lab_delete"),
+    path("configuration/patterns/", views_patterns.patterns, name="patterns"),
+    path("configuration/patterns/add/", views_patterns.pattern_add, name="pattern_add"),
+    path("configuration/patterns/<int:pattern_index>/edit/", views_patterns.pattern_edit, name="pattern_edit"),
+    path("configuration/patterns/<int:pattern_index>/delete/", views_patterns.pattern_delete, name="pattern_delete"),
+    path("configuration/meetings/", views_meetings.meetings, name="meetings"),
+    path("configuration/meetings/add/", views_meetings.meeting_add, name="meeting_add"),
+    path(
+        "configuration/meetings/<int:pattern_index>/<int:meeting_index>/edit/",
+        views_meetings.meeting_edit,
+        name="meeting_edit",
+    ),
+    path(
+        "configuration/meetings/<int:pattern_index>/<int:meeting_index>/delete/",
+        views_meetings.meeting_delete,
+        name="meeting_delete",
+    ),
+    path("configuration/settings/", views_settings.global_settings, name="settings"),
+    path("configuration/settings/save/", views_settings.settings_update, name="settings_update"),
+    path("configuration/settings/reset-limit/", views_settings.settings_reset_limit, name="settings_reset_limit"),
     path("generate/", views.schedule_generator, name="schedule_generator"),
     path("schedules/", views.schedule_viewer, name="schedule_viewer"),
     path("schedules/import/", views.schedule_import, name="schedule_import"),

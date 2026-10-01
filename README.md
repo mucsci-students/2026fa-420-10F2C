@@ -119,6 +119,31 @@ Saved configuration to 'my_config.json'.
 ```
 
 ## Loading and Exporting Schedules (Schedule Viewer)
+## Class Patterns and Meetings (Configuration Editor)
+
+**Configuration Editor -> Class Patterns** and **-> Meetings** manage `time_slot_config.classes`. Patterns have no name, so they are numbered by position.
+
+- **Class patterns:** add, edit (credits, optional fixed start time, enabled) and delete. A new pattern needs one meeting, so the Add form takes the first; editing a pattern keeps its meetings.
+- **Meetings:** add, edit and delete a meeting on any pattern (day, duration, lab, delivery mode, optional start time). A pattern's **only meeting cannot be deleted** (delete the pattern instead).
+- **Invalid data:** every change re-validates the whole configuration. A rejected change shows what is wrong on the form and leaves the configuration as it was.
+- **Deletion:** nothing in the configuration points at a pattern by name, so there is no reference list. Deleting a pattern asks for confirmation and lists the meetings it removes; if a course would be left with no usable pattern, the scheduler rejects the change and nothing is removed.
+- **Fit warning:** a meeting longer than every time block on its day is accepted, with a warning that schedules needing it may not be feasible.
+
+Code: `gui/controllers/patterns.py` and `gui/controllers/meetings.py` (Controller), `gui/views_patterns.py` and `gui/views_meetings.py` (View), `gui/forms.py` (forms).
+
+## Global Settings (Configuration Editor)
+
+**Configuration Editor -> Global Settings** edits the saved generation limit and optimizer flags.
+
+- **Generation limit:** a positive whole number. **Reset limit to default** puts it back to 10. The limit can't be removed, because every configuration has one.
+- **Optimizer flags:** one checkbox per flag the scheduler library supports. Ticked flags are enabled; unticking a flag disables it. **Save settings** applies the limit and the flags together and reports each change ("Generation limit set to 50.", "Optimizer flag 'pack_labs' added.").
+- **Invalid data:** a limit of zero or less is rejected on the form, and a rejected change leaves the configuration as it was.
+- **Deletion:** nothing refers to these settings, so there are no references to block. "Deleting" a setting means unticking a flag or resetting the limit, and both are always allowed.
+- **Saved vs. one-run:** these are saved with the configuration. The Schedule Generator's one-run overrides never change them.
+
+Code: `gui/controllers/settings.py` (Controller), `gui/views_settings.py` (View), `gui/forms.py` (`GlobalSettingsForm`).
+
+## Loading Schedules (Schedule Viewer)
 
 **Schedule Viewer -> Load schedules from a file**: choose a `.json` file and click **Load schedules**.
 
