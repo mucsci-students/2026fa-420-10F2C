@@ -1,0 +1,56 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Labs{% endblock %}
+{% block content %}
+<p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; Labs</p>
+<h1>Labs</h1>
+<p>Labs are the computer or lab spaces used for lab meetings. Courses list the labs they may use, and faculty can have lab preferences.</p>
+
+{% if not data.has_config %}
+<div class="empty-state" role="status">
+    <h2>No configuration is loaded</h2>
+    <p>Create or load a configuration in the <a href="{% url 'gui:config_editor' %}">Configuration Editor</a> before editing labs.</p>
+</div>
+{% else %}
+
+<h2>Current labs</h2>
+<table class="data-table">
+    <thead>
+        <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Capacity</th>
+            <th scope="col">Features</th>
+            <th scope="col">Availability</th>
+            <th scope="col">Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for lab in data.labs %}
+        <tr>
+            <td>{{ lab.name }}</td>
+            <td>{{ lab.capacity }}</td>
+            <td>{% if lab.features %}{{ lab.features|join:", " }}{% else %}&mdash;{% endif %}</td>
+            <td>{% if lab.unrestricted %}Any time{% else %}{% for row in lab.availability %}{{ row.day }} {{ row.ranges }}{% if not forloop.last %}<br>{% endif %}{% endfor %}{% endif %}</td>
+            <td class="actions">
+                <a class="btn" href="{% url 'gui:lab_edit' lab.name %}">Edit</a>
+                {% if lab.can_delete %}
+                <a class="btn btn-danger" href="{% url 'gui:lab_delete' lab.name %}">Delete</a>
+                {% else %}
+                <span class="btn btn-disabled" aria-disabled="true">Delete</span>
+                <span class="help">In use by {{ lab.referenced_by|join:", " }}.</span>
+                {% endif %}
+            </td>
+        </tr>
+    {% empty %}
+        <tr><td colspan="5">No labs yet. Add one below.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+<h2>Add a lab</h2>
+<form method="post" action="{% url 'gui:lab_add' %}" class="edit-form">
+    {% csrf_token %}
+    {% include "gui/components/form_fields.html" with form=add_form %}
+    <button type="submit" class="btn btn-primary">Add lab</button>
+</form>
+{% endif %}
+{% endblock %}

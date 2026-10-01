@@ -8,11 +8,10 @@ to the scheduler library.
 Done:
     - AddTimeBlockForm / TimeBlockFieldsForm / TimingOptionsForm (time slots)
     - ScheduleImportForm (Schedule Viewer: load schedules from a JSON file)
+    - RoomForm / LabForm (rooms and labs: name, capacity, features, availability)
 
 TODO: one Form class per remaining area, matching the "Required editable data"
 column in Section 7's table:
-    - RoomForm            (name, capacity, features, availability)
-    - LabForm             (name, capacity, features, availability)
     - CourseForm          (course/section id, credits, capacity, resources,
                             conflicts, faculty, modality, requirements)
     - FacultyForm         (workload limits, availability, mandatory days, preferences)
@@ -24,6 +23,8 @@ column in Section 7's table:
                                 GlobalSettingsForm since these must NOT touch
                                 the saved configuration)
 """
+
+import re
 
 from django import forms
 
@@ -191,3 +192,91 @@ class ConfigLoadForm(ConfirmReplaceMixin, forms.Form):
             help_text="Loading a file replaces the configuration you have now. Save it first to keep it.",
             error=f"Tick this box to confirm discarding {discard_note}.",
         )
+
+
+# ---------------------------------------------------------------------- #
+#  Rooms and Labs (Section 7). The two have identical fields, so they share
+#  one base class; the controllers (gui/controllers/rooms.py, labs.py) do the
+#  real validation and the reference checks.
+# ---------------------------------------------------------------------- #
+_AVAILABILITY_LINE = re.compile(r"^(\w+)\s+(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})$")
+
+
+def parse_availability(text):
+    """Turn the availability box into {"MON": [{"start": "09:00", "end": "17:00"}], ...}.
+
+    One range per line, e.g. "MON 09:00-17:00"; a day may appear on several
+    lines. Returns (times, problems). `times` is None when the box is blank,
+    which means "available any time". Only the shape is checked here; whether
+    a range is acceptable (end after start, etc.) is decided by the scheduler
+    library through the controller.
+    """
+    times = {}
+    problems = []
+    for number, raw in enumerate((text or "").splitlines(), start=1):
+        line = raw.strip()
+        if not line:
+            continue
+        match = _AVAILABILITY_LINE.match(line)
+        if not match:
+            problems.append(f'Line {number} ("{line}") is not in the form MON 09:00-17:00.')
+            continue
+        day = match.group(1).upper()
+        if day not in DAY_NAMES:
+            problems.append(
+                f"Line {number}: '{match.group(1)}' is not a weekday. Use one of: {', '.join(DAY_NAMES)}."
+            )
+            continue
+        start_h, start_m, end_h, end_m = (int(part) for part in match.groups()[1:])
+        if start_h > 23 or end_h > 23 or start_m > 59 or end_m > 59:
+            problems.append(f"Line {number}: use 24-hour times such as 09:00 or 17:30.")
+            continue
+        times.setdefault(day, []).append(
+            {"start": f"{start_h:02d}:{start_m:02d}", "end": f"{end_h:02d}:{end_m:02d}"}
+        )
+    return (times or None), problems
+
+
+def availability_to_text(times):
+    """The reverse of parse_availability, for filling the box when editing."""
+    lines = []
+    for day in DAY_NAMES:
+        for block in (times or {}).get(day, []):
+            lines.append(f"{day} {block['start']}-{block['end']}")
+    return "\n".join(lines)
+
+
+class _SpaceForm(forms.Form):
+    name = forms.CharField(
+        label="Name",
+        help_text="Must be unique. It can only be changed while no course or faculty member uses it.",
+    )
+    capacity = forms.IntegerField(label="Capacity", min_value=1, help_text="Number of seats (a whole number).")
+    features = forms.CharField(
+        label="Features",
+        required=False,
+        help_text="Separated by commas, e.g. projector, whiteboard. Leave blank for none.",
+    )
+    times = forms.CharField(
+        label="Availability",
+        required=False,
+        widget=forms.Textarea(attrs={"rows": 5}),
+        help_text=(
+            "Leave blank if it is available at any time. Otherwise one range per line, "
+            "e.g. MON 09:00-17:00 (24-hour times; a day can have several lines)."
+        ),
+    )
+
+    def clean_times(self):
+        times, problems = parse_availability(self.cleaned_data.get("times", ""))
+        if problems:
+            raise forms.ValidationError(problems)
+        return times
+
+
+class RoomForm(_SpaceForm):
+    """Add or edit a room (Section 7, Rooms row)."""
+
+
+class LabForm(_SpaceForm):
+    """Add or edit a lab (Section 7, Labs row)."""

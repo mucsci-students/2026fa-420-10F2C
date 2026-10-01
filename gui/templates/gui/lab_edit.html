@@ -1,0 +1,18 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Edit Lab{% endblock %}
+{% block content %}
+<p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; <a href="{% url 'gui:labs' %}">Labs</a> &rsaquo; Edit</p>
+<h1>Edit lab</h1>
+<p>
+    Editing <strong>{{ lab.name }}</strong>. Nothing changes until you apply your edits.
+    {% if not lab.can_delete %}
+    This lab is used by {{ lab.referenced_by|join:", " }}, so its name cannot be changed until those are removed.
+    {% endif %}
+</p>
+<form method="post" class="edit-form">
+    {% csrf_token %}
+    {% include "gui/components/form_fields.html" with form=form %}
+    <button type="submit" class="btn btn-primary">Apply changes</button>
+    <a class="btn" href="{% url 'gui:labs' %}">Cancel</a>
+</form>
+{% endblock %}
