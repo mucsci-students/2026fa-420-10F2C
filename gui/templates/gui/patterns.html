@@ -1,0 +1,60 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Class Patterns{% endblock %}
+{% block content %}
+<p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; Class Patterns</p>
+<h1>Class Patterns</h1>
+<p>
+    A class pattern is a way a course can meet during the week: how many credits it is for and its
+    meetings (for example Monday, Wednesday and Friday for 50 minutes each). The scheduler picks
+    from the enabled patterns that match a course's credits. Patterns have no names, so they are
+    numbered by position. Add, edit or remove an individual pattern's meetings on the
+    <a href="{% url 'gui:meetings' %}">Meetings</a> page.
+</p>
+
+{% if not data.has_config %}
+<div class="empty-state" role="status">
+    <h2>No configuration is loaded</h2>
+    <p>Create or load a configuration in the <a href="{% url 'gui:config_editor' %}">Configuration Editor</a> before editing class patterns.</p>
+</div>
+{% else %}
+
+<h2>Current class patterns</h2>
+<table class="data-table">
+    <thead>
+        <tr>
+            <th scope="col">#</th>
+            <th scope="col">Credits</th>
+            <th scope="col">Meetings</th>
+            <th scope="col">Fixed start time</th>
+            <th scope="col">Status</th>
+            <th scope="col">Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for pattern in data.patterns %}
+        <tr>
+            <td>{{ pattern.index }}</td>
+            <td>{{ pattern.credits }}</td>
+            <td>{% for meeting in pattern.meetings %}{{ meeting.summary }}{% if not forloop.last %}<br>{% endif %}{% endfor %}</td>
+            <td>{% if pattern.start_time %}{{ pattern.start_time }}{% else %}&mdash;{% endif %}</td>
+            <td>{% if pattern.enabled %}Enabled{% else %}Disabled{% endif %}</td>
+            <td class="actions">
+                <a class="btn" href="{% url 'gui:pattern_edit' pattern.index %}">Edit</a>
+                <a class="btn btn-danger" href="{% url 'gui:pattern_delete' pattern.index %}">Delete</a>
+            </td>
+        </tr>
+    {% empty %}
+        <tr><td colspan="6">No class patterns yet. Add one below.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+<h2>Add a class pattern</h2>
+<p class="help">A pattern needs at least one meeting, so enter the first one here. You can add more on the Meetings page.</p>
+<form method="post" action="{% url 'gui:pattern_add' %}" class="edit-form">
+    {% csrf_token %}
+    {% include "gui/components/form_fields.html" with form=add_form %}
+    <button type="submit" class="btn btn-primary">Add class pattern</button>
+</form>
+{% endif %}
+{% endblock %}

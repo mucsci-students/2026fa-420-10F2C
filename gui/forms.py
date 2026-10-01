@@ -9,15 +9,17 @@ Done:
     - AddTimeBlockForm / TimeBlockFieldsForm / TimingOptionsForm (time slots)
     - ScheduleImportForm (Schedule Viewer: load schedules from a JSON file)
     - RoomForm / LabForm (rooms and labs: name, capacity, features, availability)
+    - ClassPatternFieldsForm / AddClassPatternForm (class patterns: credits,
+      enabled state, start time; the Add form also takes the first meeting)
+    - MeetingFieldsForm / AddMeetingForm (meetings: day, duration, lab,
+      delivery mode, optional start time)
+    - GlobalSettingsForm (global settings: generation limit, optimizer flags)
 
 TODO: one Form class per remaining area, matching the "Required editable data"
 column in Section 7's table:
     - CourseForm          (course/section id, credits, capacity, resources,
                             conflicts, faculty, modality, requirements)
     - FacultyForm         (workload limits, availability, mandatory days, preferences)
-    - ClassPatternForm    (credits, enabled state, start times, meetings)
-    - MeetingForm         (day, duration, lab designation, delivery mode, start time)
-    - GlobalSettingsForm  (generation limit, optimizer flags)
     - GenerationOverrideForm  (Section 14: limit override + optimizer overrides,
                                 for the Schedule Generator page, separate from
                                 GlobalSettingsForm since these must NOT touch
@@ -280,3 +282,174 @@ class RoomForm(_SpaceForm):
 
 class LabForm(_SpaceForm):
     """Add or edit a lab (Section 7, Labs row)."""
+
+
+# ---------------------------------------------------------------------- #
+#  Class Patterns and Meetings (Section 7). Forms only check shape (a whole
+#  number, a real time, a listed choice); the controllers
+#  (gui/controllers/patterns.py, meetings.py) and the scheduler library decide
+#  whether the values are acceptable.
+# ---------------------------------------------------------------------- #
+# The three delivery modes the scheduler's Meeting accepts (same list the
+# command-line shell offers in app/commands/meetings.py).
+DELIVERY_CHOICES = [("in_person", "In person"), ("online", "Online"), ("hybrid", "Hybrid")]
+
+
+def _optional_time_field(label: str, help_text: str) -> forms.TimeField:
+    return forms.TimeField(
+        label=label,
+        required=False,
+        help_text=help_text,
+        input_formats=_TIME_FORMATS,
+        widget=forms.TimeInput(format="%H:%M", attrs={"type": "time"}),
+    )
+
+
+def _time_or_none(value):
+    """Hand the controller "HH:MM" or None, which is what the library wants."""
+    return value.strftime("%H:%M") if value else None
+
+
+def _day_field() -> forms.ChoiceField:
+    return forms.ChoiceField(
+        label="Day",
+        choices=[(code, f"{name} ({code})") for code, name in DAY_NAMES.items()],
+    )
+
+
+def _duration_field() -> forms.IntegerField:
+    return forms.IntegerField(
+        label="Duration (minutes)",
+        min_value=1,
+        help_text="Length of one meeting, in whole minutes, e.g. 50.",
+    )
+
+
+def _lab_field() -> forms.BooleanField:
+    return forms.BooleanField(
+        label="Lab meeting",
+        required=False,
+        help_text="Tick if this meeting takes place in a lab instead of a room.",
+    )
+
+
+def _delivery_field() -> forms.ChoiceField:
+    return forms.ChoiceField(label="Delivery mode", choices=DELIVERY_CHOICES, initial="in_person")
+
+
+_MEETING_START_HELP = "Optional. Leave blank to let the scheduler choose; otherwise a 24-hour time such as 09:00."
+
+
+class MeetingFieldsForm(forms.Form):
+    """day / duration / lab / delivery / start_time -- used as-is for editing a
+    meeting (its pattern is fixed by the URL) and as the base of the add form."""
+
+    day = _day_field()
+    duration = _duration_field()
+    lab = _lab_field()
+    delivery = _delivery_field()
+    start_time = _optional_time_field("Fixed start time", _MEETING_START_HELP)
+
+    def clean_start_time(self):
+        return _time_or_none(self.cleaned_data.get("start_time"))
+
+
+class AddMeetingForm(MeetingFieldsForm):
+    """Add a meeting: first choose which class pattern it belongs to."""
+
+    pattern = forms.TypedChoiceField(
+        label="Class pattern",
+        coerce=int,
+        choices=[],
+        help_text="The meeting is added to this pattern.",
+    )
+    field_order = ["pattern", "day", "duration", "lab", "delivery", "start_time"]
+
+    def __init__(self, *args, pattern_choices=(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["pattern"].choices = list(pattern_choices)
+
+
+class ClassPatternFieldsForm(forms.Form):
+    """credits / start_time / enabled -- a pattern's own fields. Its meetings are
+    managed on the Meetings page, so editing a pattern keeps them."""
+
+    credits = forms.IntegerField(
+        label="Credits",
+        min_value=1,
+        help_text="Credit hours this pattern is used for (a positive whole number).",
+    )
+    start_time = _optional_time_field(
+        "Fixed start time",
+        "Optional. Leave blank to let the scheduler choose; otherwise a 24-hour time such as 16:00.",
+    )
+    enabled = forms.BooleanField(
+        label="Enabled",
+        required=False,
+        initial=True,
+        help_text="Untick to keep the pattern but leave it out of scheduling.",
+    )
+
+    def clean_start_time(self):
+        return _time_or_none(self.cleaned_data.get("start_time"))
+
+
+class AddClassPatternForm(ClassPatternFieldsForm):
+    """Add a class pattern. A pattern needs at least one meeting, so the form
+    also asks for the first one (more can be added on the Meetings page)."""
+
+    meeting_day = _day_field()
+    meeting_duration = _duration_field()
+    meeting_lab = _lab_field()
+    meeting_delivery = _delivery_field()
+    meeting_start_time = _optional_time_field("First meeting: fixed start time", _MEETING_START_HELP)
+
+    field_order = [
+        "credits",
+        "start_time",
+        "enabled",
+        "meeting_day",
+        "meeting_duration",
+        "meeting_lab",
+        "meeting_delivery",
+        "meeting_start_time",
+    ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Say which fields describe the first meeting.
+        for name in ("meeting_day", "meeting_duration", "meeting_lab", "meeting_delivery"):
+            self.fields[name].label = f"First meeting: {self.fields[name].label[0].lower()}{self.fields[name].label[1:]}"
+
+    def clean_meeting_start_time(self):
+        return _time_or_none(self.cleaned_data.get("meeting_start_time"))
+
+
+# ---------------------------------------------------------------------- #
+#  Global Settings (Section 7): the saved generation limit and optimizer
+#  flags. The Schedule Generator's one-run overrides (Section 14) will get
+#  their own form so they can never touch the saved configuration.
+# ---------------------------------------------------------------------- #
+class GlobalSettingsForm(forms.Form):
+    """Generation limit plus one checkbox per optimizer flag. The checked boxes
+    become the enabled flags; unchecked ones are turned off."""
+
+    limit = forms.IntegerField(
+        label="Generation limit",
+        min_value=1,
+        help_text="The most schedules the scheduler will generate in one run (a positive whole number).",
+    )
+    optimizer_flags = forms.MultipleChoiceField(
+        label="Optimizer flags",
+        required=False,
+        choices=[],
+        widget=forms.CheckboxSelectMultiple,
+        help_text=(
+            "Tick the optimizations to turn on. What each one does is defined by the "
+            "scheduler library; see its documentation."
+        ),
+    )
+
+    def __init__(self, *args, flag_choices=(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["optimizer_flags"].choices = [(flag, flag) for flag in flag_choices]

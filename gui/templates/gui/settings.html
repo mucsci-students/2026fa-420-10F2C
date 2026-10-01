@@ -1,0 +1,50 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Global Settings{% endblock %}
+{% block content %}
+<p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; Global Settings</p>
+<h1>Global Settings</h1>
+<p>
+    Global settings control how schedule generation works: how many schedules it produces and which
+    optimizations it applies. They are saved with the configuration. To change them for a single run
+    without saving, use the Schedule Generator instead.
+</p>
+
+{% if not data.has_config %}
+<div class="empty-state" role="status">
+    <h2>No configuration is loaded</h2>
+    <p>Create or load a configuration in the <a href="{% url 'gui:config_editor' %}">Configuration Editor</a> before editing global settings.</p>
+</div>
+{% else %}
+
+<h2>Current settings</h2>
+<table class="data-table">
+    <tbody>
+        <tr>
+            <th scope="row">Generation limit</th>
+            <td>{{ data.limit }}{% if data.is_default_limit %} (the default){% endif %}</td>
+        </tr>
+        <tr>
+            <th scope="row">Optimizer flags enabled</th>
+            <td>{% if data.enabled_flags %}{{ data.enabled_flags|join:", " }}{% else %}None{% endif %}</td>
+        </tr>
+    </tbody>
+</table>
+
+<h2>Change settings</h2>
+<form method="post" action="{% url 'gui:settings_update' %}" class="edit-form">
+    {% csrf_token %}
+    {% include "gui/components/form_fields.html" with form=form %}
+    <button type="submit" class="btn btn-primary">Save settings</button>
+</form>
+
+<h2>Reset the generation limit</h2>
+<p class="help">
+    The limit cannot be removed, because every configuration has one, but you can put it back to the
+    default of {{ data.default_limit }}. Flags are removed by unticking them above.
+</p>
+<form method="post" action="{% url 'gui:settings_reset_limit' %}" class="edit-form">
+    {% csrf_token %}
+    <button type="submit" class="btn"{% if data.is_default_limit %} disabled{% endif %}>Reset limit to default ({{ data.default_limit }})</button>
+</form>
+{% endif %}
+{% endblock %}
