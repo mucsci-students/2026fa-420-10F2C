@@ -147,3 +147,47 @@ class ScheduleImportForm(ConfirmReplaceMixin, forms.Form):
             help_text="Loading a file replaces the schedules in the viewer. Export them first to keep them.",
             error="Tick this box to confirm replacing the schedules that are loaded now.",
         )
+
+
+class ConfigNewForm(ConfirmReplaceMixin, forms.Form):
+    """Configuration Editor: start a new configuration (Section 8).
+
+    Has no inputs of its own. When starting over would discard unsaved
+    changes (or loaded schedules), it shows a checkbox that must be ticked;
+    `discard_note` says what would be lost, e.g. "your unsaved changes".
+    """
+
+    def __init__(self, *args, discard_note="", **kwargs):
+        kwargs.setdefault("prefix", "new")  # keeps ids apart from the load form
+        super().__init__(*args, **kwargs)
+        self.require_confirmation(
+            bool(discard_note),
+            label=f"Discard {discard_note}",
+            help_text="Starting a new configuration replaces the one you have now. Save it first to keep it.",
+            error=f"Tick this box to confirm discarding {discard_note}.",
+        )
+
+
+class ConfigLoadForm(ConfirmReplaceMixin, forms.Form):
+    """Configuration Editor: load a configuration from a JSON file (Section 8).
+
+    Only checks that a file was chosen and, when there is something to lose,
+    that the user agreed to discard it. Whether the file is a usable
+    configuration is decided by the scheduler library via the controller.
+    """
+
+    config_file = forms.FileField(
+        label="Configuration JSON file",
+        help_text="A .json configuration file, such as one saved from this page.",
+        widget=forms.ClearableFileInput(attrs={"accept": ".json,application/json"}),
+    )
+
+    def __init__(self, *args, discard_note="", **kwargs):
+        kwargs.setdefault("prefix", "load")
+        super().__init__(*args, **kwargs)
+        self.require_confirmation(
+            bool(discard_note),
+            label=f"Discard {discard_note}",
+            help_text="Loading a file replaces the configuration you have now. Save it first to keep it.",
+            error=f"Tick this box to confirm discarding {discard_note}.",
+        )

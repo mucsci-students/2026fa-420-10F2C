@@ -16,12 +16,20 @@ template.
 from django.contrib import messages
 from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 
 from gui.constants import DAY_NAMES
-from gui.controllers import schedule_controller
+from gui.controllers import config_controller, schedule_controller
 from gui.controllers import timeslots as timeslot_controller
 from gui.controllers.errors import ControllerError
-from gui.forms import AddTimeBlockForm, ScheduleImportForm, TimeBlockFieldsForm, TimingOptionsForm
+from gui.forms import (
+    AddTimeBlockForm,
+    ConfigLoadForm,
+    ConfigNewForm,
+    ScheduleImportForm,
+    TimeBlockFieldsForm,
+    TimingOptionsForm,
+)
 
 
 def index(request):
@@ -29,11 +37,125 @@ def index(request):
     return render(request, "gui/index.html", {"active": "home"})
 
 
+# ---------------------------------------------------------------------- #
+#  Configuration Editor home + lifecycle (Sections 8-10): New / Load / Save /
+#  Validate. Same shape as every action: POST only, call the controller, then
+#  redirect with a flash message (success) or re-render with the errors shown
+#  (failure) -- the current configuration is never touched by a failure.
+# ---------------------------------------------------------------------- #
+# One row per configuration area on the editor home page: (count key from
+# config_controller.describe_configuration, label, URL name). When an area's
+# pages exist, put its URL name here -- that is the only change the home page
+# needs to link to it.
+_CONFIG_AREAS = (
+    ("time_blocks", "Time Slots", "gui:timeslots"),
+    ("rooms", "Rooms", None),
+    ("labs", "Labs", None),
+    ("courses", "Courses", None),
+    ("faculty", "Faculty", None),
+    ("patterns", "Class Patterns", None),
+    ("meetings", "Meetings", None),
+    ("settings", "Global Settings", None),
+)
+
+
+def _config_areas(counts):
+    return [
+        {"label": label, "count": counts.get(key), "url": reverse(url_name) if url_name else None}
+        for key, label, url_name in _CONFIG_AREAS
+    ]
+
+
+def _render_config_editor(request, new_form=None, load_form=None, report=None):
+    state = config_controller.describe_configuration(request)
+    note = state["discard_note"]
+    if new_form is None:
+        new_form = ConfigNewForm(discard_note=note)
+    if load_form is None:
+        load_form = ConfigLoadForm(discard_note=note)
+    context = {
+        "active": "config",
+        **state,
+        "areas": _config_areas(state["counts"]),
+        "new_form": new_form,
+        "load_form": load_form,
+        "report": report,
+    }
+    return render(request, "gui/config_editor.html", context)
+
+
+def _discard_note(request):
+    return config_controller.describe_configuration(request)["discard_note"]
+
+
 def config_editor(request):
-    """Configuration Editor mode (Sections 6-12). Placeholder page today;
-    see gui/controllers/config_controller.py and crud_controller.py for
-    what still needs wiring in."""
-    return render(request, "gui/config_editor.html", {"active": "config"})
+    """Configuration Editor home: current status, New / Load / Save /
+    Validate, and the list of configuration areas (Sections 6-12)."""
+    return _render_config_editor(request)
+
+
+def config_new(request):
+    if request.method != "POST":
+        return redirect("gui:config_editor")
+    form = ConfigNewForm(request.POST, discard_note=_discard_note(request))
+    if form.is_valid():
+        try:
+            config_controller.new_configuration(request)
+        except ControllerError as error:
+            _attach_errors(form, error)
+        else:
+            messages.success(
+                request,
+                "Started a new configuration. It begins with one placeholder room, course, "
+                "faculty member and class pattern; edit or replace them.",
+            )
+            return redirect("gui:config_editor")
+    return _render_config_editor(request, new_form=form)
+
+
+def config_load(request):
+    if request.method != "POST":
+        return redirect("gui:config_editor")
+    form = ConfigLoadForm(request.POST, request.FILES, discard_note=_discard_note(request))
+    if form.is_valid():
+        uploaded = form.cleaned_data["config_file"]
+        try:
+            name = config_controller.load_configuration(request, uploaded)
+        except ControllerError as error:
+            _attach_errors(form, error)
+        else:
+            messages.success(request, f"Loaded and validated {name}.")
+            return redirect("gui:config_editor")
+    return _render_config_editor(request, load_form=form)
+
+
+def config_save(request):
+    """Validate, then send the configuration as a file download (Section 9)."""
+    if request.method != "POST":
+        return redirect("gui:config_editor")
+    try:
+        filename, content = config_controller.save_configuration(request)
+    except ControllerError as error:
+        report = {"heading": "The configuration was not saved.", "items": [item.message for item in error.errors]}
+        return _render_config_editor(request, report=report)
+    return download_response(filename, content, "application/json; charset=utf-8")
+
+
+def config_validate(request):
+    """Re-check the whole configuration and report the result (Section 10)."""
+    if request.method != "POST":
+        return redirect("gui:config_editor")
+    try:
+        problems = config_controller.validate_configuration(request)
+    except ControllerError as error:
+        messages.error(request, error.message)
+        return redirect("gui:config_editor")
+    if not problems:
+        messages.success(request, "Configuration is valid. Every rule was checked and none are broken.")
+        return redirect("gui:config_editor")
+    return _render_config_editor(
+        request, report={"heading": "The configuration has problems.", "items": problems}
+    )
 
 
 def schedule_generator(request):
