@@ -30,12 +30,24 @@ def print_config(session):
     print(config.model_dump_json(indent=2))
 
 
-def validate_config(session):
-    """Revalidate the active configuration and report the result."""
+def revalidate(session):
+    """Re-run full validation on the active configuration.
+
+    Returns None when it is valid, otherwise the exception the library
+    raised, so the CLI can print it and the GUI can turn it into
+    plain-language messages. Raises ConfigError when nothing is loaded."""
     config = session.require_config()
     try:
         type(config).model_validate(config.model_dump())
     except Exception as error:  # noqa: BLE001 -- library validation type is not stable
+        return error
+    return None
+
+
+def validate_config(session):
+    """Revalidate the active configuration and report the result."""
+    error = revalidate(session)
+    if error is not None:
         print(f"Configuration is INVALID: {error}")
         return
     print("Configuration is valid.")
