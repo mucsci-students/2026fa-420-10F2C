@@ -118,6 +118,7 @@ Path to save to (blank = reuse last path): my_config.json
 Saved configuration to 'my_config.json'.
 ```
 
+## Loading and Exporting Schedules (Schedule Viewer)
 ## Class Patterns and Meetings (Configuration Editor)
 
 **Configuration Editor -> Class Patterns** and **-> Meetings** manage `time_slot_config.classes`. Patterns have no name, so they are numbered by position.
@@ -149,6 +150,12 @@ Code: `gui/controllers/settings.py` (Controller), `gui/views_settings.py` (View)
 - The whole file is checked before anything changes. If it is not valid JSON, is a configuration file instead of a schedule file, or has an invalid entry, the errors appear under the file field (up to five specific problems, each naming the schedule and course), and the schedules already loaded stay as they were.
 - If schedules are already loaded, you must tick **Replace the N schedule(s) currently loaded** first.
 - Loaded schedules don't need a configuration, and the scheduler doesn't rerun.
+
+### Exporting a schedule (JSON)
+
+**Schedule Viewer -> Export**: pick a schedule from the list (the one you are viewing is preselected) and click **Export this schedule (JSON)**. The file is named `schedule-<n>.json` and uses the format below, so it can be loaded back into the viewer later without rerunning the scheduler. Export is disabled until schedules are generated or loaded.
+
+**Overwrite protection:** exports are browser downloads. Your browser chooses where the file goes and asks before replacing an existing file (or renames the new one). The application never writes to a path on your computer, so it cannot overwrite your files.
 
 ### Supported schedule JSON format (version 1)
 
@@ -191,6 +198,7 @@ Use these instead of rewriting them in each feature:
 | Store new results (generate, load, clear) | `replace_schedules(request, schedules)` | same |
 | One schedule row: course, faculty, room, lab, meetings | `Assignment`, `MeetingTime` | `app/schedule_io.py` |
 | Write schedules as JSON / CSV | `schedules_to_json(...)`, `schedules_to_csv(...)` | same |
+| Export schedules as a JSON file (one, or all with `index=None`) | `export_schedule_json(request, index)` returns an `ExportFile` for `download_response` | `gui/controllers/schedule_controller.py` |
 | Read an uploaded file (empty/unreadable/too large handled) | `read_upload(uploaded_file, "field_name")` | `gui/controllers/uploads.py` |
 | "Tick to confirm" before replacing or discarding data | `ConfirmReplaceMixin` + `require_confirmation(...)` | `gui/forms.py` |
 | Send a file download (overwrite-safe save/export) | `download_response(filename, content, content_type)` | `gui/views.py` |
