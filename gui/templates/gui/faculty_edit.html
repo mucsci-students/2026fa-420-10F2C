@@ -6,7 +6,7 @@
 <p>
     Editing <strong>{{ faculty.name }}</strong>. Nothing changes until you apply your edits.
     {% if not faculty.can_delete %}
-    This name is used by {{ faculty.referenced_by|join:", " }}, so it cannot be changed until those references are removed.
+    This name is used by {{ faculty.referenced_by|join:", " }}. Changing it will ask you to confirm updating those course assignments.
     {% endif %}
 </p>
 <form method="post" class="edit-form">
