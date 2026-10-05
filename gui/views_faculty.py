@@ -18,22 +18,26 @@ def _faculty_form(request, *args, **kwargs):
     return FacultyForm(*args, **faculty_controller.form_choices(request), **kwargs)
 
 
-def _render_faculty(request, add_form=None):
-    """Render the list/add page, preserving a rejected bound add form."""
+def _render_faculty(request):
+    """Render the list page without embedding the lengthy creation form."""
     data = faculty_controller.describe_faculty(request)
-    context = {"active": "config", "data": data}
-    if data["has_config"]:
-        context["add_form"] = add_form or _faculty_form(request)
-    return render(request, "gui/faculty.html", context)
+    return render(request, "gui/faculty.html", {"active": "config", "data": data})
+
+
+def _render_faculty_add(request, form=None):
+    """Render the dedicated creation page, retaining a rejected bound form."""
+    return render(request, "gui/faculty_add.html", {"active": "config", "form": form or _faculty_form(request)})
 
 
 def faculty(request):
-    """Show the current faculty records and an add form."""
+    """Show the current faculty records and the creation action."""
     return _render_faculty(request)
 
 
 def faculty_add(request):
-    """Create one faculty member from a valid POSTed FacultyForm."""
+    """Display or submit the dedicated Faculty creation form."""
+    if request.method == "GET":
+        return _render_faculty_add(request)
     if request.method != "POST":
         return redirect("gui:faculty")
     form = _faculty_form(request, request.POST)
@@ -45,7 +49,7 @@ def faculty_add(request):
         else:
             messages.success(request, f"Faculty member '{form.cleaned_data['name']}' added.")
             return redirect("gui:faculty")
-    return _render_faculty(request, add_form=form)
+    return _render_faculty_add(request, form=form)
 
 
 def faculty_edit(request, faculty_name):

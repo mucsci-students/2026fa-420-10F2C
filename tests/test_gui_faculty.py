@@ -160,12 +160,51 @@ class TestFacultyPages:
         assert f'href="{FACULTY_URL}"' in editor
         assert response.status_code == 200
         assert "Zoppetti" in page(response)
+        assert f'href="{FACULTY_URL}add/"' in page(response)
+        assert 'name="minimum_credits"' not in page(response)
+
+    def test_add_page_displays_a_blank_grouped_form(self, client):
+        response = client.get(FACULTY_URL + "add/")
+        text = page(response)
+
+        assert response.status_code == 200
+        for heading in (
+            "Identity and workload",
+            "Availability and mandatory days",
+            "Course preferences",
+            "Room preferences",
+            "Lab preferences",
+        ):
+            assert heading in text
+        assert 'name="name"' in text
+        assert 'href="/configuration/faculty/"' in text
+
+    def test_invalid_add_stays_on_the_add_page_and_keeps_its_values(self, client):
+        response = client.post(FACULTY_URL + "add/", browser_form_data(maximum_credits="many"))
+        text = page(response)
+
+        assert response.status_code == 200
+        assert "Add faculty member" in text
+        assert "Enter a whole number" in text
+        assert 'value="Taylor"' in text
+        assert find_faculty(browser_session(), "Taylor") is None
+
+    def test_canceling_an_add_leaves_the_configuration_unchanged(self, client):
+        client.get(FACULTY_URL + "add/")
+        response = client.get(FACULTY_URL)
+
+        assert response.status_code == 200
+        assert browser_session().dirty is False
 
     def test_add_edit_and_delete_unreferenced_faculty(self, client):
-        client.get(FACULTY_URL)
+        client.get(FACULTY_URL + "add/")
         added = client.post(FACULTY_URL + "add/", browser_form_data(), follow=True)
         assert "Taylor" in page(added) and "added" in page(added)
         assert find_faculty(browser_session(), "Taylor") is not None
+
+        refreshed = client.get(FACULTY_URL)
+        assert refreshed.status_code == 200
+        assert len([person for person in browser_session().config.config.faculty if person.name == "Taylor"]) == 1
 
         edited = client.post(
             FACULTY_URL + "Taylor/edit/",

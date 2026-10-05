@@ -12,6 +12,8 @@
 </div>
 {% else %}
 
+<p><a class="btn btn-primary" href="{% url 'gui:faculty_add' %}">Add faculty member</a></p>
+
 <h2>Current faculty</h2>
 <table class="data-table">
     <thead>
@@ -53,12 +55,5 @@
     {% endfor %}
     </tbody>
 </table>
-
-<h2>Add a faculty member</h2>
-<form method="post" action="{% url 'gui:faculty_add' %}" class="edit-form">
-    {% csrf_token %}
-    {% include "gui/components/form_fields.html" with form=add_form %}
-    <button type="submit" class="btn btn-primary">Add faculty member</button>
-</form>
 {% endif %}
 {% endblock %}
