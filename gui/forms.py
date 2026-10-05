@@ -15,12 +15,12 @@ Done:
     - MeetingFieldsForm / AddMeetingForm (meetings: day, duration, lab,
       delivery mode, optional start time)
     - GlobalSettingsForm (global settings: generation limit, optimizer flags)
+        - FacultyForm (workload limits, availability, mandatory days, preferences)
 
 TODO: one Form class per remaining area, matching the "Required editable data"
 column in Section 7's table:
     - CourseForm          (course/section id, credits, capacity, resources,
                             conflicts, faculty, modality, requirements)
-    - FacultyForm         (workload limits, availability, mandatory days, preferences)
     - GenerationOverrideForm  (Section 14: limit override + optimizer overrides,
                                 for the Schedule Generator page, separate from
                                 GlobalSettingsForm since these must NOT touch
@@ -309,6 +309,128 @@ class RoomForm(_SpaceForm):
 
 class LabForm(_SpaceForm):
     """Add or edit a lab (Section 7, Labs row)."""
+
+
+# ---------------------------------------------------------------------- #
+#  Faculty (Section 7). Faculty availability uses the same plain-text
+#  weekday/range input as rooms and labs, but a blank value means unavailable
+#  every day rather than unrestricted. Preference fields are generated from
+#  the resources that exist in the loaded configuration.
+# ---------------------------------------------------------------------- #
+MAX_WEEKDAYS = len(DAY_NAMES)
+MAX_PREFERENCE_WEIGHT = 10
+
+
+class FacultyForm(forms.Form):
+    """Add or edit one FacultyConfig record.
+
+    The static fields model one faculty member's workload and availability.
+    __init__ adds optional 0-10 preference fields for each current course,
+    room, and lab; clean() packs those values into the three dictionaries the
+    scheduler model serializes in configuration JSON.
+    """
+
+    name = forms.CharField(
+        label="Name",
+        help_text="Must be unique. It can only be changed while no course lists this faculty member.",
+    )
+    minimum_credits = forms.IntegerField(
+        label="Minimum credits",
+        min_value=0,
+        help_text="The least number of credit hours this faculty member must teach.",
+    )
+    maximum_credits = forms.IntegerField(
+        label="Maximum credits",
+        min_value=0,
+        help_text="The most number of credit hours this faculty member may teach.",
+    )
+    unique_course_limit = forms.IntegerField(
+        label="Unique course limit",
+        min_value=1,
+        help_text="Maximum number of different course IDs this faculty member may teach.",
+    )
+    maximum_days = forms.IntegerField(
+        label="Maximum teaching days",
+        min_value=0,
+        max_value=MAX_WEEKDAYS,
+        initial=MAX_WEEKDAYS,
+        help_text="Maximum number of weekdays this faculty member may teach.",
+    )
+    times = forms.CharField(
+        label="Availability",
+        required=False,
+        widget=forms.Textarea(attrs={"rows": MAX_WEEKDAYS}),
+        help_text=(
+            "One range per line, e.g. MON 09:00-17:00. Leave blank when this faculty member "
+            "is unavailable every day."
+        ),
+    )
+    mandatory_days = forms.MultipleChoiceField(
+        label="Mandatory teaching days",
+        required=False,
+        choices=[(code, f"{name} ({code})") for code, name in DAY_NAMES.items()],
+        widget=forms.CheckboxSelectMultiple,
+        help_text="Days this faculty member must teach. Each selected day must have availability above.",
+    )
+
+    def __init__(self, *args, course_names=(), room_names=(), lab_names=(), **kwargs):
+        initial = dict(kwargs.get("initial") or {})
+        super().__init__(*args, **kwargs)
+        self._add_preference_fields(
+            "course",
+            "Course preference",
+            course_names,
+            initial.get("course_preferences") or {},
+        )
+        self._add_preference_fields(
+            "room",
+            "Room preference",
+            room_names,
+            initial.get("room_preferences") or {},
+        )
+        self._add_preference_fields(
+            "lab",
+            "Lab preference",
+            lab_names,
+            initial.get("lab_preferences") or {},
+        )
+
+    def _add_preference_fields(self, kind, label, names, values):
+        """Add stable field names so arbitrary resource labels stay data, not HTML IDs."""
+        for index, name in enumerate(sorted(set(names))):
+            field_name = f"{kind}_preference_{index}"
+            self.fields[field_name] = forms.IntegerField(
+                label=f"{label}: {name}",
+                required=False,
+                min_value=0,
+                max_value=MAX_PREFERENCE_WEIGHT,
+                initial=values.get(name),
+                help_text="Leave blank for no preference.",
+            )
+            self.fields[field_name].resource_name = name
+            self.fields[field_name].preference_kind = kind
+
+    def clean_times(self):
+        times, problems = parse_availability(self.cleaned_data.get("times", ""))
+        if problems:
+            raise forms.ValidationError(problems)
+        # Unlike a room/lab, a faculty record requires a times mapping. Empty
+        # availability means unavailable, which is represented by an empty map.
+        return times or {}
+
+    def clean(self):
+        cleaned = super().clean()
+        for kind in ("course", "room", "lab"):
+            preferences = {}
+            prefix = f"{kind}_preference_"
+            for field_name, field in self.fields.items():
+                if not field_name.startswith(prefix):
+                    continue
+                weight = cleaned.get(field_name)
+                if weight is not None:
+                    preferences[field.resource_name] = weight
+            cleaned[f"{kind}_preferences"] = preferences
+        return cleaned
 
 
 # ---------------------------------------------------------------------- #

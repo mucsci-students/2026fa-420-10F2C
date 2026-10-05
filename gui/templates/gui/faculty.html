@@ -1,0 +1,64 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Faculty{% endblock %}
+{% block content %}
+<p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; Faculty</p>
+<h1>Faculty</h1>
+<p>Faculty records define workload limits, availability, required teaching days, and preferences for courses and spaces.</p>
+
+{% if not data.has_config %}
+<div class="empty-state" role="status">
+    <h2>No configuration is loaded</h2>
+    <p>Create or load a configuration in the <a href="{% url 'gui:config_editor' %}">Configuration Editor</a> before editing faculty.</p>
+</div>
+{% else %}
+
+<h2>Current faculty</h2>
+<table class="data-table">
+    <thead>
+        <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Workload</th>
+            <th scope="col">Days</th>
+            <th scope="col">Availability</th>
+            <th scope="col">Preferences</th>
+            <th scope="col">Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for person in data.faculty %}
+        <tr>
+            <td>{{ person.name }}</td>
+            <td>{{ person.minimum_credits }}&ndash;{{ person.maximum_credits }} credits<br>Up to {{ person.unique_course_limit }} course{{ person.unique_course_limit|pluralize }}</td>
+            <td>Up to {{ person.maximum_days }} day{{ person.maximum_days|pluralize }}{% if person.mandatory_days %}<br>Required: {{ person.mandatory_days|join:", " }}{% endif %}</td>
+            <td>{% for row in person.availability %}{{ row.day }} {{ row.ranges }}{% if not forloop.last %}<br>{% endif %}{% empty %}&mdash;{% endfor %}</td>
+            <td>
+                {% for group in person.preferences %}
+                    <strong>{{ group.label }}:</strong>
+                    {% for entry in group.entries %}{{ entry.name }} ({{ entry.weight }}){% if not forloop.last %}, {% endif %}{% empty %}&mdash;{% endfor %}
+                    {% if not forloop.last %}<br>{% endif %}
+                {% endfor %}
+            </td>
+            <td class="actions">
+                <a class="btn" href="{% url 'gui:faculty_edit' person.name %}">Edit</a>
+                {% if person.can_delete %}
+                <a class="btn btn-danger" href="{% url 'gui:faculty_delete' person.name %}">Delete</a>
+                {% else %}
+                <span class="btn btn-disabled" aria-disabled="true">Delete</span>
+                <span class="help">In use by {{ person.referenced_by|join:", " }}.</span>
+                {% endif %}
+            </td>
+        </tr>
+    {% empty %}
+        <tr><td colspan="6">No faculty members yet. Add one below.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+<h2>Add a faculty member</h2>
+<form method="post" action="{% url 'gui:faculty_add' %}" class="edit-form">
+    {% csrf_token %}
+    {% include "gui/components/form_fields.html" with form=add_form %}
+    <button type="submit" class="btn btn-primary">Add faculty member</button>
+</form>
+{% endif %}
+{% endblock %}
