@@ -20,7 +20,8 @@ Who uses what:
     view_schedule()     -> get_schedule(request, index), then group by room/faculty
     exports             -> get_schedule / get_schedules + app.schedule_io writers
     load_schedule_json  -> done (Section 17)
-    export_schedule_json -> done (Section 18); returns an ExportFile for the view
+    export_schedules    -> done (Section 18): JSON or CSV, one schedule or all;
+                           returns an ExportFile for the view
 
 Like every controller, these raise ControllerError for anything the user
 can fix and never build HTTP responses (Section 20).
@@ -39,6 +40,7 @@ from gui.session_store import get_session
 IMPORT_FIELD = "schedule_file"
 NO_SCHEDULES_MESSAGE = "There are no schedules yet. Generate schedules or load a schedule file first."
 JSON_CONTENT_TYPE = "application/json; charset=utf-8"
+CSV_CONTENT_TYPE = "text/csv; charset=utf-8"
 
 
 @dataclass(frozen=True)
@@ -159,21 +161,49 @@ def export_schedule_json(request, index: int | None = None) -> ExportFile:
     File names: schedule-<n>.json (n as shown to the user, 1-based) or
     schedules-all-<count>.json.
     """
-    if index is None:
-        schedules = get_schedules(request)
-        filename = f"schedules-all-{len(schedules)}.json"
-    else:
-        schedules = [get_schedule(request, index)]
-        filename = f"schedule-{index + 1}.json"
+    schedules, stem = _schedules_to_export(request, index)
     return ExportFile(
-        filename=filename,
+        filename=f"{stem}.json",
         content=schedule_io.schedules_to_json(schedules),
         content_type=JSON_CONTENT_TYPE,
         schedule_count=len(schedules),
     )
 
 
-def export_schedule_csv(request, index=None):
-    """TODO (Section 18): same as export_schedule_json with
-    app.schedule_io.schedules_to_csv(...) (Sprint 1 CSV export)."""
-    raise NotImplementedError
+def export_schedule_csv(request, index: int | None = None) -> ExportFile:
+    """Section 18 / Sprint 1: the same choice as export_schedule_json, as
+    CSV (one row per meeting, columns in schedule_io.CSV_COLUMNS). The
+    `schedule` column keeps the number shown in the viewer, so exporting
+    schedule 3 alone writes 3, not 1. CSV is for spreadsheets; it can't be
+    loaded back into the viewer (use JSON for that).
+
+    File names: schedule-<n>.csv or schedules-all-<count>.csv.
+    """
+    schedules, stem = _schedules_to_export(request, index)
+    first_number = 1 if index is None else index + 1
+    return ExportFile(
+        filename=f"{stem}.csv",
+        content=schedule_io.schedules_to_csv(schedules, first_number=first_number),
+        content_type=CSV_CONTENT_TYPE,
+        schedule_count=len(schedules),
+    )
+
+
+EXPORTERS = {"json": export_schedule_json, "csv": export_schedule_csv}
+
+
+def export_schedules(request, index: int | None, file_format: str) -> ExportFile:
+    """Export in `file_format` ("json" or "csv"); index=None means every schedule."""
+    try:
+        exporter = EXPORTERS[file_format]
+    except KeyError:
+        raise ControllerError(f"Unknown export format '{file_format}'. Choose JSON or CSV.") from None
+    return exporter(request, index)
+
+
+def _schedules_to_export(request, index: int | None) -> tuple[list[list[Assignment]], str]:
+    """The schedules to write and the file name without its extension."""
+    if index is None:
+        schedules = get_schedules(request)
+        return schedules, f"schedules-all-{len(schedules)}"
+    return [get_schedule(request, index)], f"schedule-{index + 1}"

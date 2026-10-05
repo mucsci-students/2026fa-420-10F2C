@@ -8,7 +8,7 @@ to the scheduler library.
 Done:
     - AddTimeBlockForm / TimeBlockFieldsForm / TimingOptionsForm (time slots)
     - ScheduleImportForm (Schedule Viewer: load schedules from a JSON file)
-    - ScheduleExportForm (Schedule Viewer: pick the schedule to export)
+    - ScheduleExportForm (Schedule Viewer: one schedule or all, JSON or CSV)
     - RoomForm / LabForm (rooms and labs: name, capacity, features, availability)
     - ClassPatternFieldsForm / AddClassPatternForm (class patterns: credits,
       enabled state, start time; the Add form also takes the first meeting)
@@ -153,19 +153,45 @@ class ScheduleImportForm(ConfirmReplaceMixin, forms.Form):
         )
 
 
+EXPORT_ALL = "all"
+
+
+def _schedule_choice(value):
+    return value if value == EXPORT_ALL else int(value)
+
+
+class ScheduleExportChoiceField(forms.TypedChoiceField):
+    """A schedule number from the list, or "all" (the whole set) whenever
+    there is at least one schedule. "all" is accepted but not listed, since
+    "Export All Schedules" has its own buttons."""
+
+    def valid_value(self, value):
+        if str(value) == EXPORT_ALL:
+            return bool(self.choices)
+        return super().valid_value(value)
+
+
 class ScheduleExportForm(forms.Form):
-    """Schedule Viewer: which schedule to export (Section 18).
+    """Schedule Viewer: what to export and in which format (Section 18,
+    user stories 42-44).
 
     Submitted with GET, since exporting changes nothing. `schedule` is the
-    1-based number the user sees ("Schedule 2 of 5"); cleaned_data["index"]
-    is the 0-based index the controller takes. Pass initial={"schedule": n}
-    to preselect the schedule currently shown in the viewer.
+    1-based number the user sees ("Schedule 2 of 5") or "all";
+    cleaned_data["index"] is the 0-based index the controller takes, or
+    None for the whole set. `file_format` comes from the button pressed:
+    "json" (the default, reloadable into the viewer) or "csv" (Sprint 1
+    spreadsheet export). Only `schedule` is drawn as a field. Pass
+    initial={"schedule": n} to preselect the schedule shown in the viewer.
     """
 
-    schedule = forms.TypedChoiceField(
+    schedule = ScheduleExportChoiceField(
         label="Schedule",
-        coerce=int,
-        help_text="The schedule to save as a JSON file you can load back into the viewer later.",
+        coerce=_schedule_choice,
+        help_text="The schedule the \"This Schedule\" buttons export.",
+    )
+    file_format = forms.ChoiceField(
+        choices=[("json", "JSON"), ("csv", "CSV")],
+        required=False,
     )
 
     def __init__(self, *args, schedule_count=0, **kwargs):
@@ -177,8 +203,13 @@ class ScheduleExportForm(forms.Form):
     def clean(self):
         cleaned = super().clean()
         if "schedule" in cleaned:
-            cleaned["index"] = cleaned["schedule"] - 1
+            choice = cleaned["schedule"]
+            cleaned["index"] = None if choice == EXPORT_ALL else choice - 1
+        if "file_format" in cleaned:
+            cleaned["file_format"] = cleaned["file_format"] or "json"
         return cleaned
+
+
 class ConfigNewForm(ConfirmReplaceMixin, forms.Form):
     """Configuration Editor: start a new configuration (Section 8).
 

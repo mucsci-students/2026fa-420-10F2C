@@ -151,9 +151,20 @@ Code: `gui/controllers/settings.py` (Controller), `gui/views_settings.py` (View)
 - If schedules are already loaded, you must tick **Replace the N schedule(s) currently loaded** first.
 - Loaded schedules don't need a configuration, and the scheduler doesn't rerun.
 
-### Exporting a schedule (JSON)
+### Exporting schedules (JSON and CSV)
 
-**Schedule Viewer -> Export**: pick a schedule from the list (the one you are viewing is preselected) and click **Export this schedule (JSON)**. The file is named `schedule-<n>.json` and uses the format below, so it can be loaded back into the viewer later without rerunning the scheduler. Export is disabled until schedules are generated or loaded.
+**Schedule Viewer -> Export** has two rows of buttons:
+
+| Button | Downloads |
+|---|---|
+| **Export This Schedule (JSON)** | The schedule picked in the list (the one you are viewing is preselected), as `schedule-<n>.json` |
+| **Export This Schedule (CSV)** | The same schedule as `schedule-<n>.csv` |
+| **Export All Schedules (JSON)** | Every available schedule in one file, `schedules-all-<count>.json` |
+| **Export All Schedules (CSV)** | Every available schedule in one file, `schedules-all-<count>.csv` |
+
+- **JSON** uses the format below, so a single schedule or the whole set can be loaded back into the viewer later without rerunning the scheduler.
+- **CSV** (the Sprint 1 export) is for spreadsheets: one row per meeting with the columns `schedule, course, faculty, room, lab, day, start, end, duration_minutes, lab_meeting`. A section with no meetings (for example an online course) gets one row with blank meeting columns. The `schedule` column keeps the number shown in the viewer. CSV files can't be loaded back into the viewer; use JSON for that.
+- Export buttons are disabled until schedules are generated or loaded. Exporting never changes the loaded schedules.
 
 **Overwrite protection:** exports are browser downloads. Your browser chooses where the file goes and asks before replacing an existing file (or renames the new one). The application never writes to a path on your computer, so it cannot overwrite your files.
 
@@ -198,6 +209,7 @@ Use these instead of rewriting them in each feature:
 | Store new results (generate, load, clear) | `replace_schedules(request, schedules)` | same |
 | One schedule row: course, faculty, room, lab, meetings | `Assignment`, `MeetingTime` | `app/schedule_io.py` |
 | Write schedules as JSON / CSV | `schedules_to_json(...)`, `schedules_to_csv(...)` | same |
+| Build a download (one schedule or all, JSON or CSV) | `export_schedules(request, index_or_None, "json"\|"csv")` -> `ExportFile` | `gui/controllers/schedule_controller.py` |
 | Export schedules as a JSON file (one, or all with `index=None`) | `export_schedule_json(request, index)` returns an `ExportFile` for `download_response` | `gui/controllers/schedule_controller.py` |
 | Read an uploaded file (empty/unreadable/too large handled) | `read_upload(uploaded_file, "field_name")` | `gui/controllers/uploads.py` |
 | "Tick to confirm" before replacing or discarding data | `ConfirmReplaceMixin` + `require_confirmation(...)` | `gui/forms.py` |
