@@ -235,6 +235,20 @@ def _build_faculty(fields) -> FacultyConfig:
         raise ControllerError(translate_validation_error(error, form_fields=FACULTY_FIELDS)) from error
 
 
+def _prepared_update(config, faculty_name, form_data) -> tuple[dict, FacultyConfig]:
+    """Validate one proposed faculty replacement before any edit is committed.
+
+    Both a normal edit and a confirmed propagated rename use this preparation
+    step, so duplicate-name and FacultyConfig validation rules are identical.
+    """
+    _find_faculty(config, faculty_name)
+    fields = _faculty_fields(form_data, config)
+    new_name = fields["name"]
+    if new_name != faculty_name and any(person.name == new_name for person in config.config.faculty):
+        raise ControllerError([FieldError("name", f"A faculty member named '{new_name}' already exists.")])
+    return fields, _build_faculty(fields)
+
+
 def _times_for_form(times) -> dict:
     """Serialize Pydantic TimeRange instances into Form initial values."""
     values = {}
@@ -312,6 +326,18 @@ def get_faculty(request, faculty_name) -> dict:
     return _faculty_data(config, _find_faculty(config, faculty_name))
 
 
+def rename_impact(request, faculty_name, form_data) -> dict:
+    """Describe explicit course assignments a proposed name change would update.
+
+    The view uses this read-only result to show a confirmation page. It also
+    validates the submitted replacement now, before asking the user to decide.
+    """
+    config = require_config(get_session(request), "editing faculty")
+    fields, _ = _prepared_update(config, faculty_name, form_data)
+    references = _references(config, faculty_name) if fields["name"] != faculty_name else []
+    return {"new_name": fields["name"], "references": references}
+
+
 # ---------------------------------------------------------------------- #
 #  Writes
 # ---------------------------------------------------------------------- #
@@ -334,13 +360,10 @@ def update_faculty(request, faculty_name, form_data) -> None:
     """Replace a faculty record in place, protecting referenced names."""
     session = get_session(request)
     config = require_config(session, "editing faculty")
-    _find_faculty(config, faculty_name)
-    fields = _faculty_fields(form_data, config)
+    fields, updated = _prepared_update(config, faculty_name, form_data)
     new_name = fields["name"]
 
     if new_name != faculty_name:
-        if any(person.name == new_name for person in config.config.faculty):
-            raise ControllerError([FieldError("name", f"A faculty member named '{new_name}' already exists.")])
         references = _references(config, faculty_name)
         if references:
             raise ControllerError(
@@ -352,12 +375,41 @@ def update_faculty(request, faculty_name, form_data) -> None:
                     )
                 ]
             )
-    updated = _build_faculty(fields)
 
     def mutate(draft):
         people = draft.config.faculty
         position = next(index for index, person in enumerate(people) if person.name == faculty_name)
         people[position] = updated
+
+    apply_config_edit(session, config, "faculty", mutate, form_fields=FACULTY_FIELDS)
+
+
+def rename_faculty_and_update_courses(request, faculty_name, form_data) -> None:
+    """Atomically rename faculty and every explicit course assignment.
+
+    This operation is intentionally separate from update_faculty(): callers
+    must first show the user the affected courses and obtain confirmation.
+    edit_mode() validates the replacement faculty and all changed courses as
+    one draft, so a failed validation preserves the original configuration.
+    """
+    session = get_session(request)
+    config = require_config(session, "renaming faculty")
+    fields, updated = _prepared_update(config, faculty_name, form_data)
+    new_name = fields["name"]
+
+    if new_name == faculty_name:
+        raise ControllerError([FieldError("name", "Enter a different faculty name before confirming a rename.")])
+
+    def mutate(draft):
+        people = draft.config.faculty
+        position = next(index for index, person in enumerate(people) if person.name == faculty_name)
+        people[position] = updated
+
+        # Course faculty lists store names, not object references. Update only
+        # explicit assignments; None continues to mean scheduler-derived staff.
+        for course in draft.config.courses:
+            if faculty_name in (course.faculty or []):
+                course.faculty = [new_name if name == faculty_name else name for name in course.faculty]
 
     apply_config_edit(session, config, "faculty", mutate, form_fields=FACULTY_FIELDS)
 

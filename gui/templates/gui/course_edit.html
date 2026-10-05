@@ -1,0 +1,18 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Edit Course{% endblock %}
+{% block content %}
+<p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; <a href="{% url 'gui:courses' %}">Courses</a> &rsaquo; Edit</p>
+<h1>Edit course section</h1>
+<p>
+    Editing <strong>{{ course.label }}</strong>. Nothing changes until you apply your edits.
+    {% if not course.can_delete %}
+    This is the final section of its course ID and is used by {{ course.referenced_by|join:", " }}, so its course ID cannot change until those references are removed.
+    {% endif %}
+</p>
+<form method="post" class="edit-form">
+    {% csrf_token %}
+    {% include "gui/components/form_fields.html" with form=form %}
+    <button type="submit" class="btn btn-primary">Apply changes</button>
+    <a class="btn" href="{% url 'gui:courses' %}">Cancel</a>
+</form>
+{% endblock %}

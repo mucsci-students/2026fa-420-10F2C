@@ -40,6 +40,11 @@ urlpatterns = [
     path("configuration/faculty/", views_faculty.faculty, name="faculty"),
     path("configuration/faculty/add/", views_faculty.faculty_add, name="faculty_add"),
     path("configuration/faculty/<path:faculty_name>/edit/", views_faculty.faculty_edit, name="faculty_edit"),
+    path(
+        "configuration/faculty/<path:faculty_name>/rename/confirm/",
+        views_faculty.faculty_rename_confirm,
+        name="faculty_rename_confirm",
+    ),
     path("configuration/faculty/<path:faculty_name>/delete/", views_faculty.faculty_delete, name="faculty_delete"),
     path("configuration/patterns/", views_patterns.patterns, name="patterns"),
     path("configuration/patterns/add/", views_patterns.pattern_add, name="pattern_add"),

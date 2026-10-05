@@ -1,0 +1,26 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Delete Course{% endblock %}
+{% block content %}
+<p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; <a href="{% url 'gui:courses' %}">Courses</a> &rsaquo; Delete</p>
+<h1>Delete course section</h1>
+{% if not course.can_delete %}
+<div class="alert alert-error" role="alert">
+    <p><strong>Cannot delete:</strong> {{ course.label }} is the final section of {{ course.course_id }}, which is still used by:</p>
+    <ul>
+        {% for item in course.referenced_by %}<li>{{ item }}</li>{% endfor %}
+    </ul>
+    <p>Remove those references first.</p>
+</div>
+<a class="btn" href="{% url 'gui:courses' %}">Back to courses</a>
+{% else %}
+<p>
+    Are you sure you want to delete <strong>{{ course.label }}</strong>?
+    This cannot be undone.
+</p>
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" name="action" value="confirm" class="btn btn-danger">Delete course section</button>
+    <button type="submit" name="action" value="cancel" class="btn">Cancel</button>
+</form>
+{% endif %}
+{% endblock %}

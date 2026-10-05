@@ -40,6 +40,13 @@ def find_faculty(session, name):
     return next((person for person in session.config.config.faculty if person.name == name), None)
 
 
+def existing_faculty_data(faculty, name):
+    """Copy one scheduler faculty record into controller-ready edit data."""
+    data = faculty.model_dump(mode="json")
+    data["name"] = name
+    return data
+
+
 @pytest.fixture
 def session(monkeypatch):
     """Provide the real example configuration to controller calls."""
@@ -108,6 +115,25 @@ class TestFacultyController:
         assert "CMSC 161" in delete_error.value.message
         assert find_faculty(session, "Zoppetti") is not None
         assert session.dirty is False
+
+    def test_confirmed_rename_updates_explicit_course_assignments_atomically(self, session):
+        """The dedicated rename operation changes faculty and courses together."""
+        original = find_faculty(session, "Zoppetti")
+        faculty_controller.rename_faculty_and_update_courses(
+            None,
+            "Zoppetti",
+            existing_faculty_data(original, "Zoppetti Renamed"),
+        )
+
+        assert find_faculty(session, "Zoppetti") is None
+        assert find_faculty(session, "Zoppetti Renamed") is not None
+        assert all(
+            "Zoppetti" not in (course.faculty or []) for course in session.config.config.courses
+        )
+        assert any(
+            "Zoppetti Renamed" in (course.faculty or []) for course in session.config.config.courses
+        )
+        assert session.dirty is True
 
     def test_unreferenced_faculty_can_be_updated_and_deleted(self, session):
         faculty_controller.add_faculty(None, new_faculty_data())
@@ -217,6 +243,36 @@ class TestFacultyPages:
         deleted = client.post(FACULTY_URL + "Taylor%20Updated/delete/", {"action": "confirm"}, follow=True)
         assert "Taylor Updated" in page(deleted) and "deleted" in page(deleted)
         assert find_faculty(browser_session(), "Taylor Updated") is None
+
+    def test_rename_confirmation_updates_referenced_course_assignments(self, client):
+        """A referenced rename displays its impact and commits only on confirmation."""
+        edit_page = client.get(FACULTY_URL + "Zoppetti/edit/")
+        form = edit_page.context["form"]
+        form_data = {
+            field_name: value
+            for field_name in form.fields
+            if (value := form[field_name].value()) is not None
+        }
+        form_data["name"] = "Zoppetti Renamed"
+
+        preview = client.post(FACULTY_URL + "Zoppetti/edit/", form_data)
+        assert preview.status_code == 200
+        assert "Confirm faculty rename" in page(preview)
+        assert "CMSC 161" in page(preview)
+        assert find_faculty(browser_session(), "Zoppetti") is not None
+
+        confirmation = client.post(
+            FACULTY_URL + "Zoppetti/rename/confirm/",
+            {"confirmation_token": preview.context["confirmation_token"]},
+            follow=True,
+        )
+        assert "associated course assignments updated" in page(confirmation)
+        assert find_faculty(browser_session(), "Zoppetti") is None
+        assert find_faculty(browser_session(), "Zoppetti Renamed") is not None
+        assert any(
+            "Zoppetti Renamed" in (course.faculty or [])
+            for course in browser_session().config.config.courses
+        )
 
     def test_referenced_faculty_has_no_delete_confirmation(self, client):
         client.get(FACULTY_URL)
