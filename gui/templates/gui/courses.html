@@ -1,0 +1,57 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Courses{% endblock %}
+{% block content %}
+<p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; Courses</p>
+<h1>Courses</h1>
+<p>Course sections define enrollment, meeting modality, candidate spaces, conflicts, and faculty candidates.</p>
+
+{% if not data.has_config %}
+<div class="empty-state" role="status">
+    <h2>No configuration is loaded</h2>
+    <p>Create or load a configuration in the <a href="{% url 'gui:config_editor' %}">Configuration Editor</a> before editing courses.</p>
+</div>
+{% else %}
+
+<p><a class="btn btn-primary" href="{% url 'gui:course_add' %}">Add course section</a></p>
+
+<h2>Current course sections</h2>
+<table class="data-table">
+    <thead>
+        <tr>
+            <th scope="col">Section</th>
+            <th scope="col">Credits and enrollment</th>
+            <th scope="col">Modality and spaces</th>
+            <th scope="col">Conflicts</th>
+            <th scope="col">Faculty</th>
+            <th scope="col">Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for course in data.courses %}
+        <tr>
+            <td>{{ course.label }}</td>
+            <td>{{ course.credits }} credit{{ course.credits|pluralize }}<br>Capacity {{ course.capacity }}</td>
+            <td>
+                {{ course.modality|title }}
+                {% if course.room %}<br><strong>Rooms:</strong> {{ course.room|join:", " }}{% endif %}
+                {% if course.lab %}<br><strong>Labs:</strong> {{ course.lab|join:", " }}{% endif %}
+            </td>
+            <td>{{ course.conflicts|join:", "|default:"—" }}</td>
+            <td>{{ course.faculty|join:", "|default:"None associated" }}</td>
+            <td class="actions">
+                <a class="btn" href="{% url 'gui:course_edit' course.index %}">Edit</a>
+                {% if course.can_delete %}
+                <a class="btn btn-danger" href="{% url 'gui:course_delete' course.index %}">Delete</a>
+                {% else %}
+                <span class="btn btn-disabled" aria-disabled="true">Delete</span>
+                <span class="help">In use by {{ course.referenced_by|join:", " }}.</span>
+                {% endif %}
+            </td>
+        </tr>
+    {% empty %}
+        <tr><td colspan="6">No course sections yet. Add one above.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endblock %}

@@ -1,6 +1,15 @@
 from django.urls import path
 
-from . import views, views_faculty, views_labs, views_meetings, views_patterns, views_rooms, views_settings
+from . import (
+    views,
+    views_courses,
+    views_faculty,
+    views_labs,
+    views_meetings,
+    views_patterns,
+    views_rooms,
+    views_settings,
+)
 
 app_name = "gui"
 
@@ -24,6 +33,10 @@ urlpatterns = [
     path("configuration/labs/add/", views_labs.lab_add, name="lab_add"),
     path("configuration/labs/<path:lab_name>/edit/", views_labs.lab_edit, name="lab_edit"),
     path("configuration/labs/<path:lab_name>/delete/", views_labs.lab_delete, name="lab_delete"),
+    path("configuration/courses/", views_courses.courses, name="courses"),
+    path("configuration/courses/add/", views_courses.course_add, name="course_add"),
+    path("configuration/courses/<int:course_index>/edit/", views_courses.course_edit, name="course_edit"),
+    path("configuration/courses/<int:course_index>/delete/", views_courses.course_delete, name="course_delete"),
     path("configuration/faculty/", views_faculty.faculty, name="faculty"),
     path("configuration/faculty/add/", views_faculty.faculty_add, name="faculty_add"),
     path("configuration/faculty/<path:faculty_name>/edit/", views_faculty.faculty_edit, name="faculty_edit"),

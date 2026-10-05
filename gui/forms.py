@@ -16,11 +16,10 @@ Done:
       delivery mode, optional start time)
     - GlobalSettingsForm (global settings: generation limit, optimizer flags)
         - FacultyForm (workload limits, availability, mandatory days, preferences)
+        - CourseForm (course sections, resources, conflicts, faculty, and requirements)
 
 TODO: one Form class per remaining area, matching the "Required editable data"
 column in Section 7's table:
-    - CourseForm          (course/section id, credits, capacity, resources,
-                            conflicts, faculty, modality, requirements)
     - GenerationOverrideForm  (Section 14: limit override + optimizer overrides,
                                 for the Schedule Generator page, separate from
                                 GlobalSettingsForm since these must NOT touch
@@ -431,6 +430,105 @@ class FacultyForm(forms.Form):
                     preferences[field.resource_name] = weight
             cleaned[f"{kind}_preferences"] = preferences
         return cleaned
+
+
+# ---------------------------------------------------------------------- #
+#  Courses (Section 7). Resource and reference fields are populated from the
+#  active configuration by the Course controller. The controller verifies the
+#  complete configuration before committing a CourseConfig.
+# ---------------------------------------------------------------------- #
+COURSE_MODALITY_CHOICES = [
+    ("in_person", "In person"),
+    ("online", "Online"),
+    ("hybrid", "Hybrid"),
+]
+
+
+class CourseForm(forms.Form):
+    """Add or edit one CourseConfig record.
+
+    The constructor receives names from the controller instead of reading
+    scheduler models in the view. That keeps the form responsible only for
+    user input shape while the controller owns cross-record validation.
+    """
+
+    course_id = forms.CharField(
+        label="Course ID",
+        help_text="Base identifier, such as CMSC 420. Repeated IDs create separate sections.",
+    )
+    section_id = forms.CharField(
+        label="Section ID",
+        required=False,
+        help_text="Optional suffix, such as 01. Leave blank to number by input order.",
+    )
+    credits = forms.IntegerField(label="Credits", min_value=1, help_text="Credit hours for this section.")
+    capacity = forms.IntegerField(
+        label="Expected enrollment",
+        min_value=1,
+        help_text="Students expected in this section; assigned rooms and labs must accommodate it.",
+    )
+    modality = forms.ChoiceField(
+        label="Modality",
+        choices=COURSE_MODALITY_CHOICES,
+        initial="in_person",
+        help_text="Required delivery composition for the selected class pattern.",
+    )
+    room = forms.MultipleChoiceField(
+        label="Candidate rooms",
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        help_text="Rooms the scheduler may use for lecture meetings.",
+    )
+    lab = forms.MultipleChoiceField(
+        label="Candidate labs",
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        help_text="Labs the scheduler may use. Leave blank when the section has no lab meeting.",
+    )
+    conflicts = forms.MultipleChoiceField(
+        label="Conflicting courses",
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        help_text="Sections of these course IDs cannot overlap with this section.",
+    )
+    faculty = forms.MultipleChoiceField(
+        label="Faculty candidates",
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        help_text="Leave blank to derive candidates from faculty course preferences.",
+    )
+    required_room_features = forms.CharField(
+        label="Required room features",
+        required=False,
+        help_text="Separate feature tags with commas. Leave blank when none are required.",
+    )
+    required_lab_features = forms.CharField(
+        label="Required lab features",
+        required=False,
+        help_text="Separate feature tags with commas. Leave blank when none are required.",
+    )
+    reserve_room_during_lab = forms.BooleanField(
+        label="Reserve the lecture room during lab meetings",
+        required=False,
+        initial=True,
+        help_text="Keep the selected lecture room occupied while this section's lab meets.",
+    )
+
+    def __init__(self, *args, course_names=(), room_names=(), lab_names=(), faculty_names=(), **kwargs):
+        """Populate checkbox choices from plain controller-provided names."""
+        super().__init__(*args, **kwargs)
+        self.fields["room"].choices = [(name, name) for name in sorted(set(room_names))]
+        self.fields["lab"].choices = [(name, name) for name in sorted(set(lab_names))]
+        self.fields["conflicts"].choices = [(name, name) for name in sorted(set(course_names))]
+        self.fields["faculty"].choices = [(name, name) for name in sorted(set(faculty_names))]
+
+    def clean_section_id(self):
+        """Use None for automatic section numbering, as required by CourseConfig."""
+        return self.cleaned_data["section_id"].strip() or None
+
+    def clean_faculty(self):
+        """An empty candidate list means the scheduler derives faculty choices."""
+        return self.cleaned_data["faculty"] or None
 
 
 # ---------------------------------------------------------------------- #
