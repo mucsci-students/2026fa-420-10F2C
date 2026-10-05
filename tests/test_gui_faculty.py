@@ -257,7 +257,7 @@ class TestFacultyPages:
 
         preview = client.post(FACULTY_URL + "Zoppetti/edit/", form_data)
         assert preview.status_code == 200
-        assert "Confirm faculty rename" in page(preview)
+        assert "Confirm faculty member rename" in page(preview)
         assert "CMSC 161" in page(preview)
         assert find_faculty(browser_session(), "Zoppetti") is not None
 
@@ -273,6 +273,19 @@ class TestFacultyPages:
             "Zoppetti Renamed" in (course.faculty or [])
             for course in browser_session().config.config.courses
         )
+
+    def test_rename_confirmation_rejects_an_invalid_token_without_mutation(self, client):
+        """A direct or expired confirmation POST cannot bypass the preview."""
+        client.get(FACULTY_URL + "Zoppetti/edit/")
+        response = client.post(
+            FACULTY_URL + "Zoppetti/rename/confirm/",
+            {"confirmation_token": "not-a-valid-token"},
+            follow=True,
+        )
+
+        assert "invalid or expired" in page(response)
+        assert find_faculty(browser_session(), "Zoppetti") is not None
+        assert browser_session().dirty is False
 
     def test_referenced_faculty_has_no_delete_confirmation(self, client):
         client.get(FACULTY_URL)

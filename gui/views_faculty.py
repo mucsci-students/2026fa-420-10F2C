@@ -5,16 +5,14 @@ construction, reference protection, and complete-configuration validation.
 """
 
 from django.contrib import messages
-from django.core import signing
 from django.shortcuts import redirect, render
 
 from gui.controllers import faculty as faculty_controller
 from gui.controllers.errors import ControllerError
 from gui.forms import FacultyForm, availability_to_text
+from gui.rename_confirmation import RenameConfirmationError, load_rename_confirmation
 from gui.views import _attach_errors
-
-RENAME_CONFIRMATION_SALT = "gui.faculty.rename"
-RENAME_CONFIRMATION_MAX_AGE_SECONDS = 300
+from gui.views_rename import render_rename_confirmation
 
 
 def _faculty_form(request, *args, **kwargs):
@@ -31,14 +29,6 @@ def _render_faculty(request):
 def _render_faculty_add(request, form=None):
     """Render the dedicated creation page, retaining a rejected bound form."""
     return render(request, "gui/faculty_add.html", {"active": "config", "form": form or _faculty_form(request)})
-
-
-def _rename_confirmation_token(faculty_name, form_data) -> str:
-    """Sign validated form data so confirmation cannot alter the proposed edit."""
-    return signing.dumps(
-        {"faculty_name": faculty_name, "form_data": form_data},
-        salt=RENAME_CONFIRMATION_SALT,
-    )
 
 
 def faculty(request):
@@ -81,16 +71,19 @@ def faculty_edit(request, faculty_name):
                 _attach_errors(form, error)
             else:
                 if impact["references"]:
-                    return render(
+                    return render_rename_confirmation(
                         request,
-                        "gui/faculty_rename_confirm.html",
-                        {
-                            "active": "config",
-                            "faculty": person,
-                            "new_name": impact["new_name"],
-                            "references": impact["references"],
-                            "confirmation_token": _rename_confirmation_token(faculty_name, form.cleaned_data),
-                        },
+                        resource_key="faculty",
+                        resource_label="faculty member",
+                        collection_label="Faculty",
+                        list_url_name="gui:faculty",
+                        identifier=faculty_name,
+                        old_name=faculty_name,
+                        new_name=impact["new_name"],
+                        references=impact["references"],
+                        form_data=form.cleaned_data,
+                        confirm_url_name="gui:faculty_rename_confirm",
+                        cancel_url_name="gui:faculty_edit",
                     )
                 try:
                     faculty_controller.update_faculty(request, faculty_name, form.cleaned_data)
@@ -125,19 +118,9 @@ def faculty_rename_confirm(request, faculty_name):
 
     token = request.POST.get("confirmation_token", "")
     try:
-        payload = signing.loads(
-            token,
-            salt=RENAME_CONFIRMATION_SALT,
-            max_age=RENAME_CONFIRMATION_MAX_AGE_SECONDS,
-        )
-        submitted_name = payload["faculty_name"]
-        form_data = payload["form_data"]
-    except (signing.BadSignature, KeyError, TypeError):
-        messages.error(request, "That rename confirmation is invalid or expired. Submit the edit again.")
-        return redirect("gui:faculty_edit", faculty_name=faculty_name)
-
-    if submitted_name != faculty_name or not isinstance(form_data, dict):
-        messages.error(request, "That rename confirmation does not match this faculty member. Submit the edit again.")
+        form_data = load_rename_confirmation(token, "faculty", faculty_name)
+    except RenameConfirmationError as error:
+        messages.error(request, str(error))
         return redirect("gui:faculty_edit", faculty_name=faculty_name)
 
     try:

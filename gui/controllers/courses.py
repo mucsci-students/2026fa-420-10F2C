@@ -225,6 +225,60 @@ def _build_course(fields) -> CourseConfig:
         raise ControllerError(translate_validation_error(error, form_fields=COURSE_FIELDS)) from error
 
 
+def _prepared_update(config, course_index, form_data) -> tuple[object, dict, CourseConfig]:
+    """Validate one section replacement before it is committed to a draft."""
+    original = _find_course(config, course_index)
+    fields = _course_fields(form_data, config)
+    return original, fields, _build_course(fields)
+
+
+def _rename_references(config, course_index, old_course_id, new_course_id) -> list[str]:
+    """Validate and describe references that need a final course-ID rename.
+
+    Course conflicts and faculty preferences point to a base course ID. They
+    need no change while another section still has the old ID. Preference-key
+    collisions and self-conflicts require user resolution rather than silently
+    overwriting a weight or creating invalid configuration data.
+    """
+    if old_course_id == new_course_id or not _is_last_section(config, old_course_id, ignore_index=course_index):
+        return []
+
+    for person in config.config.faculty:
+        preferences = person.course_preferences or {}
+        if old_course_id in preferences and new_course_id in preferences:
+            raise ControllerError(
+                [
+                    FieldError(
+                        "course_id",
+                        f"Faculty member '{person.name}' already has a preference for '{new_course_id}'. "
+                        "Resolve the two preference weights before renaming this course ID.",
+                    )
+                ]
+            )
+    for index, course in enumerate(config.config.courses):
+        if index != course_index and course.course_id == new_course_id and old_course_id in (course.conflicts or []):
+            raise ControllerError(
+                [
+                    FieldError(
+                        "course_id",
+                        f"Course '{new_course_id}' conflicts with '{old_course_id}'. "
+                        "Remove that conflict before renaming this course ID.",
+                    )
+                ]
+            )
+    return _references(config, old_course_id, ignore_index=course_index)
+
+
+def _replace_reference(values, old_name, new_name) -> list[str]:
+    """Replace one name in a list while retaining stable, duplicate-free order."""
+    updated = []
+    for value in values or []:
+        replacement = new_name if value == old_name else value
+        if replacement not in updated:
+            updated.append(replacement)
+    return updated
+
+
 def _course_label(config, course_index) -> str:
     """Create a stable human label for an indexed section on GUI pages."""
     course = config.config.courses[course_index]
@@ -310,6 +364,16 @@ def get_course(request, course_index) -> dict:
     return _course_data(config, course_index)
 
 
+def rename_impact(request, course_index, form_data) -> dict:
+    """Describe affected conflicts and preferences for a final course-ID rename."""
+    config = require_config(get_session(request), "editing courses")
+    original, fields, _ = _prepared_update(config, course_index, form_data)
+    return {
+        "new_name": fields["course_id"],
+        "references": _rename_references(config, course_index, original.course_id, fields["course_id"]),
+    }
+
+
 # ---------------------------------------------------------------------- #
 #  Writes
 # ---------------------------------------------------------------------- #
@@ -329,8 +393,7 @@ def update_course(request, course_index, form_data) -> None:
     """Replace one section and protect references if its final ID changes."""
     session = get_session(request)
     config = require_config(session, "editing courses")
-    original = _find_course(config, course_index)
-    fields = _course_fields(form_data, config)
+    original, fields, updated = _prepared_update(config, course_index, form_data)
 
     if original.course_id != fields["course_id"] and _is_last_section(
         config, original.course_id, ignore_index=course_index
@@ -341,10 +404,56 @@ def update_course(request, course_index, form_data) -> None:
             raise ControllerError(
                 f"{error}. Remove those references before changing the final '{original.course_id}' section."
             ) from error
-    updated = _build_course(fields)
+    def mutate(draft):
+        draft.config.courses[course_index] = updated
+
+    apply_config_edit(session, config, "course", mutate, form_fields=COURSE_FIELDS)
+
+
+def rename_course_and_update_references(request, course_index, form_data) -> None:
+    """Atomically rename a final course ID and every conflict/preference key.
+
+    This is separate from update_course() because its caller must present the
+    impact list first. The full draft is revalidated before commit, keeping a
+    rejected propagation from partially updating any configuration record.
+    """
+    session = get_session(request)
+    config = require_config(session, "renaming courses")
+    original, fields, updated = _prepared_update(config, course_index, form_data)
+    old_course_id = original.course_id
+    new_course_id = fields["course_id"]
+    references = _rename_references(config, course_index, old_course_id, new_course_id)
+    if new_course_id == old_course_id:
+        raise ControllerError([FieldError("course_id", "Enter a different course ID before confirming a rename.")])
+    if not _is_last_section(config, old_course_id, ignore_index=course_index):
+        raise ControllerError(
+            [
+                FieldError(
+                    "course_id",
+                    f"'{old_course_id}' still has another section, so this edit does not need reference propagation.",
+                )
+            ]
+        )
+    if not references:
+        raise ControllerError(
+            [
+                FieldError(
+                    "course_id",
+                    f"'{old_course_id}' has no references to update. Apply the regular edit instead.",
+                )
+            ]
+        )
 
     def mutate(draft):
         draft.config.courses[course_index] = updated
+        for index, course in enumerate(draft.config.courses):
+            if index != course_index and old_course_id in (course.conflicts or []):
+                course.conflicts = _replace_reference(course.conflicts, old_course_id, new_course_id)
+        for person in draft.config.faculty:
+            preferences = dict(person.course_preferences or {})
+            if old_course_id in preferences:
+                preferences[new_course_id] = preferences.pop(old_course_id)
+                person.course_preferences = preferences
 
     apply_config_edit(session, config, "course", mutate, form_fields=COURSE_FIELDS)
 

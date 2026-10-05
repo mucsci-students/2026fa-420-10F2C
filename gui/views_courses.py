@@ -11,7 +11,9 @@ from django.shortcuts import redirect, render
 from gui.controllers import courses as course_controller
 from gui.controllers.errors import ControllerError
 from gui.forms import CourseForm
+from gui.rename_confirmation import RenameConfirmationError, load_rename_confirmation
 from gui.views import _attach_errors
+from gui.views_rename import render_rename_confirmation
 
 
 def _course_form(request, *args, course_index=None, **kwargs):
@@ -65,12 +67,32 @@ def course_edit(request, course_index):
         form = _course_form(request, request.POST, course_index=course_index)
         if form.is_valid():
             try:
-                course_controller.update_course(request, course_index, form.cleaned_data)
+                impact = course_controller.rename_impact(request, course_index, form.cleaned_data)
             except ControllerError as error:
                 _attach_errors(form, error)
             else:
-                messages.success(request, f"Course '{form.cleaned_data['course_id']}' updated.")
-                return redirect("gui:courses")
+                if impact["references"]:
+                    return render_rename_confirmation(
+                        request,
+                        resource_key="course",
+                        resource_label="course ID",
+                        collection_label="Courses",
+                        list_url_name="gui:courses",
+                        identifier=course_index,
+                        old_name=course["course_id"],
+                        new_name=impact["new_name"],
+                        references=impact["references"],
+                        form_data=form.cleaned_data,
+                        confirm_url_name="gui:course_rename_confirm",
+                        cancel_url_name="gui:course_edit",
+                    )
+                try:
+                    course_controller.update_course(request, course_index, form.cleaned_data)
+                except ControllerError as error:
+                    _attach_errors(form, error)
+                else:
+                    messages.success(request, f"Course '{form.cleaned_data['course_id']}' updated.")
+                    return redirect("gui:courses")
     else:
         form = _course_form(
             request,
@@ -91,6 +113,24 @@ def course_edit(request, course_index):
             },
         )
     return render(request, "gui/course_edit.html", {"active": "config", "form": form, "course": course})
+
+
+def course_rename_confirm(request, course_index):
+    """Apply a reviewed final Course-ID rename and its dependent references."""
+    if request.method != "POST":
+        return redirect("gui:course_edit", course_index=course_index)
+    try:
+        form_data = load_rename_confirmation(request.POST.get("confirmation_token", ""), "course", course_index)
+    except RenameConfirmationError as error:
+        messages.error(request, str(error))
+        return redirect("gui:course_edit", course_index=course_index)
+    try:
+        course_controller.rename_course_and_update_references(request, course_index, form_data)
+    except ControllerError as error:
+        messages.error(request, error.message)
+        return redirect("gui:course_edit", course_index=course_index)
+    messages.success(request, f"Course ID '{form_data['course_id']}' and associated references updated.")
+    return redirect("gui:courses")
 
 
 def course_delete(request, course_index):

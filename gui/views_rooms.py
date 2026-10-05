@@ -14,7 +14,9 @@ from django.shortcuts import redirect, render
 from gui.controllers import rooms as room_controller
 from gui.controllers.errors import ControllerError
 from gui.forms import RoomForm, availability_to_text
+from gui.rename_confirmation import RenameConfirmationError, load_rename_confirmation
 from gui.views import _attach_errors
+from gui.views_rename import render_rename_confirmation
 
 
 def _render_rooms(request, add_form=None):
@@ -58,12 +60,32 @@ def room_edit(request, room_name):
         form = RoomForm(request.POST)
         if form.is_valid():
             try:
-                room_controller.update_room(request, room_name, form.cleaned_data)
+                impact = room_controller.rename_impact(request, room_name, form.cleaned_data)
             except ControllerError as error:
                 _attach_errors(form, error)
             else:
-                messages.success(request, f"Room '{form.cleaned_data['name']}' updated.")
-                return redirect("gui:rooms")
+                if impact["references"]:
+                    return render_rename_confirmation(
+                        request,
+                        resource_key="room",
+                        resource_label="room",
+                        collection_label="Rooms",
+                        list_url_name="gui:rooms",
+                        identifier=room_name,
+                        old_name=room_name,
+                        new_name=impact["new_name"],
+                        references=impact["references"],
+                        form_data=form.cleaned_data,
+                        confirm_url_name="gui:room_rename_confirm",
+                        cancel_url_name="gui:room_edit",
+                    )
+                try:
+                    room_controller.update_room(request, room_name, form.cleaned_data)
+                except ControllerError as error:
+                    _attach_errors(form, error)
+                else:
+                    messages.success(request, f"Room '{form.cleaned_data['name']}' updated.")
+                    return redirect("gui:rooms")
     else:
         form = RoomForm(
             initial={
@@ -74,6 +96,24 @@ def room_edit(request, room_name):
             }
         )
     return render(request, "gui/room_edit.html", {"active": "config", "form": form, "room": room})
+
+
+def room_rename_confirm(request, room_name):
+    """Apply a reviewed room rename and its references after confirmation."""
+    if request.method != "POST":
+        return redirect("gui:room_edit", room_name=room_name)
+    try:
+        form_data = load_rename_confirmation(request.POST.get("confirmation_token", ""), "room", room_name)
+    except RenameConfirmationError as error:
+        messages.error(request, str(error))
+        return redirect("gui:room_edit", room_name=room_name)
+    try:
+        room_controller.rename_room_and_update_references(request, room_name, form_data)
+    except ControllerError as error:
+        messages.error(request, error.message)
+        return redirect("gui:room_edit", room_name=room_name)
+    messages.success(request, f"Room '{form_data['name']}' and associated references updated.")
+    return redirect("gui:rooms")
 
 
 def room_delete(request, room_name):

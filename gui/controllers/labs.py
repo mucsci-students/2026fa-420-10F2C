@@ -17,8 +17,9 @@ capacity/feature compatibility with courses. What this controller adds so the
 GUI can show clear field-level messages:
   * a non-blank, unique name,
   * a positive whole-number capacity,
-  * reference checks (Section 12) before a lab is deleted or renamed. The chosen
-    behavior is: BLOCK, and list the blocking courses / faculty.
+    * reference checks (Section 12) before a lab is deleted or directly renamed.
+        Deletion remains blocked; a reviewed rename confirmation updates blocking
+        course and faculty references atomically after the user confirms.
 
 Functions raise ControllerError for anything the user can fix; they never touch
 HttpResponse or templates (Section 20).
@@ -146,6 +147,15 @@ def _build_lab(fields) -> LabConfig:
         raise ControllerError(translate_validation_error(error, form_fields=LAB_FIELDS)) from error
 
 
+def _prepared_update(config, lab_name, form_data) -> tuple[dict, LabConfig]:
+    """Validate one LabConfig replacement before an edit is committed."""
+    _find_lab(config, lab_name)
+    fields = _lab_fields(form_data)
+    if fields["name"] != lab_name and any(lab.name == fields["name"] for lab in config.config.labs):
+        raise ControllerError([FieldError("name", f"A lab named '{fields['name']}' already exists.")])
+    return fields, _build_lab(fields)
+
+
 def _apply(session, config, mutate) -> None:
     try:
         apply_session_edit(session, config, "lab", mutate)
@@ -221,6 +231,14 @@ def get_lab(request, lab_name) -> dict:
     }
 
 
+def rename_impact(request, lab_name, form_data) -> dict:
+    """Describe records that a proposed lab rename would update."""
+    config = _require_config(get_session(request))
+    fields, _ = _prepared_update(config, lab_name, form_data)
+    references = _references(config, lab_name) if fields["name"] != lab_name else []
+    return {"new_name": fields["name"], "references": references}
+
+
 # ---------------------------------------------------------------------- #
 #  Writes
 # ---------------------------------------------------------------------- #
@@ -242,18 +260,16 @@ def add_lab(request, form_data) -> None:
 def update_lab(request, lab_name, form_data) -> None:
     """Replace the lab called `lab_name`, keeping its position in the list.
 
-    Renaming is allowed only to an unused name and only while nothing
-    references the old name (Section 12).
+    Direct renaming is allowed only to an unused name and only while nothing
+    references the old name. Referenced names use the separate confirmed
+    propagation operation below (Section 12).
     """
     session = get_session(request)
     config = _require_config(session)
-    _find_lab(config, lab_name)
-    fields = _lab_fields(form_data)
+    fields, updated = _prepared_update(config, lab_name, form_data)
     new_name = fields["name"]
 
     if new_name != lab_name:
-        if any(lab.name == new_name for lab in config.config.labs):
-            raise ControllerError([FieldError("name", f"A lab named '{new_name}' already exists.")])
         references = _references(config, lab_name)
         if references:
             raise ControllerError(
@@ -265,12 +281,41 @@ def update_lab(request, lab_name, form_data) -> None:
                     )
                 ]
             )
-    updated = _build_lab(fields)
-
     def mutate(draft):
         labs = draft.config.labs
         position = next(i for i, lab in enumerate(labs) if lab.name == lab_name)
         labs[position] = updated
+
+    _apply(session, config, mutate)
+
+
+def rename_lab_and_update_references(request, lab_name, form_data) -> None:
+    """Atomically rename a lab and all course/faculty name references.
+
+    The caller must show rename_impact() and obtain confirmation first. The
+    draft updates the lab, each candidate-lab list, and every matching faculty
+    lab-preference key before complete-config validation commits it.
+    """
+    session = get_session(request)
+    config = _require_config(session)
+    fields, updated = _prepared_update(config, lab_name, form_data)
+    new_name = fields["name"]
+    if new_name == lab_name:
+        raise ControllerError([FieldError("name", "Enter a different lab name before confirming a rename.")])
+
+    def mutate(draft):
+        labs = draft.config.labs
+        position = next(index for index, lab in enumerate(labs) if lab.name == lab_name)
+        labs[position] = updated
+
+        for course in draft.config.courses:
+            if lab_name in (course.lab or []):
+                course.lab = [new_name if name == lab_name else name for name in course.lab]
+        for person in draft.config.faculty:
+            preferences = dict(person.lab_preferences or {})
+            if lab_name in preferences:
+                preferences[new_name] = preferences.pop(lab_name)
+                person.lab_preferences = preferences
 
     _apply(session, config, mutate)
 

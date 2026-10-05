@@ -122,6 +122,36 @@ class TestCourseController:
 
         assert not any(course.course_id == "CMSC 498" for course in session.config.config.courses)
 
+    def test_confirmed_final_course_rename_updates_conflicts_and_preferences(self, session):
+        """A final course ID renames all references in one atomic edit."""
+        index = next(index for index, course in enumerate(session.config.config.courses) if course.course_id == "CMSC 162")
+        fields = session.config.config.courses[index].model_dump(mode="json")
+        fields["course_id"] = "CMSC 163"
+        fields["faculty"] = ["Hogg"]
+
+        course_controller.rename_course_and_update_references(None, index, fields)
+
+        assert session.config.config.courses[index].course_id == "CMSC 163"
+        assert all("CMSC 162" not in (course.conflicts or []) for course in session.config.config.courses)
+        hogg = next(person for person in session.config.config.faculty if person.name == "Hogg")
+        assert "CMSC 162" not in hogg.course_preferences
+        assert hogg.course_preferences["CMSC 163"] == 5
+        assert session.dirty is True
+
+    def test_course_rename_does_not_overwrite_an_existing_preference_key(self, session):
+        """Faculty preference weights must be resolved manually before a key collision."""
+        index = next(index for index, course in enumerate(session.config.config.courses) if course.course_id == "CMSC 162")
+        fields = session.config.config.courses[index].model_dump(mode="json")
+        fields["course_id"] = "CMSC 380"
+        fields["faculty"] = ["Hogg"]
+
+        with pytest.raises(ControllerError) as info:
+            course_controller.rename_impact(None, index, fields)
+
+        assert "already has a preference" in info.value.message
+        assert session.config.config.courses[index].course_id == "CMSC 162"
+        assert session.dirty is False
+
 
 @pytest.fixture(autouse=True)
 def fresh_session_store():
@@ -215,6 +245,36 @@ class TestCoursePages:
         deleted = client.post(f"{COURSES_URL}{added_index}/delete/", {"action": "confirm"}, follow=True)
         assert "CMSC 498" in page(deleted) and "deleted" in page(deleted)
         assert not any(course.course_id == "CMSC 498" for course in browser_session().config.config.courses)
+
+    def test_final_course_rename_confirms_then_updates_all_references(self, client):
+        """The shared confirmation page is used before updating a final course ID."""
+        client.get(COURSES_URL)
+        course_index = next(
+            index
+            for index, course in enumerate(browser_session().config.config.courses)
+            if course.course_id == "CMSC 162"
+        )
+        preview = client.post(
+            f"{COURSES_URL}{course_index}/edit/",
+            browser_form_data(course_id="CMSC 163", faculty=["Hogg"]),
+        )
+
+        assert preview.status_code == 200
+        assert "Confirm course ID rename" in page(preview)
+        assert "CMSC 140" in page(preview)
+        assert browser_session().config.config.courses[course_index].course_id == "CMSC 162"
+
+        confirmed = client.post(
+            f"{COURSES_URL}{course_index}/rename/confirm/",
+            {"confirmation_token": preview.context["confirmation_token"]},
+            follow=True,
+        )
+        assert "associated references updated" in page(confirmed)
+        assert browser_session().config.config.courses[course_index].course_id == "CMSC 163"
+        assert all("CMSC 162" not in (course.conflicts or []) for course in browser_session().config.config.courses)
+        hogg = next(person for person in browser_session().config.config.faculty if person.name == "Hogg")
+        assert "CMSC 162" not in hogg.course_preferences
+        assert "CMSC 163" in hogg.course_preferences
 
     def test_referenced_final_section_has_no_delete_confirmation(self, client):
         """The delete page blocks records that would leave dangling course IDs."""

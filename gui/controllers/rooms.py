@@ -14,10 +14,10 @@ the GUI needs a clear, field-level message before (or instead of) the library's
 whole-config error:
   * a non-blank, unique name,
   * a positive whole-number capacity,
-  * reference checks (Section 12) before a room is deleted or renamed. Courses
-    list rooms by name, and faculty room_preferences are keyed by room name, so
-    deleting or renaming a referenced room would leave dangling references.
-    The chosen behavior is: BLOCK, and list the blocking records.
+    * reference checks (Section 12) before a room is deleted or directly renamed.
+        Courses list rooms by name, and faculty room_preferences are keyed by room
+        name. Deletion remains blocked; the reviewed rename-confirmation operation
+        updates those references atomically after user confirmation.
 
 Functions raise ControllerError for anything the user can fix; they never touch
 HttpResponse or templates (Section 20).
@@ -145,6 +145,15 @@ def _build_room(fields) -> RoomConfig:
         raise ControllerError(translate_validation_error(error, form_fields=ROOM_FIELDS)) from error
 
 
+def _prepared_update(config, room_name, form_data) -> tuple[dict, RoomConfig]:
+    """Validate one RoomConfig replacement before an edit is committed."""
+    _find_room(config, room_name)
+    fields = _room_fields(form_data)
+    if fields["name"] != room_name and any(room.name == fields["name"] for room in config.config.rooms):
+        raise ControllerError([FieldError("name", f"A room named '{fields['name']}' already exists.")])
+    return fields, _build_room(fields)
+
+
 def _apply(session, config, mutate) -> None:
     try:
         apply_session_edit(session, config, "room", mutate)
@@ -218,6 +227,14 @@ def get_room(request, room_name) -> dict:
     }
 
 
+def rename_impact(request, room_name, form_data) -> dict:
+    """Describe records that a proposed room rename would update."""
+    config = _require_config(get_session(request))
+    fields, _ = _prepared_update(config, room_name, form_data)
+    references = _references(config, room_name) if fields["name"] != room_name else []
+    return {"new_name": fields["name"], "references": references}
+
+
 # ---------------------------------------------------------------------- #
 #  Writes
 # ---------------------------------------------------------------------- #
@@ -239,18 +256,16 @@ def add_room(request, form_data) -> None:
 def update_room(request, room_name, form_data) -> None:
     """Replace the room called `room_name`, keeping its position in the list.
 
-    Renaming is allowed only to an unused name and only while nothing
-    references the old name (Section 12).
+    Direct renaming is allowed only to an unused name and only while nothing
+    references the old name. Referenced names use the separate confirmed
+    propagation operation below (Section 12).
     """
     session = get_session(request)
     config = _require_config(session)
-    _find_room(config, room_name)
-    fields = _room_fields(form_data)
+    fields, updated = _prepared_update(config, room_name, form_data)
     new_name = fields["name"]
 
     if new_name != room_name:
-        if any(room.name == new_name for room in config.config.rooms):
-            raise ControllerError([FieldError("name", f"A room named '{new_name}' already exists.")])
         references = _references(config, room_name)
         if references:
             raise ControllerError(
@@ -262,12 +277,42 @@ def update_room(request, room_name, form_data) -> None:
                     )
                 ]
             )
-    updated = _build_room(fields)
-
     def mutate(draft):
         rooms = draft.config.rooms
         position = next(i for i, room in enumerate(rooms) if room.name == room_name)
         rooms[position] = updated
+
+    _apply(session, config, mutate)
+
+
+def rename_room_and_update_references(request, room_name, form_data) -> None:
+    """Atomically rename a room and all course/faculty name references.
+
+    The caller must show rename_impact() and obtain confirmation first. The
+    draft replaces the room itself, each candidate-room list entry, and each
+    matching faculty preference key before the complete configuration is
+    validated as one change.
+    """
+    session = get_session(request)
+    config = _require_config(session)
+    fields, updated = _prepared_update(config, room_name, form_data)
+    new_name = fields["name"]
+    if new_name == room_name:
+        raise ControllerError([FieldError("name", "Enter a different room name before confirming a rename.")])
+
+    def mutate(draft):
+        rooms = draft.config.rooms
+        position = next(index for index, room in enumerate(rooms) if room.name == room_name)
+        rooms[position] = updated
+
+        for course in draft.config.courses:
+            if room_name in (course.room or []):
+                course.room = [new_name if name == room_name else name for name in course.room]
+        for person in draft.config.faculty:
+            preferences = dict(person.room_preferences or {})
+            if room_name in preferences:
+                preferences[new_name] = preferences.pop(room_name)
+                person.room_preferences = preferences
 
     _apply(session, config, mutate)
 

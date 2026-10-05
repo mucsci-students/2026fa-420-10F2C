@@ -6,7 +6,7 @@
 <p>
     Editing <strong>{{ course.label }}</strong>. Nothing changes until you apply your edits.
     {% if not course.can_delete %}
-    This is the final section of its course ID and is used by {{ course.referenced_by|join:", " }}, so its course ID cannot change until those references are removed.
+    This is the final section of its course ID and is used by {{ course.referenced_by|join:", " }}. Changing its course ID will ask you to confirm updating those references.
     {% endif %}
 </p>
 <form method="post" class="edit-form">
