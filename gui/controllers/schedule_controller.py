@@ -29,10 +29,13 @@ can fix and never build HTTP responses (Section 20).
 
 from __future__ import annotations
 
+import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 
-from app import schedule_io
+from app import schedule_io, schedule_ops
 from app.schedule_io import Assignment
+from gui.controllers.common import require_config
 from gui.controllers.errors import ControllerError, FieldError
 from gui.controllers.uploads import read_upload
 from gui.session_store import get_session
@@ -104,13 +107,28 @@ def _as_records(schedule, number: int) -> list[Assignment]:
 #  Schedule Generator (Henry)
 # ---------------------------------------------------------------------- #
 def generate(request, limit_override=None, optimizer_overrides=None):
-    """TODO (Section 13-14): call app.schedule_ops.generate_schedules()
-    with the session's valid config, applying limit_override/optimizer_overrides
-    for THIS RUN ONLY -- must not mutate the saved config's own settings.
-    Must distinguish success / no-feasible-schedule / invalid-config /
-    invalid-override / runtime-error outcomes for the view to display.
-    Store successful results with replace_schedules(request, result.schedules)."""
-    raise NotImplementedError
+    """Generate schedules from the session's configuration (Sections 13-14).
+
+    limit_override applies to THIS RUN ONLY; the saved config is never changed.
+    Returns the schedule_ops.GenerationResult so the view can show which of
+    the outcomes happened. Raises ControllerError for a bad override, a
+    missing configuration, or an overlapping run.
+    """
+    session = get_session(request)
+    config = require_config(session, "generating schedules")
+
+    if limit_override is not None:
+        if isinstance(limit_override, bool) or not isinstance(limit_override, int) or limit_override <= 0:
+            raise ControllerError([FieldError("limit", "Generation limit must be a positive whole number.")])
+
+    with generation_in_progress(request):          # <-- the wrap
+        result = schedule_ops.generate_schedules(config, limit_override)
+
+    if result.outcome == schedule_ops.GenerationOutcome.SUCCESS:
+        replace_schedules(request, result.schedules)
+    elif result.outcome == schedule_ops.GenerationOutcome.NO_FEASIBLE_SCHEDULE:
+        replace_schedules(request, [])             # same as the CLI: don't leave stale results
+    return result
 
 
 # ---------------------------------------------------------------------- #
@@ -207,3 +225,28 @@ def _schedules_to_export(request, index: int | None) -> tuple[list[list[Assignme
         schedules = get_schedules(request)
         return schedules, f"schedules-all-{len(schedules)}"
     return [get_schedule(request, index)], f"schedule-{index + 1}"
+
+_GENERATION_LOCK = threading.Lock()  # the dev server is threaded
+BUSY_MESSAGE = "A schedule generation is already running. Wait for it to finish, then try again."
+
+
+@contextmanager
+def generation_in_progress(request):
+    """Mark this session as generating; refuse an overlapping request.
+
+    generate() should run its solver call inside this block, so a double
+    click or a second tab can't start two runs (Section 13).
+    """
+    session = get_session(request)
+    with _GENERATION_LOCK:
+        if session.generating:
+            raise ControllerError(BUSY_MESSAGE)
+        session.generating = True
+    try:
+        yield
+    finally:
+        session.generating = False  # cleared on success, failure, or crash
+
+
+def is_generating(request) -> bool:
+    return get_session(request).generating

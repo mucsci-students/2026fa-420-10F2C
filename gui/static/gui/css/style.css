@@ -382,3 +382,12 @@ nav .nav-status strong {
 .course-table td {
     vertical-align: top;
 }
+
+.loading-status { display: flex; align-items: center; gap: 0.5rem; }
+.loading-status[hidden] { display: none; }
+.spinner {
+    width: 1rem; height: 1rem; border: 3px solid #bfdbfe; border-top-color: #1d4ed8;
+    border-radius: 50%; animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
