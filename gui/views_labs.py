@@ -14,7 +14,7 @@ from django.shortcuts import redirect, render
 from gui.controllers import labs as lab_controller
 from gui.controllers.errors import ControllerError
 from gui.forms import LabForm, availability_to_text
-from gui.views import _attach_errors
+from gui.views import _attach_errors, _flash_warnings
 
 
 def _render_labs(request, add_form=None):
@@ -58,11 +58,12 @@ def lab_edit(request, lab_name):
         form = LabForm(request.POST)
         if form.is_valid():
             try:
-                lab_controller.update_lab(request, lab_name, form.cleaned_data)
+                notices = lab_controller.update_lab(request, lab_name, form.cleaned_data)
             except ControllerError as error:
                 _attach_errors(form, error)
             else:
                 messages.success(request, f"Lab '{form.cleaned_data['name']}' updated.")
+                _flash_warnings(request, notices)
                 return redirect("gui:labs")
     else:
         form = LabForm(

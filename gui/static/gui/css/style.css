@@ -158,6 +158,14 @@ nav .nav-status strong {
     max-width: 28rem;
 }
 
+.faculty-form .field textarea {
+    box-sizing: border-box;
+    max-width: 100%;
+    min-height: 7rem;
+    padding: 0.35rem 0.5rem;
+    width: 100%;
+}
+
 .field {
     margin-bottom: 0.9rem;
 }
@@ -296,42 +304,62 @@ nav .nav-status strong {
 
 
 
-/* Course add/edit form: same grouped layout as the faculty form. */
-.course-form {
+/* Course and Faculty add/edit forms use the same grouped control layout. */
+.course-form,
+.faculty-form {
     max-width: 40rem;
 }
 
-.course-form .form-section {
+.course-form .form-section,
+.faculty-form .form-section {
     border: 1px solid #d1d5db;
     border-radius: 4px;
     margin: 1rem 0;
     padding: 0.75rem 1rem;
 }
 
-.course-form .form-section legend {
+.course-form .form-section legend,
+.faculty-form .form-section legend {
     font-weight: 600;
     padding: 0 0.25rem;
 }
 
-/* Checkbox pickers (rooms, labs, faculty, conflicts): normal-weight labels
-   beside their boxes, in columns, instead of the block/12rem text-input style. */
-.course-form .field input[type="checkbox"] {
+/* Choice pickers use normal-weight labels beside their boxes in columns,
+   instead of the block/12rem text-input style. */
+.course-form .field input[type="checkbox"],
+.faculty-form .field input[type="checkbox"] {
     min-width: 0;
     margin: 0;
 }
 
-.course-form .field > div {
+.course-form .field > div,
+.faculty-form .field > div {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
     gap: 0.25rem 1rem;
 }
 
-.course-form .field > div label {
+.course-form .field > div label,
+.faculty-form .field > div label {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
     font-weight: 400;
     margin: 0;
+}
+
+/* Mandatory-day choices are a compact Faculty-only picker: keep the group
+   anchored to the left while centering each checkbox with its label. */
+.faculty-mandatory-days .field > div {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.25rem 1rem;
+}
+
+.faculty-mandatory-days .field > div label {
+    flex: 0 1 10rem;
 }
 
 /* Courses list: let the "In use by" note wrap under the buttons instead of

@@ -16,9 +16,9 @@ time-range format, and whole-config rules such as lab references and
 capacity/feature compatibility with courses. What this controller adds so the
 GUI can show clear field-level messages:
   * a non-blank, unique name,
-  * a positive whole-number capacity,
-  * reference checks (Section 12) before a lab is deleted or renamed. The chosen
-    behavior is: BLOCK, and list the blocking courses / faculty.
+    * a positive whole-number capacity,
+    * reference checks (Section 12) before a lab is deleted. A direct name update
+        atomically propagates course and faculty-preference references.
 
 Functions raise ControllerError for anything the user can fix; they never touch
 HttpResponse or templates (Section 20).
@@ -146,6 +146,15 @@ def _build_lab(fields) -> LabConfig:
         raise ControllerError(translate_validation_error(error, form_fields=LAB_FIELDS)) from error
 
 
+def _prepared_update(config, lab_name, form_data) -> tuple[dict, LabConfig]:
+    """Validate one LabConfig replacement before an edit is committed."""
+    _find_lab(config, lab_name)
+    fields = _lab_fields(form_data)
+    if fields["name"] != lab_name and any(lab.name == fields["name"] for lab in config.config.labs):
+        raise ControllerError([FieldError("name", f"A lab named '{fields['name']}' already exists.")])
+    return fields, _build_lab(fields)
+
+
 def _apply(session, config, mutate) -> None:
     try:
         apply_session_edit(session, config, "lab", mutate)
@@ -239,40 +248,46 @@ def add_lab(request, form_data) -> None:
     _apply(session, config, mutate)
 
 
-def update_lab(request, lab_name, form_data) -> None:
-    """Replace the lab called `lab_name`, keeping its position in the list.
-
-    Renaming is allowed only to an unused name and only while nothing
-    references the old name (Section 12).
-    """
+def update_lab(request, lab_name, form_data) -> list[str]:
+    """Replace a lab and update its course and faculty references atomically."""
     session = get_session(request)
     config = _require_config(session)
-    _find_lab(config, lab_name)
-    fields = _lab_fields(form_data)
+    fields, updated = _prepared_update(config, lab_name, form_data)
     new_name = fields["name"]
-
-    if new_name != lab_name:
-        if any(lab.name == new_name for lab in config.config.labs):
-            raise ControllerError([FieldError("name", f"A lab named '{new_name}' already exists.")])
-        references = _references(config, lab_name)
-        if references:
-            raise ControllerError(
-                [
-                    FieldError(
-                        "name",
-                        f"Can't rename '{lab_name}': still referenced by {', '.join(references)}. "
-                        "Remove those references first.",
-                    )
-                ]
-            )
-    updated = _build_lab(fields)
+    notices = _rename_notices(config, lab_name, new_name)
 
     def mutate(draft):
         labs = draft.config.labs
         position = next(i for i, lab in enumerate(labs) if lab.name == lab_name)
         labs[position] = updated
+        if new_name != lab_name:
+            # Names are stored in course candidates and faculty preference
+            # maps, so both dependent structures change in this same draft.
+            for course in draft.config.courses:
+                if lab_name in (course.lab or []):
+                    course.lab = [new_name if name == lab_name else name for name in course.lab]
+            for person in draft.config.faculty:
+                preferences = dict(person.lab_preferences or {})
+                if lab_name in preferences:
+                    preferences[new_name] = preferences.pop(lab_name)
+                    person.lab_preferences = preferences
 
     _apply(session, config, mutate)
+    return notices
+
+
+def _rename_notices(config, old_name: str, new_name: str) -> list[str]:
+    """Describe dependent records changed by a direct lab-name update."""
+    if old_name == new_name:
+        return []
+    course_lists = sum(old_name in (course.lab or []) for course in config.config.courses)
+    preferences = sum(old_name in (person.lab_preferences or {}) for person in config.config.faculty)
+    parts = []
+    if course_lists:
+        parts.append(f"{course_lists} course lab list{'s' if course_lists != 1 else ''}")
+    if preferences:
+        parts.append(f"{preferences} faculty lab preference{'s' if preferences != 1 else ''}")
+    return [f"Renamed '{old_name}' to '{new_name}' in {' and '.join(parts)}."] if parts else []
 
 
 def delete_lab(request, lab_name) -> None:

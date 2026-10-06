@@ -13,11 +13,10 @@ capacity/feature compatibility with courses. What this controller adds because
 the GUI needs a clear, field-level message before (or instead of) the library's
 whole-config error:
   * a non-blank, unique name,
-  * a positive whole-number capacity,
-  * reference checks (Section 12) before a room is deleted or renamed. Courses
-    list rooms by name, and faculty room_preferences are keyed by room name, so
-    deleting or renaming a referenced room would leave dangling references.
-    The chosen behavior is: BLOCK, and list the blocking records.
+    * a positive whole-number capacity,
+    * reference checks (Section 12) before a room is deleted. Courses list rooms
+        by name, and faculty room_preferences are keyed by room name, so a direct
+        name update atomically propagates both kinds of reference.
 
 Functions raise ControllerError for anything the user can fix; they never touch
 HttpResponse or templates (Section 20).
@@ -145,6 +144,15 @@ def _build_room(fields) -> RoomConfig:
         raise ControllerError(translate_validation_error(error, form_fields=ROOM_FIELDS)) from error
 
 
+def _prepared_update(config, room_name, form_data) -> tuple[dict, RoomConfig]:
+    """Validate one RoomConfig replacement before an edit is committed."""
+    _find_room(config, room_name)
+    fields = _room_fields(form_data)
+    if fields["name"] != room_name and any(room.name == fields["name"] for room in config.config.rooms):
+        raise ControllerError([FieldError("name", f"A room named '{fields['name']}' already exists.")])
+    return fields, _build_room(fields)
+
+
 def _apply(session, config, mutate) -> None:
     try:
         apply_session_edit(session, config, "room", mutate)
@@ -236,40 +244,46 @@ def add_room(request, form_data) -> None:
     _apply(session, config, mutate)
 
 
-def update_room(request, room_name, form_data) -> None:
-    """Replace the room called `room_name`, keeping its position in the list.
-
-    Renaming is allowed only to an unused name and only while nothing
-    references the old name (Section 12).
-    """
+def update_room(request, room_name, form_data) -> list[str]:
+    """Replace a room and update its course and faculty references atomically."""
     session = get_session(request)
     config = _require_config(session)
-    _find_room(config, room_name)
-    fields = _room_fields(form_data)
+    fields, updated = _prepared_update(config, room_name, form_data)
     new_name = fields["name"]
-
-    if new_name != room_name:
-        if any(room.name == new_name for room in config.config.rooms):
-            raise ControllerError([FieldError("name", f"A room named '{new_name}' already exists.")])
-        references = _references(config, room_name)
-        if references:
-            raise ControllerError(
-                [
-                    FieldError(
-                        "name",
-                        f"Can't rename '{room_name}': still referenced by {', '.join(references)}. "
-                        "Remove those references first.",
-                    )
-                ]
-            )
-    updated = _build_room(fields)
+    notices = _rename_notices(config, room_name, new_name)
 
     def mutate(draft):
         rooms = draft.config.rooms
         position = next(i for i, room in enumerate(rooms) if room.name == room_name)
         rooms[position] = updated
+        if new_name != room_name:
+            # Names are stored in course candidates and faculty preference
+            # maps, so both dependent structures change in this same draft.
+            for course in draft.config.courses:
+                if room_name in (course.room or []):
+                    course.room = [new_name if name == room_name else name for name in course.room]
+            for person in draft.config.faculty:
+                preferences = dict(person.room_preferences or {})
+                if room_name in preferences:
+                    preferences[new_name] = preferences.pop(room_name)
+                    person.room_preferences = preferences
 
     _apply(session, config, mutate)
+    return notices
+
+
+def _rename_notices(config, old_name: str, new_name: str) -> list[str]:
+    """Describe dependent records changed by a direct room-name update."""
+    if old_name == new_name:
+        return []
+    course_lists = sum(old_name in (course.room or []) for course in config.config.courses)
+    preferences = sum(old_name in (person.room_preferences or {}) for person in config.config.faculty)
+    parts = []
+    if course_lists:
+        parts.append(f"{course_lists} course room list{'s' if course_lists != 1 else ''}")
+    if preferences:
+        parts.append(f"{preferences} faculty room preference{'s' if preferences != 1 else ''}")
+    return [f"Renamed '{old_name}' to '{new_name}' in {' and '.join(parts)}."] if parts else []
 
 
 def delete_room(request, room_name) -> None:

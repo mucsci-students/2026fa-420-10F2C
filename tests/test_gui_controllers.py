@@ -167,13 +167,17 @@ class TestRoomUpdate:
         assert error_fields(info) == {"name"}
         assert "Roddy 150" in room_names(session)
 
-    def test_renaming_a_referenced_room_is_blocked_and_lists_references(self, session):
-        before = room_names(session)
-        with pytest.raises(ControllerError) as info:
-            rooms_ctrl.update_room(None, "Roddy 136", new_room(name="Roddy 999"))
-        assert error_fields(info) == {"name"}
-        assert "still referenced by" in info.value.message and "CMSC 140" in info.value.message
-        assert room_names(session) == before
+    def test_renaming_a_referenced_room_updates_every_reference(self, session):
+        notices = rooms_ctrl.update_room(None, "Roddy 136", new_room(name="Roddy 999"))
+
+        assert notices and "Renamed 'Roddy 136' to 'Roddy 999'" in notices[0]
+        assert "Roddy 999" in room_names(session)
+        assert "Roddy 136" not in room_names(session)
+        assert all("Roddy 136" not in (course.room or []) for course in session.config.config.courses)
+        assert any("Roddy 999" in (course.room or []) for course in session.config.config.courses)
+        assert all("Roddy 136" not in (person.room_preferences or {}) for person in session.config.config.faculty)
+        assert any("Roddy 999" in (person.room_preferences or {}) for person in session.config.config.faculty)
+        assert session.dirty is True
 
     def test_invalid_change_leaves_the_room_untouched(self, session):
         original = room(session, "Roddy 136").capacity
@@ -345,13 +349,17 @@ class TestLabUpdate:
         assert error_fields(info) == {"name"}
         assert "Windows" in lab_names(session)
 
-    def test_renaming_a_referenced_lab_is_blocked_and_lists_references(self, session):
-        before = lab_names(session)
-        with pytest.raises(ControllerError) as info:
-            labs_ctrl.update_lab(None, "Linux", new_lab(name="Ubuntu"))
-        assert error_fields(info) == {"name"}
-        assert "still referenced by" in info.value.message and "CMSC" in info.value.message
-        assert lab_names(session) == before
+    def test_renaming_a_referenced_lab_updates_every_reference(self, session):
+        notices = labs_ctrl.update_lab(None, "Linux", new_lab(name="Ubuntu"))
+
+        assert notices and "Renamed 'Linux' to 'Ubuntu'" in notices[0]
+        assert "Ubuntu" in lab_names(session)
+        assert "Linux" not in lab_names(session)
+        assert all("Linux" not in (course.lab or []) for course in session.config.config.courses)
+        assert any("Ubuntu" in (course.lab or []) for course in session.config.config.courses)
+        assert all("Linux" not in (person.lab_preferences or {}) for person in session.config.config.faculty)
+        assert any("Ubuntu" in (person.lab_preferences or {}) for person in session.config.config.faculty)
+        assert session.dirty is True
 
     def test_invalid_change_leaves_the_lab_untouched(self, session):
         original = lab(session, "Linux").capacity

@@ -1,5 +1,4 @@
-"""
-Controller for Courses (Section 7, Courses row).
+"""Controller for the Course Configuration Editor pages.
 
 Courses are identified by list index, not name: repeated course_id values are
 legal and create sections ("CMSC 140.01", "CMSC 140.02"), same as
