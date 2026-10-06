@@ -30,8 +30,10 @@
     {% endfor %}
 </div>
 {% endif %}
+<div id="loading-status" class="alert alert-info loading-status" role="status" aria-live="polite" hidden></div>
 {% block content %}{% endblock %}
 </main>
+<script src="{% static 'gui/js/loading.js' %}" defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

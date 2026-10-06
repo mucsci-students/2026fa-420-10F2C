@@ -130,6 +130,8 @@ class Session:
         # successful add/modify/delete; cleared here on new/load/save so
         # the shell can warn before exiting or discarding unsaved work.
         self.dirty: bool = False
+        # True while a schedule generation is running for this session (Section 13).
+        self.generating: bool = False
 
     # ---------------------------------------------------------------- #
     #  Configuration lifecycle (Req #4)                                #
