@@ -1,9 +1,13 @@
-{% extends "gui/base.html" %}
+{% extends "gui/config_base.html" %}
 {% block title %}Scheduler — Rooms{% endblock %}
-{% block content %}
+{% block config_content %}
 <p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; Rooms</p>
-<h1>Rooms</h1>
-<p>Rooms are where lecture meetings are held. Courses list the rooms they may use, and faculty can have room preferences.</p>
+<div class="page-header">
+    <div>
+        <h1>Rooms</h1>
+        <p class="page-intro">Rooms are where lecture meetings are held. Courses list the rooms they may use, and faculty can have room preferences.</p>
+    </div>
+</div>
 
 {% if not data.has_config %}
 <div class="empty-state" role="status">
@@ -12,45 +16,58 @@
 </div>
 {% else %}
 
-<h2>Current rooms</h2>
-<table class="data-table">
-    <thead>
-        <tr>
-            <th scope="col">Name</th>
-            <th scope="col">Capacity</th>
-            <th scope="col">Features</th>
-            <th scope="col">Availability</th>
-            <th scope="col">Actions</th>
-        </tr>
-    </thead>
-    <tbody>
-    {% for room in data.rooms %}
-        <tr>
-            <td>{{ room.name }}</td>
-            <td>{{ room.capacity }}</td>
-            <td>{% if room.features %}{{ room.features|join:", " }}{% else %}&mdash;{% endif %}</td>
-            <td>{% if room.unrestricted %}Any time{% else %}{% for row in room.availability %}{{ row.day }} {{ row.ranges }}{% if not forloop.last %}<br>{% endif %}{% endfor %}{% endif %}</td>
-            <td class="actions">
-                <a class="btn" href="{% url 'gui:room_edit' room.name %}">Edit</a>
-                {% if room.can_delete %}
-                <a class="btn btn-danger" href="{% url 'gui:room_delete' room.name %}">Delete</a>
-                {% else %}
-                <span class="btn btn-disabled" aria-disabled="true">Delete</span>
-                <span class="help">In use by {{ room.referenced_by|join:", " }}.</span>
-                {% endif %}
-            </td>
-        </tr>
-    {% empty %}
-        <tr><td colspan="5">No rooms yet. Add one below.</td></tr>
-    {% endfor %}
-    </tbody>
-</table>
+<details class="add-panel"{% if add_form.errors %} open{% endif %}>
+    <summary><span>Add a room</span></summary>
+    <div class="add-panel__body">
+        <form method="post" action="{% url 'gui:room_add' %}" class="edit-form">
+            {% csrf_token %}
+            {% include "gui/components/form_fields.html" with form=add_form %}
+            <button type="submit" class="btn btn-primary">Add room</button>
+        </form>
+    </div>
+</details>
 
-<h2>Add a room</h2>
-<form method="post" action="{% url 'gui:room_add' %}" class="edit-form">
-    {% csrf_token %}
-    {% include "gui/components/form_fields.html" with form=add_form %}
-    <button type="submit" class="btn btn-primary">Add room</button>
-</form>
+<h2 class="section-title">Current rooms <span class="count-chip">{{ data.rooms|length }}</span></h2>
+<div class="list-toolbar" data-filter-box hidden>
+    <input type="search" id="room-filter" placeholder="Search rooms" aria-label="Search rooms"
+           data-filter-input="#room-list" data-filter-status="#room-filter-status">
+    <p class="help" id="room-filter-status" aria-live="polite"></p>
+</div>
+<div class="card">
+    <div class="table-wrap">
+        <table class="data-table" id="room-list">
+            <thead>
+                <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col">Capacity</th>
+                    <th scope="col">Features</th>
+                    <th scope="col">Availability</th>
+                    <th scope="col">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for room in data.rooms %}
+                <tr data-filter-item>
+                    <td><strong>{{ room.name }}</strong></td>
+                    <td>{{ room.capacity }}</td>
+                    <td>{% if room.features %}{{ room.features|join:", " }}{% else %}&mdash;{% endif %}</td>
+                    <td>{% if room.unrestricted %}Any time{% else %}{% for row in room.availability %}{{ row.day }} {{ row.ranges }}{% if not forloop.last %}<br>{% endif %}{% endfor %}{% endif %}</td>
+                    <td class="actions">
+                        <a class="btn btn-small" href="{% url 'gui:room_edit' room.name %}">Edit</a>
+                        {% if room.can_delete %}
+                        <a class="btn btn-small btn-danger" href="{% url 'gui:room_delete' room.name %}">Delete</a>
+                        {% else %}
+                        <span class="btn btn-small btn-disabled" aria-disabled="true">Delete</span>
+                        <span class="help">In use by {{ room.referenced_by|join:", " }}.</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="5">No rooms yet. Use &ldquo;Add a room&rdquo; above.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
 {% endif %}
 {% endblock %}

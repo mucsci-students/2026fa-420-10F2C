@@ -1,15 +1,21 @@
 {% extends "gui/base.html" %}
 {% block title %}Scheduler — Configuration Editor{% endblock %}
 {% block content %}
-<h1>Configuration Editor <span class="badge">In progress</span></h1>
-<p>Create, inspect, and modify a complete scheduler configuration (Sections 6&ndash;12).</p>
+<div class="page-header">
+    <div>
+        <h1>Configuration Editor <span class="badge">In progress</span></h1>
+        <p class="page-intro">Create, inspect, and modify a complete scheduler configuration (Sections 6&ndash;12).</p>
+    </div>
+</div>
 
-<h2 id="current-configuration">Current configuration</h2>
+<h2 id="current-configuration" class="section-title">Current configuration</h2>
 {% if has_config %}
-<p class="status-line" role="status">
-    {% if name %}Loaded from or saved as <strong>{{ name }}</strong>.{% else %}Not loaded from a file.{% endif %}
-    {% if dirty %}<strong>Unsaved changes.</strong> Save the configuration to keep them.{% else %}No unsaved changes.{% endif %}
-</p>
+<div class="status-card{% if dirty %} status-card--dirty{% endif %}">
+    <p class="status-line" role="status">
+        {% if name %}Loaded from or saved as <strong>{{ name }}</strong>.{% else %}Not loaded from a file.{% endif %}
+        {% if dirty %}<strong>Unsaved changes.</strong> Save the configuration to keep them.{% else %}No unsaved changes.{% endif %}
+    </p>
+</div>
 {% else %}
 <div class="empty-state" role="status">
     <h2>No configuration loaded</h2>
@@ -26,61 +32,81 @@
 </div>
 {% endif %}
 
-<h2 id="save-validate">Save and validate</h2>
-<p class="help">
-    Saving checks the whole configuration first, then downloads it as a JSON file. Your browser decides where
-    it goes and asks before replacing an existing file. Validating re-checks every rule without saving.
-</p>
-<form method="post" action="{% url 'gui:config_save' %}" class="edit-form">
-    {% csrf_token %}
-    <button type="submit" class="btn btn-primary"{% if not has_config %} disabled{% endif %}>Save configuration</button>
-</form>
-<form method="post" action="{% url 'gui:config_validate' %}" class="edit-form">
-    {% csrf_token %}
-    <button type="submit" class="btn"{% if not has_config %} disabled{% endif %}>Validate configuration</button>
-</form>
-
-<h2 id="new-configuration">Start a new configuration</h2>
-<p class="help">
-    A new configuration begins with one placeholder room, course, faculty member and class pattern, because the
-    scheduler does not accept a completely empty one. Edit or replace them as you build real data.
-</p>
-<form method="post" action="{% url 'gui:config_new' %}" class="edit-form">
-    {% csrf_token %}
-    {% include "gui/components/form_fields.html" with form=new_form %}
-    <button type="submit" class="btn">Start new configuration</button>
-</form>
-
-<h2 id="load-configuration">Load a configuration from a file</h2>
-<p class="help">
-    The whole file is checked before anything changes. If it has a problem, you will see what is wrong and the
-    configuration you have now stays as it is.
-</p>
-<form method="post" action="{% url 'gui:config_load' %}" enctype="multipart/form-data" class="edit-form">
-    {% csrf_token %}
-    {% include "gui/components/form_fields.html" with form=load_form %}
-    <button type="submit" class="btn btn-primary">Load configuration</button>
-</form>
-
 {% if has_config %}
-<h2 id="areas">Configuration areas</h2>
-<table class="data-table">
-    <thead>
-        <tr><th scope="col">Area</th><th scope="col">Items</th><th scope="col">Actions</th></tr>
-    </thead>
-    <tbody>
-        {% for area in areas %}
-        <tr>
-            <td>{{ area.label }}</td>
-            <td>{% if area.count is not None %}{{ area.count }}{% else %}&mdash;{% endif %}</td>
-            <td class="actions">{% if area.url %}<a href="{{ area.url }}">Open</a>{% else %}Coming soon{% endif %}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+<h2 id="areas" class="section-title">Configuration areas</h2>
+<div class="area-grid">
+    {% for area in areas %}
+    {% if area.url %}
+    <a class="area-card" href="{{ area.url }}">
+        <span class="area-card__label">{{ area.label }}</span>
+        {% if area.count is not None %}
+        <span class="area-card__count">{{ area.count }}</span>
+        <span class="area-card__unit">item{{ area.count|pluralize }}</span>
+        {% else %}
+        <span class="area-card__unit">Generation options</span>
+        {% endif %}
+        <span class="area-card__cta">Open</span>
+    </a>
+    {% else %}
+    <div class="area-card area-card--soon">
+        <span class="area-card__label">{{ area.label }}</span>
+        <span class="area-card__count">&mdash;</span>
+        <span class="area-card__cta">Coming soon</span>
+    </div>
+    {% endif %}
+    {% endfor %}
+</div>
 {% endif %}
 
-<div class="todo-list">
+<h2 class="section-title">File actions</h2>
+<div class="split">
+    <section class="card" aria-labelledby="save-validate">
+        <h3 id="save-validate" class="card__title">Save and validate</h3>
+        <p class="help">
+            Saving checks the whole configuration first, then downloads it as a JSON file. Your browser decides where
+            it goes and asks before replacing an existing file. Validating re-checks every rule without saving.
+        </p>
+        <div class="button-row">
+            <form method="post" action="{% url 'gui:config_save' %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-primary"{% if not has_config %} disabled{% endif %}>Save configuration</button>
+            </form>
+            <form method="post" action="{% url 'gui:config_validate' %}">
+                {% csrf_token %}
+                <button type="submit" class="btn"{% if not has_config %} disabled{% endif %}>Validate configuration</button>
+            </form>
+        </div>
+    </section>
+
+    <section class="card" aria-labelledby="new-configuration">
+        <h3 id="new-configuration" class="card__title">Start a new configuration</h3>
+        <p class="help">
+            A new configuration begins with one placeholder room, course, faculty member and class pattern, because the
+            scheduler does not accept a completely empty one. Edit or replace them as you build real data.
+        </p>
+        <form method="post" action="{% url 'gui:config_new' %}" class="edit-form">
+            {% csrf_token %}
+            {% include "gui/components/form_fields.html" with form=new_form %}
+            <button type="submit" class="btn">Start new configuration</button>
+        </form>
+    </section>
+
+    <section class="card" aria-labelledby="load-configuration">
+        <h3 id="load-configuration" class="card__title">Load a configuration from a file</h3>
+        <p class="help">
+            The whole file is checked before anything changes. If it has a problem, you will see what is wrong and the
+            configuration you have now stays as it is.
+        </p>
+        <form method="post" action="{% url 'gui:config_load' %}" enctype="multipart/form-data" class="edit-form">
+            {% csrf_token %}
+            {% include "gui/components/form_fields.html" with form=load_form %}
+            <button type="submit" class="btn btn-primary">Load configuration</button>
+        </form>
+    </section>
+</div>
+
+<details class="todo-list">
+<summary>To do before this mode is complete</summary>
 <strong>TODO before this mode is complete:</strong>
 <ul>
     <li>CRUD forms for: Faculty (Section 7) &mdash; Time Slots, Rooms, Labs, Courses, Class Patterns, Meetings and Global Settings are done</li>
@@ -89,5 +115,5 @@
     <li>Safe deletion &mdash; block or confirm when an item is still referenced elsewhere, and show what references it (Section 12)</li>
     <li>Empty / loading / error states specific to this page (Section 19)</li>
 </ul>
-</div>
+</details>
 {% endblock %}

@@ -1,17 +1,25 @@
-{% extends "gui/base.html" %}
+{% extends "gui/config_base.html" %}
 {% block title %}Scheduler — Edit Class Pattern{% endblock %}
-{% block content %}
+{% block config_content %}
 <p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; <a href="{% url 'gui:patterns' %}">Class Patterns</a> &rsaquo; Edit</p>
-<h1>Edit class pattern</h1>
-<p>
-    Editing <strong>pattern {{ pattern.index }}</strong> ({{ pattern.credits }} credits: {{ pattern.summary }}).
-    Nothing changes until you apply your edits. Its meetings are kept as they are; change them on the
-    <a href="{% url 'gui:meetings' %}">Meetings</a> page.
-</p>
-<form method="post" class="edit-form">
-    {% csrf_token %}
-    {% include "gui/components/form_fields.html" with form=form %}
-    <button type="submit" class="btn btn-primary">Apply changes</button>
-    <a class="btn" href="{% url 'gui:patterns' %}">Cancel</a>
-</form>
+<div class="page-header">
+    <div>
+        <h1>Edit class pattern</h1>
+        <p class="page-intro">
+            Editing <strong>pattern {{ pattern.index }}</strong> ({{ pattern.credits }} credits: {{ pattern.summary }}).
+            Nothing changes until you apply your edits. Its meetings are kept as they are; change them on the
+            <a href="{% url 'gui:meetings' %}">Meetings</a> page.
+        </p>
+    </div>
+</div>
+<div class="card card--form">
+    <form method="post" class="edit-form">
+        {% csrf_token %}
+        {% include "gui/components/form_fields.html" with form=form %}
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Apply changes</button>
+            <a class="btn" href="{% url 'gui:patterns' %}">Cancel</a>
+        </div>
+    </form>
+</div>
 {% endblock %}

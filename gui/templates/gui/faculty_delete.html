@@ -1,26 +1,36 @@
-{% extends "gui/base.html" %}
+{% extends "gui/config_base.html" %}
 {% block title %}Scheduler — Delete Faculty{% endblock %}
-{% block content %}
+{% block config_content %}
 <p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; <a href="{% url 'gui:faculty' %}">Faculty</a> &rsaquo; Delete</p>
-<h1>Delete faculty member</h1>
-{% if not faculty.can_delete %}
-<div class="alert alert-error" role="alert">
-    <p><strong>Cannot delete:</strong> {{ faculty.name }} is still used by:</p>
-    <ul>
-        {% for item in faculty.referenced_by %}<li>{{ item }}</li>{% endfor %}
-    </ul>
-    <p>Remove this faculty member from those courses first.</p>
+<div class="page-header">
+    <div>
+        <h1>Delete faculty member</h1>
+    </div>
 </div>
-<a class="btn" href="{% url 'gui:faculty' %}">Back to faculty</a>
-{% else %}
-<p>
-    Are you sure you want to delete <strong>{{ faculty.name }}</strong>?
-    This cannot be undone.
-</p>
-<form method="post">
-    {% csrf_token %}
-    <button type="submit" name="action" value="confirm" class="btn btn-danger">Delete faculty member</button>
-    <button type="submit" name="action" value="cancel" class="btn">Cancel</button>
-</form>
-{% endif %}
+<div class="card">
+    {% if not faculty.can_delete %}
+    <div class="alert alert-error" role="alert">
+        <p><strong>Cannot delete:</strong> {{ faculty.name }} is still used by:</p>
+        <ul>
+            {% for item in faculty.referenced_by %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+        <p>Remove this faculty member from those courses first.</p>
+    </div>
+    <div class="form-actions">
+        <a class="btn" href="{% url 'gui:faculty' %}">Back to faculty</a>
+    </div>
+    {% else %}
+    <p>
+        Are you sure you want to delete <strong>{{ faculty.name }}</strong>?
+        This cannot be undone.
+    </p>
+    <form method="post">
+        {% csrf_token %}
+        <div class="form-actions">
+            <button type="submit" name="action" value="confirm" class="btn btn-danger">Delete faculty member</button>
+            <button type="submit" name="action" value="cancel" class="btn">Cancel</button>
+        </div>
+    </form>
+    {% endif %}
+</div>
 {% endblock %}

@@ -1,18 +1,24 @@
-{% extends "gui/base.html" %}
+{% extends "gui/config_base.html" %}
 {% block title %}Scheduler — Edit Course{% endblock %}
-{% block content %}
+{% block config_content %}
 <p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; <a href="{% url 'gui:courses' %}">Courses</a> &rsaquo; Edit</p>
-<h1>Edit course</h1>
-<p>
-    Editing <strong>{{ course.display }}</strong> (row {{ course.index }}). Nothing changes until you apply your edits.
-    If this is the last section of {{ course.course_id }}, changing its course ID also updates other courses'
-    conflicts and faculty preferences that name it.
-</p>
+<div class="page-header">
+    <div>
+        <h1>Edit course</h1>
+        <p class="page-intro">
+            Editing <strong>{{ course.display }}</strong> (row {{ course.index }}). Nothing changes until you apply your edits.
+            If this is the last section of {{ course.course_id }}, changing its course ID also updates other courses'
+            conflicts and faculty preferences that name it.
+        </p>
+    </div>
+</div>
 <form method="post" class="edit-form course-form">
     {% csrf_token %}
     <input type="hidden" name="expected_course_id" value="{{ course.course_id }}">
     {% include "gui/components/course_fields.html" %}
-    <button type="submit" class="btn btn-primary">Apply changes</button>
-    <a class="btn" href="{% url 'gui:courses' %}">Cancel</a>
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Apply changes</button>
+        <a class="btn" href="{% url 'gui:courses' %}">Cancel</a>
+    </div>
 </form>
 {% endblock %}

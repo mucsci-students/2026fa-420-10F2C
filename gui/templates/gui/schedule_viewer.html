@@ -1,11 +1,17 @@
 {% extends "gui/base.html" %}
 {% block title %}Scheduler — Schedule Viewer{% endblock %}
 {% block content %}
-<h1>Schedule Viewer <span class="badge">In progress</span></h1>
-<p>Present generated or imported schedules in a readable format (Sections 15&ndash;18).</p>
+<div class="page-header">
+    <div>
+        <h1>Schedule Viewer <span class="badge">In progress</span></h1>
+        <p class="page-intro">Present generated or imported schedules in a readable format (Sections 15&ndash;18).</p>
+    </div>
+</div>
 
 {% if schedule_count %}
-<p class="status-line" role="status"><strong>{{ schedule_count }}</strong> schedule{{ schedule_count|pluralize }} available.</p>
+<div class="status-card">
+    <p class="status-line" role="status"><strong>{{ schedule_count }}</strong> schedule{{ schedule_count|pluralize }} available.</p>
+</div>
 {% comment %}
     James: schedule navigation and the room/faculty views go here (Sections 15-16).
     app.schedule_io.to_assignments(schedule) gives the same Assignment/MeetingTime
@@ -21,7 +27,9 @@
 </div>
 {% endif %}
 
-<h2 id="export-schedules">Export</h2>
+<div class="split">
+<section class="card">
+<h2 id="export-schedules" class="card__title">Export</h2>
 {% if schedule_count %}
 <form method="get" action="{% url 'gui:schedule_export' %}" class="edit-form">
     {% include "gui/components/form_errors.html" with form=export_form %}
@@ -54,8 +62,10 @@
     Exports download through your browser, which chooses where the file goes and asks before replacing
     an existing file (or renames the new one). This app never writes over files on your computer.
 </p>
+</section>
 
-<h2 id="load-schedules">Load schedules from a file</h2>
+<section class="card">
+<h2 id="load-schedules" class="card__title">Load schedules from a file</h2>
 <p class="help">
     The whole file is checked before anything changes. If it has a problem, you'll see what is wrong
     and the schedules already loaded stay as they are. You don't need a configuration to view loaded schedules.
@@ -65,8 +75,11 @@
     {% include "gui/components/form_fields.html" with form=import_form %}
     <button type="submit" class="btn btn-primary">Load schedules</button>
 </form>
+</section>
+</div>
 
-<div class="todo-list">
+<details class="todo-list">
+<summary>Still to do in this mode</summary>
 <strong>Still to do in this mode:</strong>
 <ul>
     <li>Navigate among schedules; identify which one is displayed (Section 15)</li>
@@ -74,5 +87,5 @@
     <li>Faculty-oriented view (Section 16.2)</li>
     <li>Clear / replace the currently available results (Section 15)</li>
 </ul>
-</div>
+</details>
 {% endblock %}

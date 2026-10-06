@@ -1,0 +1,21 @@
+{% comment %}
+    Sidebar for the configuration pages: one link per area, with the current one marked.
+    The current area comes from the URL name of the page being shown (request.resolver_match),
+    so add / edit / delete pages keep their area highlighted. To add an area, add one list item
+    here and one entry to _CONFIG_AREAS in gui/views.py (that one feeds the Configuration Editor cards).
+{% endcomment %}
+{% with page=request.resolver_match.url_name %}
+<aside class="config-sidebar" aria-label="Configuration areas">
+    <a class="config-sidebar__back" href="{% url 'gui:config_editor' %}">&larr; Configuration Editor</a>
+    <ul>
+        <li><a href="{% url 'gui:timeslots' %}"{% if page == "timeslots" or page == "timeslot_add" or page == "timeslot_edit" or page == "timeslot_delete" or page == "timing_options" %} class="is-active" aria-current="page"{% endif %}>Time Slots</a></li>
+        <li><a href="{% url 'gui:rooms' %}"{% if page == "rooms" or page == "room_add" or page == "room_edit" or page == "room_delete" %} class="is-active" aria-current="page"{% endif %}>Rooms</a></li>
+        <li><a href="{% url 'gui:labs' %}"{% if page == "labs" or page == "lab_add" or page == "lab_edit" or page == "lab_delete" %} class="is-active" aria-current="page"{% endif %}>Labs</a></li>
+        <li><a href="{% url 'gui:courses' %}"{% if page == "courses" or page == "course_add" or page == "course_edit" or page == "course_delete" %} class="is-active" aria-current="page"{% endif %}>Courses</a></li>
+        <li><a href="{% url 'gui:faculty' %}"{% if page == "faculty" or page == "faculty_add" or page == "faculty_edit" or page == "faculty_delete" %} class="is-active" aria-current="page"{% endif %}>Faculty</a></li>
+        <li><a href="{% url 'gui:patterns' %}"{% if page == "patterns" or page == "pattern_add" or page == "pattern_edit" or page == "pattern_delete" %} class="is-active" aria-current="page"{% endif %}>Class Patterns</a></li>
+        <li><a href="{% url 'gui:meetings' %}"{% if page == "meetings" or page == "meeting_add" or page == "meeting_edit" or page == "meeting_delete" %} class="is-active" aria-current="page"{% endif %}>Meetings</a></li>
+        <li><a href="{% url 'gui:settings' %}"{% if page == "settings" or page == "settings_update" or page == "settings_reset_limit" %} class="is-active" aria-current="page"{% endif %}>Global Settings</a></li>
+    </ul>
+</aside>
+{% endwith %}

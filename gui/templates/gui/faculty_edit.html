@@ -1,18 +1,24 @@
-{% extends "gui/base.html" %}
+{% extends "gui/config_base.html" %}
 {% block title %}Scheduler — Edit Faculty{% endblock %}
-{% block content %}
+{% block config_content %}
 <p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; <a href="{% url 'gui:faculty' %}">Faculty</a> &rsaquo; Edit</p>
-<h1>Edit faculty member</h1>
-<p>
-    Editing <strong>{{ faculty.name }}</strong>. Nothing changes until you apply your edits.
-    {% if not faculty.can_delete %}
-    This name is used by {{ faculty.referenced_by|join:", " }}. Changing it updates those course assignments together.
-    {% endif %}
-</p>
+<div class="page-header">
+    <div>
+        <h1>Edit faculty member</h1>
+        <p class="page-intro">
+            Editing <strong>{{ faculty.name }}</strong>. Nothing changes until you apply your edits.
+            {% if not faculty.can_delete %}
+            This name is used by {{ faculty.referenced_by|join:", " }}. Changing it updates those course assignments together.
+            {% endif %}
+        </p>
+    </div>
+</div>
 <form method="post" class="edit-form faculty-form">
     {% csrf_token %}
     {% include "gui/components/faculty_fields.html" %}
-    <button type="submit" class="btn btn-primary">Apply changes</button>
-    <a class="btn" href="{% url 'gui:faculty' %}">Cancel</a>
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Apply changes</button>
+        <a class="btn" href="{% url 'gui:faculty' %}">Cancel</a>
+    </div>
 </form>
 {% endblock %}

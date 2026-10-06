@@ -1,18 +1,26 @@
-{% extends "gui/base.html" %}
+{% extends "gui/config_base.html" %}
 {% block title %}Scheduler — Edit Room{% endblock %}
-{% block content %}
+{% block config_content %}
 <p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; <a href="{% url 'gui:rooms' %}">Rooms</a> &rsaquo; Edit</p>
-<h1>Edit room</h1>
-<p>
-    Editing <strong>{{ room.name }}</strong>. Nothing changes until you apply your edits.
-    {% if not room.can_delete %}
-    This room is used by {{ room.referenced_by|join:", " }}. Changing its name updates those references together.
-    {% endif %}
-</p>
-<form method="post" class="edit-form">
-    {% csrf_token %}
-    {% include "gui/components/form_fields.html" with form=form %}
-    <button type="submit" class="btn btn-primary">Apply changes</button>
-    <a class="btn" href="{% url 'gui:rooms' %}">Cancel</a>
-</form>
+<div class="page-header">
+    <div>
+        <h1>Edit room</h1>
+        <p class="page-intro">
+            Editing <strong>{{ room.name }}</strong>. Nothing changes until you apply your edits.
+            {% if not room.can_delete %}
+            This room is used by {{ room.referenced_by|join:", " }}. Changing its name updates those references together.
+            {% endif %}
+        </p>
+    </div>
+</div>
+<div class="card card--form">
+    <form method="post" class="edit-form">
+        {% csrf_token %}
+        {% include "gui/components/form_fields.html" with form=form %}
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Apply changes</button>
+            <a class="btn" href="{% url 'gui:rooms' %}">Cancel</a>
+        </div>
+    </form>
+</div>
 {% endblock %}
