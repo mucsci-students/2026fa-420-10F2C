@@ -181,3 +181,49 @@ def test_submitting_without_a_file(client):
 def test_get_on_the_import_url_goes_back_to_the_viewer(client):
     response = client.get(IMPORT_URL)
     assert response.status_code == 302 and response["Location"].endswith(VIEWER_URL)
+
+
+# ---------------------------------------------------------------------- #
+#  User story 45: "a bad file never wipes out my current schedules"
+# ---------------------------------------------------------------------- #
+def test_story_45_malformed_json_keeps_the_3_schedules(client):
+    load(client, schedule_file_bytes("A", "B", "C"))
+    before = client.get(VIEWER_URL).content.decode()
+    assert "<strong>3</strong> schedules available." in before
+
+    html = load(client, b'{"schedules": [ oops', "broken.json", confirm_replace="on").content.decode()
+
+    assert "<strong>Error:</strong>" in html and "not valid JSON" in html
+    assert "Your current schedules were kept." in html
+    assert "<strong>3</strong> schedules available." in html
+    exported = json.loads(client.get("/schedules/export/", {"schedule": "all"}).content.decode("utf-8"))
+    assert [s[0]["faculty"] for s in exported["schedules"]] == ["A", "B", "C"]  # the same 3, untouched
+
+
+def test_story_45_config_file_is_not_a_supported_schedule_format_and_nothing_is_replaced(client):
+    load(client, schedule_file_bytes("A", "B", "C"))
+    with open("app/examples/config_example.json", "rb") as handle:
+        config_file = handle.read()
+
+    html = load(client, config_file, "config_example.json", confirm_replace="on").content.decode()
+
+    assert "not a supported schedule format" in html
+    assert "Load it from the Configuration Editor instead." in html
+    assert "<strong>3</strong> schedules available." in html
+    exported = json.loads(client.get("/schedules/export/", {"schedule": "all"}).content.decode("utf-8"))
+    assert [s[0]["faculty"] for s in exported["schedules"]] == ["A", "B", "C"]
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b'{"format": "something-else", "version": 1, "schedules": []}',
+        b'{"hello": "world"}',
+        b'"just a string"',
+    ],
+)
+def test_story_45_other_wrong_formats_use_the_same_wording(client, raw):
+    load(client, schedule_file_bytes("A"))
+    html = load(client, raw, "odd.json", confirm_replace="on").content.decode()
+    assert "not a supported schedule format" in html
+    assert "<strong>1</strong> schedule available." in html

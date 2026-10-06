@@ -192,11 +192,11 @@ def _unwrap(data: Any) -> list:
     if isinstance(data, dict):
         if "config" in data and "time_slot_config" in data:
             raise ScheduleFileError(
-                "This looks like a configuration file, not a schedule file. "
+                "This is not a supported schedule format: it looks like a configuration file. "
                 "Load it from the Configuration Editor instead."
             )
         if "format" in data and data["format"] != FORMAT_NAME:
-            raise ScheduleFileError(f"Unsupported file format {data['format']!r}; expected {FORMAT_NAME!r}.")
+            raise ScheduleFileError(f"This is not a supported schedule format: the file says {data['format']!r}, expected {FORMAT_NAME!r}.")
         version = data.get("version", FORMAT_VERSION)
         if not isinstance(version, int) or isinstance(version, bool) or version < 1:
             raise ScheduleFileError(f"The file has an invalid format version {version!r}.")
@@ -206,13 +206,13 @@ def _unwrap(data: Any) -> list:
                 f"supports up to version {FORMAT_VERSION}."
             )
         if "schedules" not in data:
-            raise ScheduleFileError("This is not a supported schedule file: it has no \"schedules\" list.")
+            raise ScheduleFileError("This is not a supported schedule format: it has no \"schedules\" list.")
         data = data["schedules"]
         if not isinstance(data, list):
-            raise ScheduleFileError("This is not a supported schedule file: \"schedules\" must be a list.")
+            raise ScheduleFileError("This is not a supported schedule format: \"schedules\" must be a list.")
 
     if not isinstance(data, list):
-        raise ScheduleFileError("This is not a supported schedule file: expected a list of schedules.")
+        raise ScheduleFileError("This is not a supported schedule format: expected a list of schedules.")
     if not data:
         raise ScheduleFileError("The file contains no schedules.")
 
@@ -221,7 +221,7 @@ def _unwrap(data: Any) -> list:
     if all(isinstance(item, list) for item in data):
         return data    # a set of schedules
     raise ScheduleFileError(
-        "This is not a supported schedule file: it mixes schedules and course assignments at the top level."
+        "This is not a supported schedule format: it mixes schedules and course assignments at the top level."
     )
 
 
