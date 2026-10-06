@@ -63,5 +63,6 @@ urlpatterns = [
     path("generate/", views.schedule_generator, name="schedule_generator"),
     path("schedules/", views.schedule_viewer, name="schedule_viewer"),
     path("schedules/import/", views.schedule_import, name="schedule_import"),
-    path("schedules/export/json/", views.schedule_export_json, name="schedule_export_json"),
+    path("schedules/export/", views.schedule_export, name="schedule_export"),
+    path("schedules/export/json/", views.schedule_export, name="schedule_export_json"),
 ]

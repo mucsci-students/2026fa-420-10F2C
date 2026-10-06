@@ -222,26 +222,31 @@ def schedule_import(request):
     return schedule_viewer(request, import_form=form)
 
 
-def schedule_export_json(request):
-    """Download one schedule as JSON (Section 18).
+def schedule_export(request):
+    """Download one schedule or the whole set, as JSON or CSV (Section 18).
 
     A GET form, since nothing changes. Success sends the file as a browser
     download (download_response), so the browser picks where it goes and
     asks before replacing an existing file. Problems (no schedules, a
-    schedule number that no longer exists) go back to the viewer with an
-    error message.
+    schedule number that no longer exists, an unknown format) go back to
+    the viewer with an error message. Without file_format the export is
+    JSON, so the older /schedules/export/json/ links keep working.
     """
     count = schedule_controller.schedule_count(request)
     form = ScheduleExportForm(request.GET, schedule_count=count)
     if not form.is_valid():
         if count == 0:
             messages.error(request, schedule_controller.NO_SCHEDULES_MESSAGE)
+        elif "file_format" in form.errors:
+            messages.error(request, "Choose JSON or CSV as the export format.")
         else:
             messages.error(request, f"Choose a schedule from 1 to {count} to export.")
         return redirect("gui:schedule_viewer")
 
     try:
-        export = schedule_controller.export_schedule_json(request, form.cleaned_data["index"])
+        export = schedule_controller.export_schedules(
+            request, form.cleaned_data["index"], form.cleaned_data["file_format"]
+        )
     except ControllerError as error:
         messages.error(request, error.message)
         return redirect("gui:schedule_viewer")
