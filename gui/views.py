@@ -52,7 +52,7 @@ _CONFIG_AREAS = (
     ("time_blocks", "Time Slots", "gui:timeslots"),
     ("rooms", "Rooms", "gui:rooms"),
     ("labs", "Labs", "gui:labs"),
-    ("courses", "Courses", None),
+    ("courses", "Courses", "gui:courses"),
     ("faculty", "Faculty", None),
     ("patterns", "Class Patterns", "gui:patterns"),
     ("meetings", "Meetings", "gui:meetings"),

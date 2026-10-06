@@ -1,0 +1,13 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Add Course{% endblock %}
+{% block content %}
+<p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; <a href="{% url 'gui:courses' %}">Courses</a> &rsaquo; Add</p>
+<h1>Add course</h1>
+<p>Create a course section. Nothing changes until you add it.</p>
+<form method="post" class="edit-form course-form">
+    {% csrf_token %}
+    {% include "gui/components/course_fields.html" %}
+    <button type="submit" class="btn btn-primary">Add course</button>
+    <a class="btn" href="{% url 'gui:courses' %}">Cancel</a>
+</form>
+{% endblock %}
