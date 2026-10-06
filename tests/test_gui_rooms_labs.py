@@ -59,7 +59,7 @@ def delete_url(kind, name):
     return f"{kind['base']}{quote(name)}/delete/"
 
 
-def rename_confirm_url(kind, name):
+def removed_rename_url(kind, name):
     return f"{kind['base']}{quote(name)}/rename/confirm/"
 
 
@@ -188,20 +188,12 @@ def test_editing_applies_on_submit(client, kind):
     assert find(kind, kind["existing"]).capacity == 30
 
 
-def test_renaming_something_in_use_confirms_then_updates_all_references(client, kind):
+def test_renaming_something_in_use_updates_all_references_directly(client, kind):
     client.get(kind["base"])
     data = new_item(name="Renamed", capacity="30", features="", times="")
-    preview = client.post(edit_url(kind, kind["existing"]), data)
-    assert "Confirm" in page(preview)
-    assert find(kind, kind["existing"]) is not None
-    assert find(kind, "Renamed") is None
-
-    response = client.post(
-        rename_confirm_url(kind, kind["existing"]),
-        {"confirmation_token": preview.context["confirmation_token"]},
-        follow=True,
-    )
-    assert "associated references updated" in page(response)
+    response = client.post(edit_url(kind, kind["existing"]), data, follow=True)
+    assert "updated" in page(response)
+    assert f"Renamed &#x27;{kind['existing']}&#x27; to &#x27;Renamed&#x27;" in page(response)
     assert find(kind, kind["existing"]) is None
     assert find(kind, "Renamed") is not None
 
@@ -213,6 +205,11 @@ def test_renaming_something_in_use_confirms_then_updates_all_references(client, 
         "Renamed" in (getattr(person, preference_field) or {})
         for person in browser_session().config.config.faculty
     )
+
+
+def test_rename_confirmation_page_is_not_available(client, kind):
+    """Rooms and labs now expose only their direct edit endpoints."""
+    assert client.get(removed_rename_url(kind, kind["existing"])).status_code == 404
 
 
 def test_editing_something_that_no_longer_exists_redirects_with_an_error(client, kind):

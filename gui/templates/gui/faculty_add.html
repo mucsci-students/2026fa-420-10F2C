@@ -6,43 +6,7 @@
 <p>Create a faculty record. Nothing changes until you add the faculty member.</p>
 <form method="post" class="edit-form faculty-form">
     {% csrf_token %}
-    {% include "gui/components/form_errors.html" %}
-
-    <fieldset class="form-section">
-        <legend>Identity and workload</legend>
-        {% include "gui/components/field.html" with field=form.name %}
-        {% include "gui/components/field.html" with field=form.minimum_credits %}
-        {% include "gui/components/field.html" with field=form.maximum_credits %}
-        {% include "gui/components/field.html" with field=form.unique_course_limit %}
-        {% include "gui/components/field.html" with field=form.maximum_days %}
-    </fieldset>
-
-    <fieldset class="form-section">
-        <legend>Availability and mandatory days</legend>
-        {% include "gui/components/field.html" with field=form.times %}
-        {% include "gui/components/field.html" with field=form.mandatory_days %}
-    </fieldset>
-
-    <fieldset class="form-section">
-        <legend>Course preferences</legend>
-        {% for field in form %}
-            {% if field.field.preference_kind == "course" %}{% include "gui/components/field.html" with field=field %}{% endif %}
-        {% endfor %}
-    </fieldset>
-
-    <fieldset class="form-section">
-        <legend>Room preferences</legend>
-        {% for field in form %}
-            {% if field.field.preference_kind == "room" %}{% include "gui/components/field.html" with field=field %}{% endif %}
-        {% endfor %}
-    </fieldset>
-
-    <fieldset class="form-section">
-        <legend>Lab preferences</legend>
-        {% for field in form %}
-            {% if field.field.preference_kind == "lab" %}{% include "gui/components/field.html" with field=field %}{% endif %}
-        {% endfor %}
-    </fieldset>
+    {% include "gui/components/faculty_fields.html" %}
 
     <button type="submit" class="btn btn-primary">Add faculty member</button>
     <a class="btn" href="{% url 'gui:faculty' %}">Cancel</a>

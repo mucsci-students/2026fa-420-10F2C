@@ -384,3 +384,7 @@ class TestPages:
     def test_unknown_row_redirects_with_a_message(self, client):
         response = client.get(COURSES_URL + "999/edit/", follow=True)
         assert "no longer exists" in page(response)
+
+    def test_rename_confirmation_page_is_not_available(self, client):
+        """Course updates happen through the standard edit endpoint only."""
+        assert client.get(COURSES_URL + "6/rename/confirm/").status_code == 404

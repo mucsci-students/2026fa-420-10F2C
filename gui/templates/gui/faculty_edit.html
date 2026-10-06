@@ -6,12 +6,12 @@
 <p>
     Editing <strong>{{ faculty.name }}</strong>. Nothing changes until you apply your edits.
     {% if not faculty.can_delete %}
-    This name is used by {{ faculty.referenced_by|join:", " }}. Changing it will ask you to confirm updating those course assignments.
+    This name is used by {{ faculty.referenced_by|join:", " }}. Changing it updates those course assignments together.
     {% endif %}
 </p>
-<form method="post" class="edit-form">
+<form method="post" class="edit-form faculty-form">
     {% csrf_token %}
-    {% include "gui/components/form_fields.html" with form=form %}
+    {% include "gui/components/faculty_fields.html" %}
     <button type="submit" class="btn btn-primary">Apply changes</button>
     <a class="btn" href="{% url 'gui:faculty' %}">Cancel</a>
 </form>

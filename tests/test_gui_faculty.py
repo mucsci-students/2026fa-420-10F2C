@@ -6,6 +6,7 @@ and Labs, including blocked deletes when a course explicitly assigns faculty.
 """
 
 import pytest
+from django.template.loader import render_to_string
 
 from app.session import Session
 from gui import session_store
@@ -81,6 +82,35 @@ class TestFacultyForm:
         assert form.cleaned_data["room_preferences"] == {"Roddy 136": 5}
         assert form.cleaned_data["lab_preferences"] == {}
 
+    def test_grouped_fields_render_shared_inline_errors(self):
+        """Faculty add and edit use the same field groups and error markup."""
+        form = FacultyForm(
+            data={
+                "name": "Taylor",
+                "minimum_credits": "0",
+                "maximum_credits": "many",
+                "unique_course_limit": "1",
+                "maximum_days": "2",
+                "times": "MON 09:00-12:00",
+                "mandatory_days": ["MON"],
+            }
+        )
+
+        assert not form.is_valid()
+        markup = render_to_string("gui/components/faculty_fields.html", {"form": form})
+
+        for heading in (
+            "Identity and workload",
+            "Availability and mandatory days",
+            "Course preferences",
+            "Room preferences",
+            "Lab preferences",
+        ):
+            assert heading in markup
+        assert 'class="field field--error"' in markup
+        assert 'role="alert"' in markup
+        assert "Enter a whole number" in markup
+
 
 class TestFacultyController:
     def test_adds_a_faculty_member_and_marks_the_session_dirty(self, session):
@@ -103,28 +133,24 @@ class TestFacultyController:
         assert session.dumps() == before
         assert session.dirty is False
 
-    def test_referenced_faculty_cannot_be_renamed_or_deleted(self, session):
-        renamed = new_faculty_data(name="Zoppetti Renamed")
-
-        with pytest.raises(ControllerError) as rename_error:
-            faculty_controller.update_faculty(None, "Zoppetti", renamed)
+    def test_referenced_faculty_cannot_be_deleted(self, session):
         with pytest.raises(ControllerError) as delete_error:
             faculty_controller.delete_faculty(None, "Zoppetti")
 
-        assert "still referenced" in rename_error.value.message
         assert "CMSC 161" in delete_error.value.message
         assert find_faculty(session, "Zoppetti") is not None
         assert session.dirty is False
 
-    def test_confirmed_rename_updates_explicit_course_assignments_atomically(self, session):
-        """The dedicated rename operation changes faculty and courses together."""
+    def test_referenced_faculty_update_changes_explicit_course_assignments_atomically(self, session):
+        """A direct update keeps the faculty name and course assignments in sync."""
         original = find_faculty(session, "Zoppetti")
-        faculty_controller.rename_faculty_and_update_courses(
+        notices = faculty_controller.update_faculty(
             None,
             "Zoppetti",
             existing_faculty_data(original, "Zoppetti Renamed"),
         )
 
+        assert notices == ["Renamed 'Zoppetti' to 'Zoppetti Renamed' in 1 course faculty assignment."]
         assert find_faculty(session, "Zoppetti") is None
         assert find_faculty(session, "Zoppetti Renamed") is not None
         assert all(
@@ -205,6 +231,16 @@ class TestFacultyPages:
         assert 'name="name"' in text
         assert 'href="/configuration/faculty/"' in text
 
+    def test_add_without_a_configuration_returns_to_the_faculty_empty_state(self, client, monkeypatch):
+        """Faculty add follows the Course add flow when no config is loaded."""
+        monkeypatch.setattr(session_store, "AUTO_LOAD_EXAMPLE", False)
+
+        response = client.get(FACULTY_URL + "add/")
+
+        assert response.status_code == 302
+        assert response["Location"] == FACULTY_URL
+        assert "No configuration is loaded" in page(client.get(FACULTY_URL))
+
     def test_invalid_add_stays_on_the_add_page_and_keeps_its_values(self, client):
         response = client.post(FACULTY_URL + "add/", browser_form_data(maximum_credits="many"))
         text = page(response)
@@ -244,8 +280,8 @@ class TestFacultyPages:
         assert "Taylor Updated" in page(deleted) and "deleted" in page(deleted)
         assert find_faculty(browser_session(), "Taylor Updated") is None
 
-    def test_rename_confirmation_updates_referenced_course_assignments(self, client):
-        """A referenced rename displays its impact and commits only on confirmation."""
+    def test_referenced_faculty_update_changes_course_assignments(self, client):
+        """A direct edit updates references and redirects to the Faculty list."""
         edit_page = client.get(FACULTY_URL + "Zoppetti/edit/")
         form = edit_page.context["form"]
         form_data = {
@@ -255,18 +291,9 @@ class TestFacultyPages:
         }
         form_data["name"] = "Zoppetti Renamed"
 
-        preview = client.post(FACULTY_URL + "Zoppetti/edit/", form_data)
-        assert preview.status_code == 200
-        assert "Confirm faculty member rename" in page(preview)
-        assert "CMSC 161" in page(preview)
-        assert find_faculty(browser_session(), "Zoppetti") is not None
-
-        confirmation = client.post(
-            FACULTY_URL + "Zoppetti/rename/confirm/",
-            {"confirmation_token": preview.context["confirmation_token"]},
-            follow=True,
-        )
-        assert "associated course assignments updated" in page(confirmation)
+        response = client.post(FACULTY_URL + "Zoppetti/edit/", form_data, follow=True)
+        assert "updated" in page(response)
+        assert "Renamed &#x27;Zoppetti&#x27; to &#x27;Zoppetti Renamed&#x27;" in page(response)
         assert find_faculty(browser_session(), "Zoppetti") is None
         assert find_faculty(browser_session(), "Zoppetti Renamed") is not None
         assert any(
@@ -274,18 +301,9 @@ class TestFacultyPages:
             for course in browser_session().config.config.courses
         )
 
-    def test_rename_confirmation_rejects_an_invalid_token_without_mutation(self, client):
-        """A direct or expired confirmation POST cannot bypass the preview."""
-        client.get(FACULTY_URL + "Zoppetti/edit/")
-        response = client.post(
-            FACULTY_URL + "Zoppetti/rename/confirm/",
-            {"confirmation_token": "not-a-valid-token"},
-            follow=True,
-        )
-
-        assert "invalid or expired" in page(response)
-        assert find_faculty(browser_session(), "Zoppetti") is not None
-        assert browser_session().dirty is False
+    def test_rename_confirmation_page_is_not_available(self, client):
+        """Faculty now exposes only its direct edit endpoint."""
+        assert client.get(FACULTY_URL + "Zoppetti/rename/confirm/").status_code == 404
 
     def test_referenced_faculty_has_no_delete_confirmation(self, client):
         client.get(FACULTY_URL)

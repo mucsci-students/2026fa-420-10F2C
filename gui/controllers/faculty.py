@@ -326,18 +326,6 @@ def get_faculty(request, faculty_name) -> dict:
     return _faculty_data(config, _find_faculty(config, faculty_name))
 
 
-def rename_impact(request, faculty_name, form_data) -> dict:
-    """Describe explicit course assignments a proposed name change would update.
-
-    The view uses this read-only result to show a confirmation page. It also
-    validates the submitted replacement now, before asking the user to decide.
-    """
-    config = require_config(get_session(request), "editing faculty")
-    fields, _ = _prepared_update(config, faculty_name, form_data)
-    references = _references(config, faculty_name) if fields["name"] != faculty_name else []
-    return {"new_name": fields["name"], "references": references}
-
-
 # ---------------------------------------------------------------------- #
 #  Writes
 # ---------------------------------------------------------------------- #
@@ -356,62 +344,43 @@ def add_faculty(request, form_data) -> None:
     apply_config_edit(session, config, "faculty", mutate, form_fields=FACULTY_FIELDS)
 
 
-def update_faculty(request, faculty_name, form_data) -> None:
-    """Replace a faculty record in place, protecting referenced names."""
+def update_faculty(request, faculty_name, form_data) -> list[str]:
+    """Replace a faculty record and update explicit course assignments.
+
+    A faculty name is data inside course assignment lists. Updating both in
+    one draft keeps the configuration valid and gives the edit form the same
+    direct-update behavior used by Courses.
+    """
     session = get_session(request)
     config = require_config(session, "editing faculty")
     fields, updated = _prepared_update(config, faculty_name, form_data)
     new_name = fields["name"]
-
-    if new_name != faculty_name:
-        references = _references(config, faculty_name)
-        if references:
-            raise ControllerError(
-                [
-                    FieldError(
-                        "name",
-                        f"Can't rename '{faculty_name}': still referenced by {', '.join(references)}. "
-                        "Remove those references first.",
-                    )
-                ]
-            )
+    notices = _rename_notices(config, faculty_name, new_name)
 
     def mutate(draft):
         people = draft.config.faculty
         position = next(index for index, person in enumerate(people) if person.name == faculty_name)
         people[position] = updated
+        if new_name != faculty_name:
+            # Explicit course assignments store a faculty name instead of an
+            # object reference. Derived staffing (None) remains unchanged.
+            for course in draft.config.courses:
+                if faculty_name in (course.faculty or []):
+                    course.faculty = [new_name if name == faculty_name else name for name in course.faculty]
 
     apply_config_edit(session, config, "faculty", mutate, form_fields=FACULTY_FIELDS)
+    return notices
 
 
-def rename_faculty_and_update_courses(request, faculty_name, form_data) -> None:
-    """Atomically rename faculty and every explicit course assignment.
-
-    This operation is intentionally separate from update_faculty(): callers
-    must first show the user the affected courses and obtain confirmation.
-    edit_mode() validates the replacement faculty and all changed courses as
-    one draft, so a failed validation preserves the original configuration.
-    """
-    session = get_session(request)
-    config = require_config(session, "renaming faculty")
-    fields, updated = _prepared_update(config, faculty_name, form_data)
-    new_name = fields["name"]
-
-    if new_name == faculty_name:
-        raise ControllerError([FieldError("name", "Enter a different faculty name before confirming a rename.")])
-
-    def mutate(draft):
-        people = draft.config.faculty
-        position = next(index for index, person in enumerate(people) if person.name == faculty_name)
-        people[position] = updated
-
-        # Course faculty lists store names, not object references. Update only
-        # explicit assignments; None continues to mean scheduler-derived staff.
-        for course in draft.config.courses:
-            if faculty_name in (course.faculty or []):
-                course.faculty = [new_name if name == faculty_name else name for name in course.faculty]
-
-    apply_config_edit(session, config, "faculty", mutate, form_fields=FACULTY_FIELDS)
+def _rename_notices(config, old_name: str, new_name: str) -> list[str]:
+    """Describe assignments changed by a direct faculty-name update."""
+    if old_name == new_name:
+        return []
+    assignments = sum(old_name in (course.faculty or []) for course in config.config.courses)
+    if not assignments:
+        return []
+    noun = "assignment" if assignments == 1 else "assignments"
+    return [f"Renamed '{old_name}' to '{new_name}' in {assignments} course faculty {noun}."]
 
 
 def delete_faculty(request, faculty_name) -> None:

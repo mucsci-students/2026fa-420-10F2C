@@ -10,9 +10,7 @@ from django.shortcuts import redirect, render
 from gui.controllers import faculty as faculty_controller
 from gui.controllers.errors import ControllerError
 from gui.forms import FacultyForm, availability_to_text
-from gui.rename_confirmation import RenameConfirmationError, load_rename_confirmation
-from gui.views import _attach_errors
-from gui.views_rename import render_rename_confirmation
+from gui.views import _attach_errors, _flash_warnings
 
 
 def _faculty_form(request, *args, **kwargs):
@@ -38,6 +36,11 @@ def faculty(request):
 
 def faculty_add(request):
     """Display or submit the dedicated Faculty creation form."""
+    # Match Course creation: the list page provides the single empty-state
+    # explanation when no configuration exists, rather than a form that
+    # cannot be saved.
+    if not faculty_controller.describe_faculty(request)["has_config"]:
+        return redirect("gui:faculty")
     if request.method == "GET":
         return _render_faculty_add(request)
     if request.method != "POST":
@@ -66,32 +69,13 @@ def faculty_edit(request, faculty_name):
         form = _faculty_form(request, request.POST)
         if form.is_valid():
             try:
-                impact = faculty_controller.rename_impact(request, faculty_name, form.cleaned_data)
+                notices = faculty_controller.update_faculty(request, faculty_name, form.cleaned_data)
             except ControllerError as error:
                 _attach_errors(form, error)
             else:
-                if impact["references"]:
-                    return render_rename_confirmation(
-                        request,
-                        resource_key="faculty",
-                        resource_label="faculty member",
-                        collection_label="Faculty",
-                        list_url_name="gui:faculty",
-                        identifier=faculty_name,
-                        old_name=faculty_name,
-                        new_name=impact["new_name"],
-                        references=impact["references"],
-                        form_data=form.cleaned_data,
-                        confirm_url_name="gui:faculty_rename_confirm",
-                        cancel_url_name="gui:faculty_edit",
-                    )
-                try:
-                    faculty_controller.update_faculty(request, faculty_name, form.cleaned_data)
-                except ControllerError as error:
-                    _attach_errors(form, error)
-                else:
-                    messages.success(request, f"Faculty member '{form.cleaned_data['name']}' updated.")
-                    return redirect("gui:faculty")
+                messages.success(request, f"Faculty member '{form.cleaned_data['name']}' updated.")
+                _flash_warnings(request, notices)
+                return redirect("gui:faculty")
     else:
         form = _faculty_form(
             request,
@@ -109,28 +93,6 @@ def faculty_edit(request, faculty_name):
             },
         )
     return render(request, "gui/faculty_edit.html", {"active": "config", "form": form, "faculty": person})
-
-
-def faculty_rename_confirm(request, faculty_name):
-    """Apply a previously previewed rename only after explicit confirmation."""
-    if request.method != "POST":
-        return redirect("gui:faculty_edit", faculty_name=faculty_name)
-
-    token = request.POST.get("confirmation_token", "")
-    try:
-        form_data = load_rename_confirmation(token, "faculty", faculty_name)
-    except RenameConfirmationError as error:
-        messages.error(request, str(error))
-        return redirect("gui:faculty_edit", faculty_name=faculty_name)
-
-    try:
-        faculty_controller.rename_faculty_and_update_courses(request, faculty_name, form_data)
-    except ControllerError as error:
-        messages.error(request, error.message)
-        return redirect("gui:faculty_edit", faculty_name=faculty_name)
-
-    messages.success(request, f"Faculty member '{form_data['name']}' and associated course assignments updated.")
-    return redirect("gui:faculty")
 
 
 def faculty_delete(request, faculty_name):

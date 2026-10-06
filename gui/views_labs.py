@@ -14,9 +14,7 @@ from django.shortcuts import redirect, render
 from gui.controllers import labs as lab_controller
 from gui.controllers.errors import ControllerError
 from gui.forms import LabForm, availability_to_text
-from gui.rename_confirmation import RenameConfirmationError, load_rename_confirmation
-from gui.views import _attach_errors
-from gui.views_rename import render_rename_confirmation
+from gui.views import _attach_errors, _flash_warnings
 
 
 def _render_labs(request, add_form=None):
@@ -60,32 +58,13 @@ def lab_edit(request, lab_name):
         form = LabForm(request.POST)
         if form.is_valid():
             try:
-                impact = lab_controller.rename_impact(request, lab_name, form.cleaned_data)
+                notices = lab_controller.update_lab(request, lab_name, form.cleaned_data)
             except ControllerError as error:
                 _attach_errors(form, error)
             else:
-                if impact["references"]:
-                    return render_rename_confirmation(
-                        request,
-                        resource_key="lab",
-                        resource_label="lab",
-                        collection_label="Labs",
-                        list_url_name="gui:labs",
-                        identifier=lab_name,
-                        old_name=lab_name,
-                        new_name=impact["new_name"],
-                        references=impact["references"],
-                        form_data=form.cleaned_data,
-                        confirm_url_name="gui:lab_rename_confirm",
-                        cancel_url_name="gui:lab_edit",
-                    )
-                try:
-                    lab_controller.update_lab(request, lab_name, form.cleaned_data)
-                except ControllerError as error:
-                    _attach_errors(form, error)
-                else:
-                    messages.success(request, f"Lab '{form.cleaned_data['name']}' updated.")
-                    return redirect("gui:labs")
+                messages.success(request, f"Lab '{form.cleaned_data['name']}' updated.")
+                _flash_warnings(request, notices)
+                return redirect("gui:labs")
     else:
         form = LabForm(
             initial={
@@ -96,24 +75,6 @@ def lab_edit(request, lab_name):
             }
         )
     return render(request, "gui/lab_edit.html", {"active": "config", "form": form, "lab": lab})
-
-
-def lab_rename_confirm(request, lab_name):
-    """Apply a reviewed lab rename and its references after confirmation."""
-    if request.method != "POST":
-        return redirect("gui:lab_edit", lab_name=lab_name)
-    try:
-        form_data = load_rename_confirmation(request.POST.get("confirmation_token", ""), "lab", lab_name)
-    except RenameConfirmationError as error:
-        messages.error(request, str(error))
-        return redirect("gui:lab_edit", lab_name=lab_name)
-    try:
-        lab_controller.rename_lab_and_update_references(request, lab_name, form_data)
-    except ControllerError as error:
-        messages.error(request, error.message)
-        return redirect("gui:lab_edit", lab_name=lab_name)
-    messages.success(request, f"Lab '{form_data['name']}' and associated references updated.")
-    return redirect("gui:labs")
 
 
 def lab_delete(request, lab_name):

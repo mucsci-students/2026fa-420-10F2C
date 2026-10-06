@@ -6,7 +6,7 @@
 <p>
     Editing <strong>{{ room.name }}</strong>. Nothing changes until you apply your edits.
     {% if not room.can_delete %}
-    This room is used by {{ room.referenced_by|join:", " }}. Changing its name will ask you to confirm updating those references.
+    This room is used by {{ room.referenced_by|join:", " }}. Changing its name updates those references together.
     {% endif %}
 </p>
 <form method="post" class="edit-form">

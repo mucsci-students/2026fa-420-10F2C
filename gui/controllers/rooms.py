@@ -13,11 +13,10 @@ capacity/feature compatibility with courses. What this controller adds because
 the GUI needs a clear, field-level message before (or instead of) the library's
 whole-config error:
   * a non-blank, unique name,
-  * a positive whole-number capacity,
-    * reference checks (Section 12) before a room is deleted or directly renamed.
-        Courses list rooms by name, and faculty room_preferences are keyed by room
-        name. Deletion remains blocked; the reviewed rename-confirmation operation
-        updates those references atomically after user confirmation.
+    * a positive whole-number capacity,
+    * reference checks (Section 12) before a room is deleted. Courses list rooms
+        by name, and faculty room_preferences are keyed by room name, so a direct
+        name update atomically propagates both kinds of reference.
 
 Functions raise ControllerError for anything the user can fix; they never touch
 HttpResponse or templates (Section 20).
@@ -227,14 +226,6 @@ def get_room(request, room_name) -> dict:
     }
 
 
-def rename_impact(request, room_name, form_data) -> dict:
-    """Describe records that a proposed room rename would update."""
-    config = _require_config(get_session(request))
-    fields, _ = _prepared_update(config, room_name, form_data)
-    references = _references(config, room_name) if fields["name"] != room_name else []
-    return {"new_name": fields["name"], "references": references}
-
-
 # ---------------------------------------------------------------------- #
 #  Writes
 # ---------------------------------------------------------------------- #
@@ -253,68 +244,46 @@ def add_room(request, form_data) -> None:
     _apply(session, config, mutate)
 
 
-def update_room(request, room_name, form_data) -> None:
-    """Replace the room called `room_name`, keeping its position in the list.
-
-    Direct renaming is allowed only to an unused name and only while nothing
-    references the old name. Referenced names use the separate confirmed
-    propagation operation below (Section 12).
-    """
+def update_room(request, room_name, form_data) -> list[str]:
+    """Replace a room and update its course and faculty references atomically."""
     session = get_session(request)
     config = _require_config(session)
     fields, updated = _prepared_update(config, room_name, form_data)
     new_name = fields["name"]
+    notices = _rename_notices(config, room_name, new_name)
 
-    if new_name != room_name:
-        references = _references(config, room_name)
-        if references:
-            raise ControllerError(
-                [
-                    FieldError(
-                        "name",
-                        f"Can't rename '{room_name}': still referenced by {', '.join(references)}. "
-                        "Remove those references first.",
-                    )
-                ]
-            )
     def mutate(draft):
         rooms = draft.config.rooms
         position = next(i for i, room in enumerate(rooms) if room.name == room_name)
         rooms[position] = updated
+        if new_name != room_name:
+            # Names are stored in course candidates and faculty preference
+            # maps, so both dependent structures change in this same draft.
+            for course in draft.config.courses:
+                if room_name in (course.room or []):
+                    course.room = [new_name if name == room_name else name for name in course.room]
+            for person in draft.config.faculty:
+                preferences = dict(person.room_preferences or {})
+                if room_name in preferences:
+                    preferences[new_name] = preferences.pop(room_name)
+                    person.room_preferences = preferences
 
     _apply(session, config, mutate)
+    return notices
 
 
-def rename_room_and_update_references(request, room_name, form_data) -> None:
-    """Atomically rename a room and all course/faculty name references.
-
-    The caller must show rename_impact() and obtain confirmation first. The
-    draft replaces the room itself, each candidate-room list entry, and each
-    matching faculty preference key before the complete configuration is
-    validated as one change.
-    """
-    session = get_session(request)
-    config = _require_config(session)
-    fields, updated = _prepared_update(config, room_name, form_data)
-    new_name = fields["name"]
-    if new_name == room_name:
-        raise ControllerError([FieldError("name", "Enter a different room name before confirming a rename.")])
-
-    def mutate(draft):
-        rooms = draft.config.rooms
-        position = next(index for index, room in enumerate(rooms) if room.name == room_name)
-        rooms[position] = updated
-
-        for course in draft.config.courses:
-            if room_name in (course.room or []):
-                course.room = [new_name if name == room_name else name for name in course.room]
-        for person in draft.config.faculty:
-            preferences = dict(person.room_preferences or {})
-            if room_name in preferences:
-                preferences[new_name] = preferences.pop(room_name)
-                person.room_preferences = preferences
-
-    _apply(session, config, mutate)
+def _rename_notices(config, old_name: str, new_name: str) -> list[str]:
+    """Describe dependent records changed by a direct room-name update."""
+    if old_name == new_name:
+        return []
+    course_lists = sum(old_name in (course.room or []) for course in config.config.courses)
+    preferences = sum(old_name in (person.room_preferences or {}) for person in config.config.faculty)
+    parts = []
+    if course_lists:
+        parts.append(f"{course_lists} course room list{'s' if course_lists != 1 else ''}")
+    if preferences:
+        parts.append(f"{preferences} faculty room preference{'s' if preferences != 1 else ''}")
+    return [f"Renamed '{old_name}' to '{new_name}' in {' and '.join(parts)}."] if parts else []
 
 
 def delete_room(request, room_name) -> None:
