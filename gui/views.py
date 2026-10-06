@@ -53,7 +53,7 @@ _CONFIG_AREAS = (
     ("rooms", "Rooms", "gui:rooms"),
     ("labs", "Labs", "gui:labs"),
     ("courses", "Courses", "gui:courses"),
-    ("faculty", "Faculty", "gui:faculty"),
+    ("faculty", "Faculty", None),
     ("patterns", "Class Patterns", "gui:patterns"),
     ("meetings", "Meetings", "gui:meetings"),
     ("settings", "Global Settings", "gui:settings"),

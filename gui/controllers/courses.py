@@ -1,18 +1,52 @@
 """Controller for the Course Configuration Editor pages.
 
-Courses are identified by list index because a course ID may have multiple
-sections. This module is the MVC boundary between CourseForm and CourseConfig:
-it converts form values into scheduler models, protects references, and makes
-all changes through apply_config_edit() so a failed validation never mutates
-the active configuration.
+Courses are identified by list index, not name: repeated course_id values are
+legal and create sections ("CMSC 140.01", "CMSC 140.02"), same as
+app/commands/courses.py. An index can go stale when the list changes under an
+open page, so update/delete take an optional `expected_course_id`; the views
+pass the course_id the page showed (a hidden form field) and a mismatch is
+refused instead of editing the wrong section.
+
+Every write builds a CourseConfig, then commits through
+gui.controllers.common.apply_config_edit(), so the whole configuration is
+revalidated and a failed edit keeps the previous valid configuration
+(Sections 10, 11). Problems come back as ControllerError with FieldErrors on
+the form fields; nothing here touches HTTP or templates (Section 20).
+
+form_data keys (CourseForm.cleaned_data; plain text is accepted too):
+
+    course_id                str, required
+    section_id               str, blank -> auto-numbered by position
+    credits                  int >= 1, must match an enabled class pattern
+    capacity                 int >= 1
+    modality                 "in_person" | "online" | "hybrid" (default in_person)
+    room, lab                lists of existing room / lab names
+    conflicts                list of other course_ids
+    faculty                  list of faculty names; empty -> null, which means
+                             "take faculty from faculty course preferences"
+    required_room_features   list or "a, b"
+    required_lab_features    list or "a, b"
+    reserve_room_during_lab  bool (default True)
+
+What this controller adds on top of the library:
+  * unknown-name, self-conflict and credit/pattern checks on the right field,
+  * online courses drop rooms, labs and features (the library forbids them)
+    and say so in a notice, matching the CLI,
+  * renaming the last section of a course_id carries the new id into other
+    courses' conflicts and faculty course preferences in the same atomic edit
+    (otherwise the library rejects every such rename),
+  * delete is blocked while the last section of a course_id is still
+    referenced (Section 12). Deleting one of several sections is always safe,
+    because references point at the course_id, not a section.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import re
 
-from scheduler.config import CourseConfig, ValidationError
+from scheduler.config import CourseConfig, CourseModality, ValidationError
 
+from app.commands.courses import course_display_name, enabled_pattern_credits
 from app.crud import ReferenceError_, check_no_references
 from gui.controllers.common import apply_config_edit, require_config
 from gui.controllers.errors import ControllerError, FieldError, translate_validation_error
@@ -23,453 +57,375 @@ COURSE_FIELDS = (
     "section_id",
     "credits",
     "capacity",
+    "modality",
     "room",
     "lab",
     "conflicts",
     "faculty",
-    "modality",
     "required_room_features",
     "required_lab_features",
     "reserve_room_during_lab",
 )
-COURSE_MODALITIES = {"in_person", "online", "hybrid"}
-
-
-# ---------------------------------------------------------------------- #
-#  Helpers
-# ---------------------------------------------------------------------- #
-def _find_course(config, course_index):
-    """Return the indexed course or report a stale or malformed browser URL."""
-    courses = config.config.courses
-    if isinstance(course_index, bool) or not isinstance(course_index, int) or not 0 <= course_index < len(courses):
-        raise ControllerError("This course no longer exists. Refresh the page and try again.")
-    return courses[course_index]
-
-
-def _known_names(config) -> dict[str, set[str]]:
-    """Return the names valid for cross-record CourseConfig fields."""
-    return {
-        "course": {course.course_id for course in config.config.courses},
-        "room": {room.name for room in config.config.rooms},
-        "lab": {lab.name for lab in config.config.labs},
-        "faculty": {person.name for person in config.config.faculty},
-    }
-
-
-def _references(config, course_id, *, ignore_index=None) -> list[str]:
-    """List records that would point to a missing final course ID.
-
-    Conflicts and faculty preferences target a base course ID, not a particular
-    section. A rename or deletion therefore only needs this check when it
-    removes the last section with that ID.
-    """
-    found: list[str] = []
-    for index, course in enumerate(config.config.courses):
-        if index != ignore_index and course_id in (course.conflicts or []):
-            label = f"course '{course.course_id}' (conflict)"
-            if label not in found:
-                found.append(label)
-    for person in config.config.faculty:
-        if course_id in (person.course_preferences or {}):
-            found.append(f"faculty '{person.name}' (course preference)")
-    return found
-
-
-def _is_last_section(config, course_id, *, ignore_index) -> bool:
-    """Return whether excluding one row leaves no section for this course ID."""
-    return not any(
-        course.course_id == course_id
-        for index, course in enumerate(config.config.courses)
-        if index != ignore_index
-    )
-
-
-def _parse_names(raw, field, label, allowed_names, errors, *, none_when_empty=False):
-    """Validate a form list against current resource names.
-
-    Forms submit lists, but the controller also guards direct callers so
-    malformed input cannot silently become a character-by-character string.
-    """
-    if raw is None:
-        return None if none_when_empty else []
-    if not isinstance(raw, (list, tuple, set)):
-        errors.append(FieldError(field, f"{label} must be a list of names."))
-        return None if none_when_empty else []
-
-    names = []
-    for name in raw:
-        if not isinstance(name, str) or not name.strip():
-            errors.append(FieldError(field, f"Each {label.lower()} must be a non-blank name."))
-            continue
-        normalized = name.strip()
-        if normalized not in allowed_names:
-            errors.append(FieldError(field, f"'{normalized}' is not a current {label.lower()}."))
-            continue
-        if normalized in names:
-            errors.append(FieldError(field, f"'{normalized}' is listed more than once."))
-            continue
-        names.append(normalized)
-    return (names or None) if none_when_empty else names
-
-
-def _parse_features(raw, field, errors) -> list[str]:
-    """Normalize comma-separated feature tags without accepting malformed values."""
-    if raw is None or raw == "":
-        return []
-    if isinstance(raw, str):
-        values = raw.split(",")
-    elif isinstance(raw, (list, tuple, set)):
-        values = raw
-    else:
-        errors.append(FieldError(field, "Features must be a comma-separated list."))
-        return []
-    if any(not isinstance(value, str) for value in values):
-        errors.append(FieldError(field, "Each feature must be text."))
-        return []
-    return sorted({value.strip() for value in values if value.strip()})
-
-
-def _course_fields(form_data, config) -> dict:
-    """Shape-check form data and return keyword arguments for CourseConfig.
-
-    Local errors are shown against their form fields. Scheduler-specific and
-    whole-configuration rules remain in CourseConfig and edit_mode(), which
-    preserve atomicity for a failed add or update.
-    """
-    errors: list[FieldError] = []
-    course_id = (form_data.get("course_id") or "").strip()
-    if not course_id:
-        errors.append(FieldError("course_id", "Course ID cannot be blank."))
-
-    raw_section_id = form_data.get("section_id")
-    if raw_section_id is not None and not isinstance(raw_section_id, str):
-        errors.append(FieldError("section_id", "Section ID must be text."))
-        section_id = None
-    else:
-        section_id = raw_section_id.strip() if raw_section_id else None
-
-    numeric_values = {"credits": form_data.get("credits"), "capacity": form_data.get("capacity")}
-    for field, value in numeric_values.items():
-        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-            errors.append(FieldError(field, "Enter a positive whole number."))
-
-    modality = form_data.get("modality")
-    if modality not in COURSE_MODALITIES:
-        errors.append(FieldError("modality", "Choose in person, online, or hybrid."))
-
-    available = _known_names(config)
-    rooms = _parse_names(form_data.get("room"), "room", "room", available["room"], errors)
-    labs = _parse_names(form_data.get("lab"), "lab", "lab", available["lab"], errors)
-    conflicts = _parse_names(
-        form_data.get("conflicts"), "conflicts", "conflicting course", available["course"], errors
-    )
-    faculty = _parse_names(
-        form_data.get("faculty"), "faculty", "faculty member", available["faculty"], errors, none_when_empty=True
-    )
-    room_features = _parse_features(form_data.get("required_room_features"), "required_room_features", errors)
-    lab_features = _parse_features(form_data.get("required_lab_features"), "required_lab_features", errors)
-
-    # A null faculty list asks CombinedConfig to derive candidates from faculty
-    # preferences. Report the missing source at the form field instead of
-    # waiting for complete-config validation to return a generic error.
-    if faculty is None and course_id and not any(
-        course_id in (person.course_preferences or {}) for person in config.config.faculty
-    ):
-        errors.append(
-            FieldError(
-                "faculty",
-                "Choose at least one faculty member or add a faculty course preference for this course ID.",
-            )
-        )
-
-    reserve_room_during_lab = form_data.get("reserve_room_during_lab")
-    if not isinstance(reserve_room_during_lab, bool):
-        errors.append(FieldError("reserve_room_during_lab", "Choose whether to reserve the lecture room during labs."))
-
-    if course_id and course_id in conflicts:
-        errors.append(FieldError("conflicts", "A course cannot conflict with itself."))
-    if modality == "online":
-        if rooms:
-            errors.append(FieldError("room", "Online courses cannot have candidate rooms."))
-        if labs:
-            errors.append(FieldError("lab", "Online courses cannot have candidate labs."))
-        if room_features:
-            errors.append(FieldError("required_room_features", "Online courses cannot require room features."))
-        if lab_features:
-            errors.append(FieldError("required_lab_features", "Online courses cannot require lab features."))
-
-    if errors:
-        raise ControllerError(errors)
-
-    return {
-        "course_id": course_id,
-        "section_id": section_id,
-        "credits": numeric_values["credits"],
-        "capacity": numeric_values["capacity"],
-        "room": rooms,
-        "lab": labs,
-        "conflicts": conflicts,
-        "faculty": faculty,
-        "modality": modality,
-        "required_room_features": room_features,
-        "required_lab_features": lab_features,
-        "reserve_room_during_lab": reserve_room_during_lab,
-    }
-
-
-def _build_course(fields) -> CourseConfig:
-    """Build CourseConfig and translate scheduler validation for the form."""
-    try:
-        return CourseConfig(**fields)
-    except ValidationError as error:
-        raise ControllerError(translate_validation_error(error, form_fields=COURSE_FIELDS)) from error
-
-
-def _prepared_update(config, course_index, form_data) -> tuple[object, dict, CourseConfig]:
-    """Validate one section replacement before it is committed to a draft."""
-    original = _find_course(config, course_index)
-    fields = _course_fields(form_data, config)
-    return original, fields, _build_course(fields)
-
-
-def _rename_references(config, course_index, old_course_id, new_course_id) -> list[str]:
-    """Validate and describe references that need a final course-ID rename.
-
-    Course conflicts and faculty preferences point to a base course ID. They
-    need no change while another section still has the old ID. Preference-key
-    collisions and self-conflicts require user resolution rather than silently
-    overwriting a weight or creating invalid configuration data.
-    """
-    if old_course_id == new_course_id or not _is_last_section(config, old_course_id, ignore_index=course_index):
-        return []
-
-    for person in config.config.faculty:
-        preferences = person.course_preferences or {}
-        if old_course_id in preferences and new_course_id in preferences:
-            raise ControllerError(
-                [
-                    FieldError(
-                        "course_id",
-                        f"Faculty member '{person.name}' already has a preference for '{new_course_id}'. "
-                        "Resolve the two preference weights before renaming this course ID.",
-                    )
-                ]
-            )
-    for index, course in enumerate(config.config.courses):
-        if index != course_index and course.course_id == new_course_id and old_course_id in (course.conflicts or []):
-            raise ControllerError(
-                [
-                    FieldError(
-                        "course_id",
-                        f"Course '{new_course_id}' conflicts with '{old_course_id}'. "
-                        "Remove that conflict before renaming this course ID.",
-                    )
-                ]
-            )
-    return _references(config, old_course_id, ignore_index=course_index)
-
-
-def _replace_reference(values, old_name, new_name) -> list[str]:
-    """Replace one name in a list while retaining stable, duplicate-free order."""
-    updated = []
-    for value in values or []:
-        replacement = new_name if value == old_name else value
-        if replacement not in updated:
-            updated.append(replacement)
-    return updated
-
-
-def _course_label(config, course_index) -> str:
-    """Create a stable human label for an indexed section on GUI pages."""
-    course = config.config.courses[course_index]
-    if course.section_id:
-        return f"{course.course_id}.{course.section_id}"
-    number = sum(1 for item in config.config.courses[: course_index + 1] if item.course_id == course.course_id)
-    return f"{course.course_id}.{number:02d}"
-
-
-def _associated_faculty(config, course) -> list[str]:
-    """Return the faculty members available to teach one course section.
-
-    A CourseConfig may explicitly name faculty or leave its faculty field null.
-    In the latter case, the scheduler associates members through their course
-    preferences, so the list page shows those names instead of exposing that
-    implementation detail to users.
-    """
-    if course.faculty is not None:
-        return list(course.faculty)
-    return [
-        person.name
-        for person in config.config.faculty
-        if course.course_id in (person.course_preferences or {})
-    ]
-
-
-def _course_data(config, course_index) -> dict:
-    """Convert one scheduler model into template-safe Course page data."""
-    course = _find_course(config, course_index)
-    is_last_section = _is_last_section(config, course.course_id, ignore_index=course_index)
-    references = _references(config, course.course_id, ignore_index=course_index) if is_last_section else []
-    return {
-        "index": course_index,
-        "label": _course_label(config, course_index),
-        "course_id": course.course_id,
-        "section_id": course.section_id or "",
-        "credits": course.credits,
-        "capacity": course.capacity,
-        "room": list(course.room or []),
-        "lab": list(course.lab or []),
-        "conflicts": list(course.conflicts or []),
-        "faculty": _associated_faculty(config, course),
-        "modality": course.modality,
-        "required_room_features": sorted(course.required_room_features or []),
-        "required_lab_features": sorted(course.required_lab_features or []),
-        "reserve_room_during_lab": course.reserve_room_during_lab,
-        "referenced_by": references,
-        "can_delete": not references,
-    }
-
-
-def form_choices(request, course_index=None) -> dict[str, list[str]]:
-    """Return CourseForm choices without exposing scheduler models to views."""
-    config = get_session(request).config
-    if config is None:
-        return {"course_names": [], "room_names": [], "lab_names": [], "faculty_names": []}
-    names = _known_names(config)
-    if course_index is not None:
-        current = _find_course(config, course_index)
-        names["course"].discard(current.course_id)
-    return {
-        "course_names": sorted(names["course"]),
-        "room_names": sorted(names["room"]),
-        "lab_names": sorted(names["lab"]),
-        "faculty_names": sorted(names["faculty"]),
-    }
+MODALITIES = tuple(mode.value for mode in CourseModality)
+_SPLIT = re.compile(r"[,;\n]")
 
 
 # ---------------------------------------------------------------------- #
 #  Reads
 # ---------------------------------------------------------------------- #
 def describe_courses(request) -> dict:
-    """Return the Course list page data or the no-configuration state."""
+    """Everything the Courses list page needs, as plain data.
+
+    {"has_config": False} when nothing is loaded (Section 19 empty state).
+    """
     config = get_session(request).config
     if config is None:
         return {"has_config": False}
-    return {"has_config": True, "courses": [_course_data(config, index) for index in range(len(config.config.courses))]}
+    seen: dict[str, int] = {}
+    rows = []
+    for index, course in enumerate(config.config.courses):
+        references = _references(config, index)
+        rows.append(
+            {
+                "index": index,
+                "display": course_display_name(course, seen),
+                "course_id": course.course_id,
+                "section_id": course.section_id,
+                "credits": course.credits,
+                "capacity": course.capacity,
+                "modality": _modality(course),
+                "rooms": list(course.room),
+                "labs": list(course.lab),
+                "conflicts": list(course.conflicts),
+                "faculty": list(course.faculty) if course.faculty is not None else None,
+                # When faculty is null the library picks from these people:
+                "derived_faculty": _preferring(config, course.course_id) if course.faculty is None else [],
+                "required_room_features": sorted(course.required_room_features),
+                "required_lab_features": sorted(course.required_lab_features),
+                "reserve_room_during_lab": course.reserve_room_during_lab,
+                "referenced_by": references,
+                "can_delete": not references,
+            }
+        )
+    return {"has_config": True, "courses": rows}
 
 
-def get_course(request, course_index) -> dict:
-    """Return one indexed course for its edit or delete page."""
+def get_course(request, course_index: int) -> dict:
+    """One course in form_data shape (use as CourseForm `initial`), plus
+    `index`, `display`, `referenced_by` and `can_delete`. Passing it back to
+    update_course() changes nothing."""
     config = require_config(get_session(request), "editing courses")
-    return _course_data(config, course_index)
-
-
-def rename_impact(request, course_index, form_data) -> dict:
-    """Describe affected conflicts and preferences for a final course-ID rename."""
-    config = require_config(get_session(request), "editing courses")
-    original, fields, _ = _prepared_update(config, course_index, form_data)
+    course = _course_at(config, course_index)
+    seen: dict[str, int] = {}
+    display = ""
+    for item in config.config.courses[: course_index + 1]:
+        display = course_display_name(item, seen)
+    references = _references(config, course_index)
     return {
-        "new_name": fields["course_id"],
-        "references": _rename_references(config, course_index, original.course_id, fields["course_id"]),
+        "index": course_index,
+        "display": display,
+        "course_id": course.course_id,
+        "section_id": course.section_id or "",
+        "credits": course.credits,
+        "capacity": course.capacity,
+        "modality": _modality(course),
+        "room": list(course.room),
+        "lab": list(course.lab),
+        "conflicts": list(course.conflicts),
+        "faculty": list(course.faculty or []),
+        "required_room_features": ", ".join(sorted(course.required_room_features)),
+        "required_lab_features": ", ".join(sorted(course.required_lab_features)),
+        "reserve_room_during_lab": course.reserve_room_during_lab,
+        "referenced_by": references,
+        "can_delete": not references,
+    }
+
+
+def form_choices(request, course_index: int | None = None) -> dict:
+    """Choices for CourseForm's pickers, as keyword arguments for it.
+
+    `course_index` is the section being edited, so its own course_id is not
+    offered as a conflict (unless another section shares it, which the
+    controller still rejects as a self-conflict).
+    """
+    config = require_config(get_session(request), "editing courses")
+    entities = config.config
+    return {
+        "credit_choices": enabled_pattern_credits(config),
+        "room_names": sorted(room.name for room in entities.rooms),
+        "lab_names": sorted(lab.name for lab in entities.labs),
+        "faculty_names": sorted(person.name for person in entities.faculty),
+        "course_ids": sorted(
+            {course.course_id for position, course in enumerate(entities.courses) if position != course_index}
+        ),
     }
 
 
 # ---------------------------------------------------------------------- #
-#  Writes
+#  Writes -- each returns a list of non-blocking notice strings
 # ---------------------------------------------------------------------- #
-def add_course(request, form_data) -> None:
-    """Append one CourseConfig through complete-configuration validation."""
+def add_course(request, form_data) -> list[str]:
     session = get_session(request)
-    config = require_config(session, "adding courses")
-    new_course = _build_course(_course_fields(form_data, config))
+    config = require_config(session, "adding a course")
+    fields, notices = _fields_from_form(config, form_data)
+    new_course = _build(fields)
 
     def mutate(draft):
         draft.config.courses.append(new_course)
 
     apply_config_edit(session, config, "course", mutate, form_fields=COURSE_FIELDS)
+    return notices
 
 
-def update_course(request, course_index, form_data) -> None:
-    """Replace one section and protect references if its final ID changes."""
+def update_course(request, course_index: int, form_data, expected_course_id: str | None = None) -> list[str]:
+    """Replace the section at `course_index`, keeping its place in the list."""
     session = get_session(request)
     config = require_config(session, "editing courses")
-    original, fields, updated = _prepared_update(config, course_index, form_data)
-
-    if original.course_id != fields["course_id"] and _is_last_section(
-        config, original.course_id, ignore_index=course_index
-    ):
-        try:
-            check_no_references(original.course_id, _references(config, original.course_id, ignore_index=course_index))
-        except ReferenceError_ as error:
-            raise ControllerError(
-                f"{error}. Remove those references before changing the final '{original.course_id}' section."
-            ) from error
-    def mutate(draft):
-        draft.config.courses[course_index] = updated
-
-    apply_config_edit(session, config, "course", mutate, form_fields=COURSE_FIELDS)
-
-
-def rename_course_and_update_references(request, course_index, form_data) -> None:
-    """Atomically rename a final course ID and every conflict/preference key.
-
-    This is separate from update_course() because its caller must present the
-    impact list first. The full draft is revalidated before commit, keeping a
-    rejected propagation from partially updating any configuration record.
-    """
-    session = get_session(request)
-    config = require_config(session, "renaming courses")
-    original, fields, updated = _prepared_update(config, course_index, form_data)
-    old_course_id = original.course_id
-    new_course_id = fields["course_id"]
-    references = _rename_references(config, course_index, old_course_id, new_course_id)
-    if new_course_id == old_course_id:
-        raise ControllerError([FieldError("course_id", "Enter a different course ID before confirming a rename.")])
-    if not _is_last_section(config, old_course_id, ignore_index=course_index):
-        raise ControllerError(
-            [
-                FieldError(
-                    "course_id",
-                    f"'{old_course_id}' still has another section, so this edit does not need reference propagation.",
-                )
-            ]
-        )
-    if not references:
-        raise ControllerError(
-            [
-                FieldError(
-                    "course_id",
-                    f"'{old_course_id}' has no references to update. Apply the regular edit instead.",
-                )
-            ]
-        )
+    old_id = _course_at(config, course_index, expected_course_id).course_id
+    fields, notices = _fields_from_form(config, form_data, editing_index=course_index)
+    updated = _build(fields)
+    new_id = updated.course_id
+    cascade = new_id != old_id and _is_last_section(config, course_index)
+    if cascade:
+        notices += _rename_notices(config, course_index, old_id, new_id)  # counted before the edit
 
     def mutate(draft):
         draft.config.courses[course_index] = updated
-        for index, course in enumerate(draft.config.courses):
-            if index != course_index and old_course_id in (course.conflicts or []):
-                course.conflicts = _replace_reference(course.conflicts, old_course_id, new_course_id)
-        for person in draft.config.faculty:
-            preferences = dict(person.course_preferences or {})
-            if old_course_id in preferences:
-                preferences[new_course_id] = preferences.pop(old_course_id)
-                person.course_preferences = preferences
+        if cascade:
+            _rename_references(draft, course_index, old_id, new_id)
 
     apply_config_edit(session, config, "course", mutate, form_fields=COURSE_FIELDS)
+    return notices
 
 
-def delete_course(request, course_index) -> None:
-    """Delete one section after protecting references to its final course ID."""
+def delete_course(request, course_index: int, expected_course_id: str | None = None) -> list[str]:
+    """Delete one section. Blocked, with the reasons listed, when it is the
+    last section of its course_id and something still refers to that id."""
     session = get_session(request)
-    config = require_config(session, "deleting courses")
-    course = _find_course(config, course_index)
-    if _is_last_section(config, course.course_id, ignore_index=course_index):
-        try:
-            check_no_references(course.course_id, _references(config, course.course_id, ignore_index=course_index))
-        except ReferenceError_ as error:
-            raise ControllerError(f"{error}. Remove those references first.") from error
+    config = require_config(session, "deleting a course")
+    course = _course_at(config, course_index, expected_course_id)
+    try:
+        check_no_references(course.course_id, _references(config, course_index))
+    except ReferenceError_ as error:
+        raise ControllerError(f"{error}. Remove those references first.") from error
 
     def mutate(draft):
         del draft.config.courses[course_index]
 
     apply_config_edit(session, config, "course", mutate, form_fields=COURSE_FIELDS)
+    return []
+
+
+# ---------------------------------------------------------------------- #
+#  Helpers
+# ---------------------------------------------------------------------- #
+def _build(fields: dict) -> CourseConfig:
+    """The library checks the record on its own here (blank ids, online
+    courses with rooms, features without rooms, duplicate names)."""
+    try:
+        return CourseConfig(**fields)
+    except ValidationError as error:
+        raise ControllerError(translate_validation_error(error, COURSE_FIELDS)) from error
+
+
+def _course_at(config, index: int, expected_course_id: str | None = None):
+    courses = config.config.courses
+    if not isinstance(index, int) or not 0 <= index < len(courses):
+        raise ControllerError("That course no longer exists. Refresh the page and try again.")
+    course = courses[index]
+    if expected_course_id is not None and course.course_id != expected_course_id:
+        raise ControllerError(
+            "The course list changed since this page was opened. Refresh the page and try again."
+        )
+    return course
+
+
+def _modality(course) -> str:
+    return getattr(course.modality, "value", str(course.modality))
+
+
+def _preferring(config, course_id: str) -> list[str]:
+    return [person.name for person in config.config.faculty if course_id in person.course_preferences]
+
+
+def _is_last_section(config, index: int) -> bool:
+    course_id = config.config.courses[index].course_id
+    return not any(
+        other.course_id == course_id
+        for position, other in enumerate(config.config.courses)
+        if position != index
+    )
+
+
+def _references(config, index: int) -> list[str]:
+    """What still points at this section's course_id, if it is the last one."""
+    if not _is_last_section(config, index):
+        return []
+    course_id = config.config.courses[index].course_id
+    seen: dict[str, int] = {}
+    references = []
+    for position, other in enumerate(config.config.courses):
+        display = course_display_name(other, seen)
+        if position != index and course_id in other.conflicts:
+            references.append(f"course {display} (conflicts)")
+    references += [
+        f"faculty {person.name} (course preference)"
+        for person in config.config.faculty
+        if course_id in person.course_preferences
+    ]
+    return references
+
+
+def _rename_references(draft, index: int, old_id: str, new_id: str) -> None:
+    """Inside the edit: point conflicts and faculty preferences at new_id."""
+    for position, other in enumerate(draft.config.courses):
+        if position == index or old_id not in other.conflicts:
+            continue
+        renamed = [new_id if item == old_id else item for item in other.conflicts]
+        # Drop a would-be self-conflict and any duplicate the rename created.
+        other.conflicts = [item for item in dict.fromkeys(renamed) if item != other.course_id]
+    for person in draft.config.faculty:
+        prefs = person.course_preferences
+        if old_id in prefs:
+            weight = prefs.pop(old_id)
+            prefs[new_id] = max(weight, prefs.get(new_id, weight))
+
+
+def _rename_notices(config, index: int, old_id: str, new_id: str) -> list[str]:
+    conflicts = sum(
+        1
+        for position, course in enumerate(config.config.courses)
+        if position != index and old_id in course.conflicts
+    )
+    prefs = sum(1 for person in config.config.faculty if old_id in person.course_preferences)
+    parts = []
+    if conflicts:
+        parts.append(f"{conflicts} course conflict list{'s' if conflicts != 1 else ''}")
+    if prefs:
+        parts.append(f"{prefs} faculty course preference{'s' if prefs != 1 else ''}")
+    if not parts:
+        return []
+    return [f"Renamed '{old_id}' to '{new_id}' in {' and '.join(parts)}."]
+
+
+def _split(value) -> list[str]:
+    """'a, b; c' / ['a', ' b '] -> ['a', 'b', 'c'] (blanks dropped)."""
+    if value is None:
+        return []
+    parts = _SPLIT.split(value) if isinstance(value, str) else [str(item) for item in value]
+    return [part.strip() for part in parts if part and part.strip()]
+
+
+def _names(value, field: str, known, label: str, errors: list[FieldError]) -> list[str]:
+    """Existing names, order kept, duplicates dropped; unknown ones reported."""
+    names = list(dict.fromkeys(_split(value)))
+    known = set(known)
+    unknown = [name for name in names if name not in known]
+    if unknown:
+        choices = ", ".join(sorted(known)) or f"none defined yet -- add a {label} first"
+        errors.append(FieldError(field, f"Unknown {label}: {', '.join(unknown)}. Choose from: {choices}."))
+        return []
+    return names
+
+
+def _whole_number(value, field: str, label: str, errors: list[FieldError]) -> int | None:
+    if value is None or (isinstance(value, str) and not value.strip()):
+        errors.append(FieldError(field, f"{label} is required."))
+        return None
+    try:
+        number = value if isinstance(value, int) and not isinstance(value, bool) else int(str(value).strip())
+    except ValueError:
+        errors.append(FieldError(field, f"{label} must be a whole number."))
+        return None
+    if number < 1:
+        errors.append(FieldError(field, f"{label} must be at least 1."))
+        return None
+    return number
+
+
+def _flag(value, default: bool) -> bool:
+    if value is None or value == "":
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("1", "true", "yes", "y", "on")
+
+
+def _fields_from_form(config, form_data, editing_index: int | None = None) -> tuple[dict, list[str]]:
+    """form_data -> (CourseConfig keyword arguments, notices). Collects every
+    field's problems before raising, so the user sees them all at once."""
+    errors: list[FieldError] = []
+    notices: list[str] = []
+    entities = config.config
+
+    course_id = str(form_data.get("course_id") or "").strip()
+    if not course_id:
+        errors.append(FieldError("course_id", "Course ID is required."))
+    section_id = str(form_data.get("section_id") or "").strip() or None
+
+    credits = _whole_number(form_data.get("credits"), "credits", "Credits", errors)
+    capacity = _whole_number(form_data.get("capacity"), "capacity", "Capacity", errors)
+    if credits is not None:
+        available = enabled_pattern_credits(config)
+        if credits not in available:
+            offer = (
+                f"Enabled patterns have: {', '.join(str(value) for value in available)}."
+                if available
+                else "There are no enabled class patterns."
+            )
+            errors.append(
+                FieldError("credits", f"No enabled class pattern has {credits} credits. {offer} Add or enable a pattern first.")
+            )
+
+    modality = str(form_data.get("modality") or "in_person").strip().lower()
+    if modality not in MODALITIES:
+        errors.append(FieldError("modality", f"Modality must be one of: {', '.join(MODALITIES)}."))
+
+    rooms = _names(form_data.get("room"), "room", (r.name for r in entities.rooms), "room", errors)
+    labs = _names(form_data.get("lab"), "lab", (l.name for l in entities.labs), "lab", errors)
+    faculty = _names(form_data.get("faculty"), "faculty", (f.name for f in entities.faculty), "faculty member", errors)
+    other_ids = {
+        course.course_id for position, course in enumerate(entities.courses) if position != editing_index
+    }
+    conflicts = _names(form_data.get("conflicts"), "conflicts", other_ids | {course_id}, "course", errors)
+    if course_id and course_id in conflicts:
+        errors.append(FieldError("conflicts", "A course can't conflict with itself."))
+    room_features = set(_split(form_data.get("required_room_features")))
+    lab_features = set(_split(form_data.get("required_lab_features")))
+    reserve = _flag(form_data.get("reserve_room_during_lab"), default=True)
+
+    if errors:
+        raise ControllerError(errors)
+
+    if modality == "online":
+        dropped = [
+            label
+            for label, value in (
+                ("rooms", rooms),
+                ("labs", labs),
+                ("required room features", room_features),
+                ("required lab features", lab_features),
+            )
+            if value
+        ]
+        if dropped:
+            notices.append(f"Online courses don't use physical space, so {', '.join(dropped)} were cleared.")
+        rooms, labs, room_features, lab_features = [], [], set(), set()
+
+    return (
+        {
+            "course_id": course_id,
+            "section_id": section_id,
+            "credits": credits,
+            "capacity": capacity,
+            "modality": modality,
+            "room": rooms,
+            "lab": labs,
+            "conflicts": conflicts,
+            "faculty": faculty or None,
+            "required_room_features": room_features,
+            "required_lab_features": lab_features,
+            "reserve_room_during_lab": reserve,
+        },
+        notices,
+    )

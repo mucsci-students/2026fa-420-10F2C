@@ -1,0 +1,33 @@
+{% comment %}
+    The Course form's fields in labelled groups, shared by course_add.html and
+    course_edit.html. Include it inside the <form>, with form=... in scope.
+{% endcomment %}
+{% include "gui/components/form_errors.html" %}
+
+<fieldset class="form-section">
+    <legend>Course and section</legend>
+    {% include "gui/components/field.html" with field=form.course_id %}
+    {% include "gui/components/field.html" with field=form.section_id %}
+    {% include "gui/components/field.html" with field=form.credits %}
+    {% include "gui/components/field.html" with field=form.capacity %}
+    {% include "gui/components/field.html" with field=form.modality %}
+</fieldset>
+
+<fieldset class="form-section">
+    <legend>Rooms</legend>
+    {% include "gui/components/field.html" with field=form.room %}
+    {% include "gui/components/field.html" with field=form.required_room_features %}
+</fieldset>
+
+<fieldset class="form-section">
+    <legend>Labs</legend>
+    {% include "gui/components/field.html" with field=form.lab %}
+    {% include "gui/components/field.html" with field=form.required_lab_features %}
+    {% include "gui/components/field.html" with field=form.reserve_room_during_lab %}
+</fieldset>
+
+<fieldset class="form-section">
+    <legend>Faculty and conflicts</legend>
+    {% include "gui/components/field.html" with field=form.faculty %}
+    {% include "gui/components/field.html" with field=form.conflicts %}
+</fieldset>

@@ -673,6 +673,92 @@ class AddClassPatternForm(ClassPatternFieldsForm):
 
 
 # ---------------------------------------------------------------------- #
+#  Courses (Section 7). The pickers list what exists in the loaded
+#  configuration (gui/controllers/courses.py form_choices()); the controller
+#  and the scheduler library decide whether the combination is acceptable.
+# ---------------------------------------------------------------------- #
+def _checkbox_list(label: str, help_text: str) -> forms.MultipleChoiceField:
+    return forms.MultipleChoiceField(
+        label=label,
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        help_text=help_text,
+    )
+
+
+class CourseForm(forms.Form):
+    """Add or edit one course section (CourseConfig)."""
+
+    course_id = forms.CharField(
+        label="Course ID",
+        help_text="e.g. CMSC 140. Adding the same ID again creates another section of that course.",
+    )
+    section_id = forms.CharField(
+        label="Section ID",
+        required=False,
+        help_text="Optional, e.g. 02. Leave blank to number sections in list order (.01, .02, ...).",
+    )
+    credits = forms.IntegerField(label="Credits", min_value=1)
+    capacity = forms.IntegerField(
+        label="Capacity",
+        min_value=1,
+        help_text="Expected enrollment. Rooms and labs must have at least this many seats.",
+    )
+    modality = forms.ChoiceField(
+        label="Modality",
+        choices=DELIVERY_CHOICES,
+        initial="in_person",
+        help_text="Online courses use no rooms or labs; those choices are cleared when you save.",
+    )
+    room = _checkbox_list("Rooms", "Rooms this course may use. Leave all unticked only for patterns that need no room.")
+    required_room_features = forms.CharField(
+        label="Required room features",
+        required=False,
+        help_text="Separated by commas, e.g. projector. Only rooms with all of them are used. Needs at least one room.",
+    )
+    lab = _checkbox_list("Labs", "Labs this course may use. Leave all unticked if it has no lab meeting.")
+    required_lab_features = forms.CharField(
+        label="Required lab features",
+        required=False,
+        help_text="Separated by commas. Needs at least one lab.",
+    )
+    reserve_room_during_lab = forms.BooleanField(
+        label="Keep the lecture room during the lab meeting",
+        required=False,
+        initial=True,
+    )
+    conflicts = _checkbox_list("Conflicting courses", "Sections of these courses must never meet at the same time as this one.")
+    faculty = _checkbox_list(
+        "Faculty",
+        "Who may teach it. Leave all unticked to choose from faculty who list this course as a preference.",
+    )
+
+    def __init__(
+        self,
+        *args,
+        credit_choices=(),
+        room_names=(),
+        lab_names=(),
+        faculty_names=(),
+        course_ids=(),
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        for field, names in (
+            ("room", room_names),
+            ("lab", lab_names),
+            ("faculty", faculty_names),
+            ("conflicts", course_ids),
+        ):
+            self.fields[field].choices = [(name, name) for name in names]
+        if credit_choices:
+            listed = ", ".join(str(value) for value in credit_choices)
+            self.fields["credits"].help_text = f"Must match an enabled class pattern: {listed}."
+        else:
+            self.fields["credits"].help_text = "No class pattern is enabled yet. Add or enable one first."
+
+
+# ---------------------------------------------------------------------- #
 #  Global Settings (Section 7): the saved generation limit and optimizer
 #  flags. The Schedule Generator's one-run overrides (Section 14) will get
 #  their own form so they can never touch the saved configuration.

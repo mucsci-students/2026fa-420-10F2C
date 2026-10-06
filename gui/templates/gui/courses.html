@@ -3,7 +3,11 @@
 {% block content %}
 <p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; Courses</p>
 <h1>Courses</h1>
-<p>Course sections define enrollment, meeting modality, candidate spaces, conflicts, and faculty candidates.</p>
+<p>
+    Each row is one course section. Adding the same course ID again creates another section; sections are
+    numbered in list order (.01, .02, ...) unless they have a section ID. Courses have no unique name, so they
+    are numbered by position.
+</p>
 
 {% if not data.has_config %}
 <div class="empty-state" role="status">
@@ -12,44 +16,53 @@
 </div>
 {% else %}
 
-<p><a class="btn btn-primary" href="{% url 'gui:course_add' %}">Add course section</a></p>
+<p><a class="btn btn-primary" href="{% url 'gui:course_add' %}">Add course</a></p>
 
-<h2>Current course sections</h2>
-<table class="data-table">
+<h2>Current courses</h2>
+<table class="data-table course-table">
     <thead>
         <tr>
+            <th scope="col">#</th>
             <th scope="col">Section</th>
-            <th scope="col">Credits and enrollment</th>
-            <th scope="col">Modality and spaces</th>
-            <th scope="col">Conflicts</th>
+            <th scope="col">Credits / capacity</th>
+            <th scope="col">Modality</th>
+            <th scope="col">Rooms and labs</th>
             <th scope="col">Faculty</th>
+            <th scope="col">Conflicts</th>
             <th scope="col">Actions</th>
         </tr>
     </thead>
     <tbody>
     {% for course in data.courses %}
         <tr>
-            <td>{{ course.label }}</td>
-            <td>{{ course.credits }} credit{{ course.credits|pluralize }}<br>Capacity {{ course.capacity }}</td>
+            <td>{{ course.index }}</td>
+            <td>{{ course.display }}</td>
+            <td>{{ course.credits }} credits<br>{{ course.capacity }} seats</td>
+            <td>{{ course.modality }}</td>
             <td>
-                {{ course.modality|title }}
-                {% if course.room %}<br><strong>Rooms:</strong> {{ course.room|join:", " }}{% endif %}
-                {% if course.lab %}<br><strong>Labs:</strong> {{ course.lab|join:", " }}{% endif %}
+                Rooms: {% if course.rooms %}{{ course.rooms|join:", " }}{% else %}&mdash;{% endif %}
+                {% if course.required_room_features %}<br>Room needs: {{ course.required_room_features|join:", " }}{% endif %}
+                <br>Labs: {% if course.labs %}{{ course.labs|join:", " }}{% else %}&mdash;{% endif %}
+                {% if course.required_lab_features %}<br>Lab needs: {{ course.required_lab_features|join:", " }}{% endif %}
             </td>
-            <td>{{ course.conflicts|join:", "|default:"—" }}</td>
-            <td>{{ course.faculty|join:", "|default:"None associated" }}</td>
+            <td>
+                {% if course.faculty is not None %}{{ course.faculty|join:", " }}
+                {% elif course.derived_faculty %}From preferences: {{ course.derived_faculty|join:", " }}
+                {% else %}&mdash;{% endif %}
+            </td>
+            <td>{% if course.conflicts %}{{ course.conflicts|join:", " }}{% else %}&mdash;{% endif %}</td>
             <td class="actions">
                 <a class="btn" href="{% url 'gui:course_edit' course.index %}">Edit</a>
                 {% if course.can_delete %}
                 <a class="btn btn-danger" href="{% url 'gui:course_delete' course.index %}">Delete</a>
                 {% else %}
                 <span class="btn btn-disabled" aria-disabled="true">Delete</span>
-                <span class="help">In use by {{ course.referenced_by|join:", " }}.</span>
+                <span class="help in-use">In use by {{ course.referenced_by|join:", " }}.</span>
                 {% endif %}
             </td>
         </tr>
     {% empty %}
-        <tr><td colspan="6">No course sections yet. Add one above.</td></tr>
+        <tr><td colspan="8">No courses yet. Use "Add course" above.</td></tr>
     {% endfor %}
     </tbody>
 </table>

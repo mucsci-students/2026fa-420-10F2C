@@ -1,8 +1,15 @@
-"""Views for the Course Configuration Editor pages.
+"""
+Views for the Courses pages (Configuration Editor, Section 7, Courses row).
 
-Views bind HTTP requests to CourseForm and delegate all scheduler mutations to
-gui.controllers.courses. Course URLs use a list index because multiple rows may
-share the same course ID as separate sections.
+Same shape as the Rooms, Class Patterns and Faculty views: parse the request,
+call the controller (gui/controllers/courses.py), then either redirect with a
+flash message (success) or re-render the same page with the errors on the form
+(failure), so the user's input is kept and the configuration is untouched.
+
+Courses have no unique name (sections share a course ID), so they are
+identified by their position in the URL. The edit and delete forms also post
+back the course ID the page showed ("expected_course_id"), so a list that
+changed in the meantime is refused instead of editing the wrong section.
 """
 
 from django.contrib import messages
@@ -11,52 +18,56 @@ from django.shortcuts import redirect, render
 from gui.controllers import courses as course_controller
 from gui.controllers.errors import ControllerError
 from gui.forms import CourseForm
-from gui.rename_confirmation import RenameConfirmationError, load_rename_confirmation
-from gui.views import _attach_errors
-from gui.views_rename import render_rename_confirmation
+from gui.views import _attach_errors, _flash_warnings
+
+_FORM_FIELDS = [
+    "course_id",
+    "section_id",
+    "credits",
+    "capacity",
+    "modality",
+    "room",
+    "lab",
+    "conflicts",
+    "faculty",
+    "required_room_features",
+    "required_lab_features",
+    "reserve_room_during_lab",
+]
 
 
 def _course_form(request, *args, course_index=None, **kwargs):
-    """Build CourseForm with names supplied by the controller's read model."""
+    """A CourseForm whose pickers list this configuration's rooms, labs, etc."""
     return CourseForm(*args, **course_controller.form_choices(request, course_index), **kwargs)
 
 
-def _render_courses(request):
-    """Render the list page without embedding the long creation form."""
+def courses(request):
+    """Courses page: every section, with edit/delete actions."""
     data = course_controller.describe_courses(request)
     return render(request, "gui/courses.html", {"active": "config", "data": data})
 
 
-def _render_course_add(request, form=None):
-    """Render the dedicated creation page, keeping a rejected bound form."""
-    return render(request, "gui/course_add.html", {"active": "config", "form": form or _course_form(request)})
-
-
-def courses(request):
-    """Show current course sections and the action to create a new section."""
-    return _render_courses(request)
-
-
 def course_add(request):
-    """Display or submit a dedicated Course creation form."""
-    if request.method == "GET":
-        return _render_course_add(request)
-    if request.method != "POST":
-        return redirect("gui:courses")
-    form = _course_form(request, request.POST)
-    if form.is_valid():
-        try:
-            course_controller.add_course(request, form.cleaned_data)
-        except ControllerError as error:
-            _attach_errors(form, error)
-        else:
-            messages.success(request, f"Course '{form.cleaned_data['course_id']}' added.")
-            return redirect("gui:courses")
-    return _render_course_add(request, form=form)
+    """Display (GET) or submit (POST) the Add course page."""
+    if not course_controller.describe_courses(request)["has_config"]:
+        return redirect("gui:courses")  # the list page shows the empty state
+    if request.method == "POST":
+        form = _course_form(request, request.POST)
+        if form.is_valid():
+            try:
+                notices = course_controller.add_course(request, form.cleaned_data)
+            except ControllerError as error:
+                _attach_errors(form, error)
+            else:
+                messages.success(request, f"Course '{form.cleaned_data['course_id']}' added.")
+                _flash_warnings(request, notices)
+                return redirect("gui:courses")
+    else:
+        form = _course_form(request, initial={"modality": "in_person", "reserve_room_during_lab": True})
+    return render(request, "gui/course_add.html", {"active": "config", "form": form})
 
 
 def course_edit(request, course_index):
-    """Display an indexed section for edit or commit its validated changes."""
     try:
         course = course_controller.get_course(request, course_index)
     except ControllerError as error:
@@ -67,74 +78,34 @@ def course_edit(request, course_index):
         form = _course_form(request, request.POST, course_index=course_index)
         if form.is_valid():
             try:
-                impact = course_controller.rename_impact(request, course_index, form.cleaned_data)
+                notices = course_controller.update_course(
+                    request,
+                    course_index,
+                    form.cleaned_data,
+                    expected_course_id=request.POST.get("expected_course_id") or None,
+                )
             except ControllerError as error:
                 _attach_errors(form, error)
             else:
-                if impact["references"]:
-                    return render_rename_confirmation(
-                        request,
-                        resource_key="course",
-                        resource_label="course ID",
-                        collection_label="Courses",
-                        list_url_name="gui:courses",
-                        identifier=course_index,
-                        old_name=course["course_id"],
-                        new_name=impact["new_name"],
-                        references=impact["references"],
-                        form_data=form.cleaned_data,
-                        confirm_url_name="gui:course_rename_confirm",
-                        cancel_url_name="gui:course_edit",
-                    )
-                try:
-                    course_controller.update_course(request, course_index, form.cleaned_data)
-                except ControllerError as error:
-                    _attach_errors(form, error)
-                else:
-                    messages.success(request, f"Course '{form.cleaned_data['course_id']}' updated.")
-                    return redirect("gui:courses")
+                messages.success(request, f"Course '{form.cleaned_data['course_id']}' updated.")
+                _flash_warnings(request, notices)
+                return redirect("gui:courses")
     else:
         form = _course_form(
             request,
             course_index=course_index,
-            initial={
-                "course_id": course["course_id"],
-                "section_id": course["section_id"],
-                "credits": course["credits"],
-                "capacity": course["capacity"],
-                "room": course["room"],
-                "lab": course["lab"],
-                "conflicts": course["conflicts"],
-                "faculty": course["faculty"],
-                "modality": course["modality"],
-                "required_room_features": ", ".join(course["required_room_features"]),
-                "required_lab_features": ", ".join(course["required_lab_features"]),
-                "reserve_room_during_lab": course["reserve_room_during_lab"],
-            },
+            initial={name: course[name] for name in _FORM_FIELDS},
         )
     return render(request, "gui/course_edit.html", {"active": "config", "form": form, "course": course})
 
 
-def course_rename_confirm(request, course_index):
-    """Apply a reviewed final Course-ID rename and its dependent references."""
-    if request.method != "POST":
-        return redirect("gui:course_edit", course_index=course_index)
-    try:
-        form_data = load_rename_confirmation(request.POST.get("confirmation_token", ""), "course", course_index)
-    except RenameConfirmationError as error:
-        messages.error(request, str(error))
-        return redirect("gui:course_edit", course_index=course_index)
-    try:
-        course_controller.rename_course_and_update_references(request, course_index, form_data)
-    except ControllerError as error:
-        messages.error(request, error.message)
-        return redirect("gui:course_edit", course_index=course_index)
-    messages.success(request, f"Course ID '{form_data['course_id']}' and associated references updated.")
-    return redirect("gui:courses")
-
-
 def course_delete(request, course_index):
-    """Show a deletion confirmation or remove an unreferenced course section."""
+    """Confirmation page (GET) and the confirm/cancel actions (POST).
+
+    The last section of a course ID that another course or a faculty
+    preference still names cannot be deleted; the page lists those instead
+    (Section 12).
+    """
     try:
         course = course_controller.get_course(request, course_index)
     except ControllerError as error:
@@ -146,11 +117,15 @@ def course_delete(request, course_index):
             messages.info(request, "Cancelled.")
             return redirect("gui:courses")
         try:
-            course_controller.delete_course(request, course_index)
+            course_controller.delete_course(
+                request,
+                course_index,
+                expected_course_id=request.POST.get("expected_course_id") or None,
+            )
         except ControllerError as error:
             messages.error(request, error.message)
         else:
-            messages.success(request, f"Course '{course['label']}' deleted.")
+            messages.success(request, f"Course '{course['display']}' deleted.")
         return redirect("gui:courses")
 
     return render(request, "gui/course_delete.html", {"active": "config", "course": course})

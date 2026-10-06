@@ -1,188 +1,283 @@
-"""Focused form and controller tests for Course Configuration Editor CRUD."""
+"""
+Tests for the Courses slice of the Configuration Editor: the controller
+(gui/controllers/courses.py) called directly, then the pages
+(gui/views_courses.py, CourseForm) through Django's test client.
+
+Covers the Section 7 Courses row and Sprint 2 Sections 10, 11, 12, 19 and
+23.2/23.6. Runs against the REAL scheduler library and the shipped example config.
+Facts from that config the tests rely on (indexes are list positions):
+    0, 1   CMSC 140 (two sections)      2   CMSC 152 (only Hardy prefers it)
+    3      CMSC 161.01, faculty ["Zoppetti"], conflicts ["CMSC 140"]
+    6      CMSC 162, the only section; CMSC 140's sections conflict with it,
+           and Hogg prefers it
+    Enabled class patterns exist for 3 and 4 credits, none for online delivery.
+"""
+
+import re
 
 import pytest
 
 from app.session import Session
 from gui import session_store
-from gui.controllers import courses as course_controller
+from gui.controllers import courses as ctrl
 from gui.controllers.errors import ControllerError
-from gui.forms import CourseForm
 
 EXAMPLE = "app/examples/config_example.json"
-COURSES_URL = "/configuration/courses/"
-
-
-def new_course_data(**overrides):
-    """Return data for a standalone section that fits the example config."""
-    data = {
-        "course_id": "CMSC 499",
-        "section_id": "01",
-        "credits": 4,
-        "capacity": 20,
-        "room": ["Roddy 136"],
-        "lab": [],
-        "conflicts": [],
-        "faculty": ["Zoppetti"],
-        "modality": "in_person",
-        "required_room_features": [],
-        "required_lab_features": [],
-        "reserve_room_during_lab": True,
-    }
-    data.update(overrides)
-    return data
 
 
 @pytest.fixture
 def session(monkeypatch):
-    """Provide a real scheduler configuration to each controller test."""
     loaded = Session()
     loaded.load(EXAMPLE)
-    monkeypatch.setattr(course_controller, "get_session", lambda request: loaded)
+    monkeypatch.setattr(ctrl, "get_session", lambda request: loaded)
     return loaded
 
 
-class TestCourseForm:
-    def test_maps_resource_choices_and_blank_faculty_to_course_data(self):
-        """The form keeps selected names as lists and blanks as derived faculty."""
-        form = CourseForm(
-            data={
-                "course_id": "CMSC 499",
-                "section_id": "01",
-                "credits": "4",
-                "capacity": "20",
-                "modality": "in_person",
-                "room": ["Roddy 136"],
-                "lab": ["Linux"],
-                "conflicts": ["CMSC 140"],
-                "required_room_features": "projector, whiteboard",
-                "required_lab_features": "computers",
-                "reserve_room_during_lab": "on",
-            },
-            course_names=["CMSC 140"],
-            room_names=["Roddy 136"],
-            lab_names=["Linux"],
-            faculty_names=["Zoppetti"],
-        )
-
-        assert form.is_valid()
-        assert form.cleaned_data["room"] == ["Roddy 136"]
-        assert form.cleaned_data["lab"] == ["Linux"]
-        assert form.cleaned_data["faculty"] is None
-        assert form.cleaned_data["section_id"] == "01"
+@pytest.fixture
+def empty_session(monkeypatch):
+    blank = Session()
+    monkeypatch.setattr(ctrl, "get_session", lambda request: blank)
+    return blank
 
 
-class TestCourseController:
+def courses(session):
+    return session.config.config.courses
+
+
+def ids(session):
+    return [course.course_id for course in courses(session)]
+
+
+def valid_form(**overrides):
+    form = {
+        "course_id": "CMSC 500",
+        "section_id": "",
+        "credits": 4,
+        "capacity": 24,
+        "modality": "in_person",
+        "room": ["Roddy 136", "Roddy 140"],
+        "lab": ["Linux"],
+        "conflicts": ["CMSC 140"],
+        "faculty": ["Hardy"],
+        "required_room_features": "",
+        "required_lab_features": "",
+        "reserve_room_during_lab": True,
+    }
+    form.update(overrides)
+    return form
+
+
+def fields_of(info):
+    return {item.field for item in info.value.errors}
+
+
+# ---------------------------------------------------------------------- #
+#  Reads
+# ---------------------------------------------------------------------- #
+class TestReads:
+    def test_list_numbers_sections_like_the_scheduler(self, session):
+        rows = ctrl.describe_courses(None)["courses"]
+        assert [row["display"] for row in rows[:3]] == ["CMSC 140.01", "CMSC 140.02", "CMSC 152.01"]
+        assert rows[3]["faculty"] == ["Zoppetti"]
+
+    def test_list_shows_who_a_preference_based_course_draws_from(self, session):
+        row = ctrl.describe_courses(None)["courses"][2]
+        assert row["faculty"] is None
+        assert row["derived_faculty"] == ["Hardy"]
+
+    def test_list_marks_which_sections_can_be_deleted(self, session):
+        rows = ctrl.describe_courses(None)["courses"]
+        assert rows[0]["can_delete"] is True  # another CMSC 140 section remains
+        assert rows[6]["can_delete"] is False
+
+    def test_list_without_a_config_reports_the_empty_state(self, empty_session):
+        assert ctrl.describe_courses(None) == {"has_config": False}
+
+    def test_get_course_round_trips_through_update_unchanged(self, session):
+        before = courses(session)[3].model_dump()
+        ctrl.update_course(None, 3, ctrl.get_course(None, 3))
+        assert courses(session)[3].model_dump() == before
+
+    def test_get_course_includes_its_display_name(self, session):
+        assert ctrl.get_course(None, 1)["display"] == "CMSC 140.02"
+
+    def test_choices_include_only_enabled_pattern_credits(self, session):
+        choices = ctrl.form_choices(None)
+        assert choices["credit_choices"] == [3, 4]
+
+
+# ---------------------------------------------------------------------- #
+#  Add
+# ---------------------------------------------------------------------- #
+class TestAdd:
     def test_adds_a_course_and_marks_the_session_dirty(self, session):
-        """A valid CourseConfig is appended through the atomic edit helper."""
-        course_controller.add_course(None, new_course_data())
-
-        added = session.config.config.courses[-1]
-        assert added.course_id == "CMSC 499"
-        assert added.section_id == "01"
-        assert added.room == ["Roddy 136"]
-        assert added.faculty == ["Zoppetti"]
+        count = len(courses(session))
+        assert ctrl.add_course(None, valid_form()) == []
+        added = courses(session)[-1]
+        assert len(courses(session)) == count + 1
+        assert (added.course_id, added.section_id, added.faculty) == ("CMSC 500", None, ["Hardy"])
         assert session.dirty is True
 
-    def test_invalid_course_keeps_the_previous_configuration(self, session):
-        """Local validation failures leave the serialized config untouched."""
-        before = session.dumps()
+    def test_repeated_course_id_adds_another_section(self, session):
+        ctrl.add_course(None, valid_form(course_id="CMSC 152", conflicts=[]))
+        rows = ctrl.describe_courses(None)["courses"]
+        assert rows[-1]["display"] == "CMSC 152.02"
 
+    def test_text_values_are_accepted(self, session):
+        ctrl.add_course(
+            None,
+            valid_form(room="Roddy 136, Roddy 147", lab="", conflicts="", required_room_features="projector"),
+        )
+        added = courses(session)[-1]
+        assert added.room == ["Roddy 136", "Roddy 147"]
+        assert added.required_room_features == {"projector"}
+
+    def test_unknown_names_and_self_conflict_land_on_their_fields(self, session):
         with pytest.raises(ControllerError) as info:
-            course_controller.add_course(None, new_course_data(capacity=0))
-
-        assert "positive whole number" in info.value.message
-        assert session.dumps() == before
+            ctrl.add_course(
+                None,
+                valid_form(room=["Roddy 136", "Nope"], faculty=["Ghost"], conflicts=["CMSC 500"]),
+            )
+        assert fields_of(info) == {"room", "faculty", "conflicts"}
         assert session.dirty is False
 
-    def test_last_referenced_course_section_cannot_be_renamed_or_deleted(self, session):
-        """Changing a final ID cannot leave conflicts or preferences dangling."""
-        index = next(index for index, course in enumerate(session.config.config.courses) if course.course_id == "CMSC 162")
-        renamed = new_course_data(course_id="CMSC 999")
+    def test_credits_without_an_enabled_pattern_are_explained(self, session):
+        with pytest.raises(ControllerError) as info:
+            ctrl.add_course(None, valid_form(credits=7))
+        assert fields_of(info) == {"credits"}
+        assert "Enabled patterns have: 3, 4" in info.value.message
 
-        with pytest.raises(ControllerError) as rename_error:
-            course_controller.update_course(None, index, renamed)
-        with pytest.raises(ControllerError) as delete_error:
-            course_controller.delete_course(None, index)
+    def test_bad_numbers_and_modality_are_all_reported(self, session):
+        with pytest.raises(ControllerError) as info:
+            ctrl.add_course(None, valid_form(course_id=" ", capacity=0, modality="remote"))
+        assert fields_of(info) == {"course_id", "capacity", "modality"}
 
-        assert "CMSC 162" in rename_error.value.message
-        assert "CMSC 162" in delete_error.value.message
-        assert session.config.config.courses[index].course_id == "CMSC 162"
+    def test_no_faculty_and_no_preferences_is_rejected_on_the_faculty_field(self, session):
+        count = len(courses(session))
+        with pytest.raises(ControllerError) as info:
+            ctrl.add_course(None, valid_form(faculty=[]))
+        assert fields_of(info) == {"faculty"}
+        assert len(courses(session)) == count
+
+    def test_online_course_is_rejected_when_no_pattern_supports_it(self, session):
+        with pytest.raises(ControllerError) as info:
+            ctrl.add_course(None, valid_form(modality="online"))
+        assert fields_of(info) == {"modality"}
+
+    def test_duplicate_section_id_is_rejected(self, session):
+        with pytest.raises(ControllerError):
+            ctrl.add_course(None, valid_form(course_id="CMSC 140", section_id="01", conflicts=[]))
+
+    def test_without_a_config_says_so(self, empty_session):
+        with pytest.raises(ControllerError, match="No configuration is loaded"):
+            ctrl.add_course(None, valid_form())
+
+
+# ---------------------------------------------------------------------- #
+#  Update
+# ---------------------------------------------------------------------- #
+class TestUpdate:
+    def test_updates_the_section_in_place(self, session):
+        form = ctrl.get_course(None, 3)
+        ctrl.update_course(None, 3, {**form, "capacity": 40}, expected_course_id="CMSC 161")
+        assert courses(session)[3].capacity == 40
+        assert ids(session)[3] == "CMSC 161"
+
+    def test_failed_update_keeps_the_previous_valid_record(self, session):
+        before = courses(session)[3].model_dump()
+        form = ctrl.get_course(None, 3)
+        with pytest.raises(ControllerError):
+            ctrl.update_course(None, 3, {**form, "faculty": ["Ghost"]})
+        assert courses(session)[3].model_dump() == before
         assert session.dirty is False
 
-    def test_nonfinal_section_can_be_deleted_and_unreferenced_section_can_change(self, session):
-        """References protect course IDs, not individual sections with siblings."""
-        first_cmsc_140 = next(index for index, course in enumerate(session.config.config.courses) if course.course_id == "CMSC 140")
-        course_controller.delete_course(None, first_cmsc_140)
-        assert sum(course.course_id == "CMSC 140" for course in session.config.config.courses) == 1
+    def test_stale_index_is_refused(self, session):
+        form = ctrl.get_course(None, 3)
+        with pytest.raises(ControllerError, match="course list changed"):
+            ctrl.update_course(None, 3, form, expected_course_id="CMSC 999")
 
-        course_controller.add_course(None, new_course_data())
-        added_index = len(session.config.config.courses) - 1
-        course_controller.update_course(None, added_index, new_course_data(course_id="CMSC 498", section_id=None))
-        course_controller.delete_course(None, added_index)
+    def test_renaming_the_last_section_carries_references_along(self, session):
+        form = ctrl.get_course(None, 6)
+        notices = ctrl.update_course(None, 6, {**form, "course_id": "CMSC 262"}, expected_course_id="CMSC 162")
+        assert ids(session)[6] == "CMSC 262"
+        assert courses(session)[0].conflicts == ["CMSC 161", "CMSC 262"]
+        hogg = next(f for f in session.config.config.faculty if f.name == "Hogg")
+        assert "CMSC 262" in hogg.course_preferences and "CMSC 162" not in hogg.course_preferences
+        assert notices == ["Renamed 'CMSC 162' to 'CMSC 262' in 2 course conflict lists and 1 faculty course preference."]
 
-        assert not any(course.course_id == "CMSC 498" for course in session.config.config.courses)
+    def test_renaming_one_of_several_sections_leaves_references_alone(self, session):
+        form = ctrl.get_course(None, 0)
+        notices = ctrl.update_course(None, 0, {**form, "course_id": "CMSC 141", "conflicts": [], "faculty": ["Hardy"]})
+        assert notices == []
+        assert courses(session)[3].conflicts == ["CMSC 140"]  # still valid: 140.02 remains
 
-    def test_confirmed_final_course_rename_updates_conflicts_and_preferences(self, session):
-        """A final course ID renames all references in one atomic edit."""
-        index = next(index for index, course in enumerate(session.config.config.courses) if course.course_id == "CMSC 162")
-        fields = session.config.config.courses[index].model_dump(mode="json")
-        fields["course_id"] = "CMSC 163"
-        fields["faculty"] = ["Hogg"]
 
-        course_controller.rename_course_and_update_references(None, index, fields)
-
-        assert session.config.config.courses[index].course_id == "CMSC 163"
-        assert all("CMSC 162" not in (course.conflicts or []) for course in session.config.config.courses)
-        hogg = next(person for person in session.config.config.faculty if person.name == "Hogg")
-        assert "CMSC 162" not in hogg.course_preferences
-        assert hogg.course_preferences["CMSC 163"] == 5
+# ---------------------------------------------------------------------- #
+#  Delete (Section 12)
+# ---------------------------------------------------------------------- #
+class TestDelete:
+    def test_one_of_several_sections_is_deleted(self, session):
+        count = len(courses(session))
+        ctrl.delete_course(None, 0, expected_course_id="CMSC 140")
+        assert len(courses(session)) == count - 1
+        assert ids(session)[0] == "CMSC 140"
         assert session.dirty is True
 
-    def test_course_rename_does_not_overwrite_an_existing_preference_key(self, session):
-        """Faculty preference weights must be resolved manually before a key collision."""
-        index = next(index for index, course in enumerate(session.config.config.courses) if course.course_id == "CMSC 162")
-        fields = session.config.config.courses[index].model_dump(mode="json")
-        fields["course_id"] = "CMSC 380"
-        fields["faculty"] = ["Hogg"]
-
-        with pytest.raises(ControllerError) as info:
-            course_controller.rename_impact(None, index, fields)
-
-        assert "already has a preference" in info.value.message
-        assert session.config.config.courses[index].course_id == "CMSC 162"
+    def test_last_referenced_section_is_blocked_with_the_reasons(self, session):
+        references = ctrl.get_course(None, 6)["referenced_by"]
+        assert references == [
+            "course CMSC 140.01 (conflicts)",
+            "course CMSC 140.02 (conflicts)",
+            "faculty Hogg (course preference)",
+        ]
+        with pytest.raises(ControllerError, match="Cannot delete 'CMSC 162'"):
+            ctrl.delete_course(None, 6)
+        assert "CMSC 162" in ids(session)
         assert session.dirty is False
 
+    def test_stale_index_is_refused(self, session):
+        with pytest.raises(ControllerError, match="course list changed"):
+            ctrl.delete_course(None, 0, expected_course_id="CMSC 152")
+        assert ids(session)[0] == "CMSC 140"
 
-@pytest.fixture(autouse=True)
+    def test_out_of_range_index_is_a_controller_error(self, session):
+        with pytest.raises(ControllerError, match="no longer exists"):
+            ctrl.delete_course(None, 999)
+
+
+# ---------------------------------------------------------------------- #
+#  Pages (through Django's test client)
+# ---------------------------------------------------------------------- #
+COURSES_URL = "/configuration/courses/"
+
+
+@pytest.fixture
 def fresh_session_store():
-    """Keep each browser test bound to a separate in-memory Session."""
     session_store._SESSIONS.clear()
     yield
     session_store._SESSIONS.clear()
 
 
 def browser_session():
-    """Return the Session assigned to the current Django test client."""
+    """The one Session the current test client created."""
     return next(iter(session_store._SESSIONS.values()))
 
 
 def page(response):
-    """Decode a Django test response for concise page assertions."""
     return response.content.decode()
 
 
-def browser_form_data(**overrides):
-    """Return POST values for a CourseForm submission against the example."""
+def post_data(**overrides):
     data = {
-        "course_id": "CMSC 499",
-        "section_id": "01",
+        "course_id": "CMSC 500",
+        "section_id": "",
         "credits": "4",
-        "capacity": "20",
+        "capacity": "24",
         "modality": "in_person",
         "room": ["Roddy 136"],
-        "lab": [],
+        "lab": ["Linux"],
+        "faculty": ["Hardy"],
         "conflicts": [],
-        "faculty": ["Zoppetti"],
         "required_room_features": "",
         "required_lab_features": "",
         "reserve_room_during_lab": "on",
@@ -191,100 +286,101 @@ def browser_form_data(**overrides):
     return data
 
 
-class TestCoursePages:
-    def test_editor_links_to_courses_and_the_list_shows_example_data(self, client):
-        """Courses are reachable from the editor and list the loaded sections."""
+@pytest.mark.usefixtures("fresh_session_store")
+class TestPages:
+    def test_editor_links_to_courses_and_the_list_shows_sections(self, client):
         editor = page(client.get("/configuration/"))
         response = client.get(COURSES_URL)
-
         assert f'href="{COURSES_URL}"' in editor
         assert response.status_code == 200
-        assert "CMSC 140" in page(response)
-        assert "Zoppetti" in page(response)
-        assert "Faculty members:" not in page(response)
-        assert "Derived from preferences" not in page(response)
-        assert f'href="{COURSES_URL}add/"' in page(response)
+        assert "CMSC 140.02" in page(response)
+        assert "From preferences: Hardy" in page(response)
 
-    def test_add_page_displays_a_blank_course_form(self, client):
-        """The lengthy Course form lives on its own page, not in the list."""
-        response = client.get(COURSES_URL + "add/")
+    def test_list_shows_the_empty_state_without_a_configuration(self, client, monkeypatch):
+        monkeypatch.setattr(session_store, "AUTO_LOAD_EXAMPLE", False)
+        response = client.get(COURSES_URL)
+        assert "No configuration is loaded" in page(response)
+        assert client.get(COURSES_URL + "add/").status_code == 302
+
+    def test_add_page_offers_this_configurations_choices(self, client):
+        text = page(client.get(COURSES_URL + "add/"))
+        assert 'value="Roddy 147"' in text
+        assert 'value="Zoppetti"' in text
+        assert "Must match an enabled class pattern: 3, 4." in text
+
+    def test_adding_a_course_lists_it_and_flags_unsaved_changes(self, client):
+        client.get(COURSES_URL)
+        response = client.post(COURSES_URL + "add/", post_data(), follow=True)
+        assert "Course &#x27;CMSC 500&#x27; added." in page(response)
+        added = browser_session().config.config.courses[-1]
+        assert (added.course_id, added.room, added.lab, added.faculty) == (
+            "CMSC 500", ["Roddy 136"], ["Linux"], ["Hardy"],
+        )
+        assert browser_session().dirty is True
+
+    def test_rejected_add_stays_on_the_form_and_keeps_the_input(self, client):
+        client.get(COURSES_URL)
+        count = len(browser_session().config.config.courses)
+        response = client.post(COURSES_URL + "add/", post_data(credits="7", course_id="CMSC 777"))
         text = page(response)
-
         assert response.status_code == 200
-        assert "Add course section" in text
-        assert 'name="course_id"' in text
-        assert 'name="required_room_features"' in text
-        assert f'href="{COURSES_URL}"' in text
+        assert "No enabled class pattern has 7 credits" in text
+        assert 'value="CMSC 777"' in text
+        assert len(browser_session().config.config.courses) == count
 
-    def test_invalid_add_keeps_values_on_the_add_page(self, client):
-        """Form errors keep the browser on the dedicated add page."""
-        response = client.post(COURSES_URL + "add/", browser_form_data(capacity="many"))
-        text = page(response)
+    def test_unchecking_reserve_room_saves_false(self, client):
+        client.get(COURSES_URL)
+        data = post_data()
+        del data["reserve_room_during_lab"]
+        client.post(COURSES_URL + "add/", data)
+        assert browser_session().config.config.courses[-1].reserve_room_during_lab is False
 
-        assert response.status_code == 200
-        assert "Add course section" in text
-        assert "Enter a whole number" in text
-        assert 'value="CMSC 499"' in text
-        assert not any(course.course_id == "CMSC 499" for course in browser_session().config.config.courses)
-
-    def test_add_edit_and_delete_unreferenced_course(self, client):
-        """A standalone section completes the same HTTP CRUD cycle as Faculty."""
-        client.get(COURSES_URL + "add/")
-        added = client.post(COURSES_URL + "add/", browser_form_data(), follow=True)
-        assert "CMSC 499" in page(added) and "added" in page(added)
-
-        added_index = len(browser_session().config.config.courses) - 1
-        edited = client.post(
-            f"{COURSES_URL}{added_index}/edit/",
-            browser_form_data(course_id="CMSC 498", section_id="02"),
+    def test_edit_page_is_prefilled_and_applies_changes(self, client):
+        text = page(client.get(COURSES_URL + "3/edit/"))
+        assert "CMSC 161.01" in text
+        assert 'name="expected_course_id" value="CMSC 161"' in text
+        checked = re.findall(r'<input type="checkbox" name="(\w+)" value="([^"]+)"[^>]*checked>', text)
+        assert ("faculty", "Zoppetti") in checked
+        assert ("conflicts", "CMSC 140") in checked
+        assert ("room", "Roddy 136") in checked
+        response = client.post(
+            COURSES_URL + "3/edit/",
+            post_data(course_id="CMSC 161", capacity="40", faculty=["Zoppetti"], conflicts=["CMSC 140"], expected_course_id="CMSC 161"),
             follow=True,
         )
-        assert "CMSC 498" in page(edited) and "updated" in page(edited)
-        assert browser_session().config.config.courses[added_index].course_id == "CMSC 498"
+        assert "updated" in page(response)
+        assert browser_session().config.config.courses[3].capacity == 40
 
-        deleted = client.post(f"{COURSES_URL}{added_index}/delete/", {"action": "confirm"}, follow=True)
-        assert "CMSC 498" in page(deleted) and "deleted" in page(deleted)
-        assert not any(course.course_id == "CMSC 498" for course in browser_session().config.config.courses)
-
-    def test_final_course_rename_confirms_then_updates_all_references(self, client):
-        """The shared confirmation page is used before updating a final course ID."""
+    def test_edit_of_a_stale_row_is_refused(self, client):
         client.get(COURSES_URL)
-        course_index = next(
-            index
-            for index, course in enumerate(browser_session().config.config.courses)
-            if course.course_id == "CMSC 162"
-        )
-        preview = client.post(
-            f"{COURSES_URL}{course_index}/edit/",
-            browser_form_data(course_id="CMSC 163", faculty=["Hogg"]),
-        )
+        before = browser_session().config.config.courses[3].model_dump()
+        response = client.post(COURSES_URL + "3/edit/", post_data(expected_course_id="CMSC 999"))
+        assert "course list changed" in page(response)
+        assert browser_session().config.config.courses[3].model_dump() == before
 
-        assert preview.status_code == 200
-        assert "Confirm course ID rename" in page(preview)
-        assert "CMSC 140" in page(preview)
-        assert browser_session().config.config.courses[course_index].course_id == "CMSC 162"
-
-        confirmed = client.post(
-            f"{COURSES_URL}{course_index}/rename/confirm/",
-            {"confirmation_token": preview.context["confirmation_token"]},
-            follow=True,
-        )
-        assert "associated references updated" in page(confirmed)
-        assert browser_session().config.config.courses[course_index].course_id == "CMSC 163"
-        assert all("CMSC 162" not in (course.conflicts or []) for course in browser_session().config.config.courses)
-        hogg = next(person for person in browser_session().config.config.faculty if person.name == "Hogg")
-        assert "CMSC 162" not in hogg.course_preferences
-        assert "CMSC 163" in hogg.course_preferences
-
-    def test_referenced_final_section_has_no_delete_confirmation(self, client):
-        """The delete page blocks records that would leave dangling course IDs."""
+    def test_cancel_on_delete_changes_nothing(self, client):
         client.get(COURSES_URL)
-        protected_index = next(
-            index
-            for index, course in enumerate(browser_session().config.config.courses)
-            if course.course_id == "CMSC 162"
-        )
-        response = client.get(f"{COURSES_URL}{protected_index}/delete/")
+        count = len(browser_session().config.config.courses)
+        response = client.post(COURSES_URL + "0/delete/", {"action": "cancel", "expected_course_id": "CMSC 140"}, follow=True)
+        assert "Cancelled." in page(response)
+        assert len(browser_session().config.config.courses) == count
+        assert browser_session().dirty is False
 
-        assert "Cannot delete" in page(response)
-        assert 'value="confirm"' not in page(response)
+    def test_delete_one_of_several_sections(self, client):
+        client.get(COURSES_URL)
+        count = len(browser_session().config.config.courses)
+        response = client.post(COURSES_URL + "0/delete/", {"action": "confirm", "expected_course_id": "CMSC 140"}, follow=True)
+        assert "deleted" in page(response)
+        assert len(browser_session().config.config.courses) == count - 1
+
+    def test_referenced_last_section_shows_why_instead_of_a_delete_button(self, client):
+        listing = page(client.get(COURSES_URL))
+        text = page(client.get(COURSES_URL + "6/delete/"))
+        assert "In use by course CMSC 140.01 (conflicts)" in listing
+        assert "Cannot delete:" in text
+        assert "faculty Hogg (course preference)" in text
+        assert 'value="confirm"' not in text
+
+    def test_unknown_row_redirects_with_a_message(self, client):
+        response = client.get(COURSES_URL + "999/edit/", follow=True)
+        assert "no longer exists" in page(response)
