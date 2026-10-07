@@ -31,11 +31,11 @@
     Saving checks the whole configuration first, then downloads it as a JSON file. Your browser decides where
     it goes and asks before replacing an existing file. Validating re-checks every rule without saving.
 </p>
-<form method="post" action="{% url 'gui:config_save' %}" class="edit-form">
+<form method="post" action="{% url 'gui:config_save' %}" class="edit-form" data-loading="Loading…" data-loading-download>
     {% csrf_token %}
     <button type="submit" class="btn btn-primary"{% if not has_config %} disabled{% endif %}>Save configuration</button>
 </form>
-<form method="post" action="{% url 'gui:config_validate' %}" class="edit-form">
+<form method="post" action="{% url 'gui:config_validate' %}" class="edit-form" data-loading="Validating…">
     {% csrf_token %}
     <button type="submit" class="btn"{% if not has_config %} disabled{% endif %}>Validate configuration</button>
 </form>
@@ -45,7 +45,7 @@
     A new configuration begins with one placeholder room, course, faculty member and class pattern, because the
     scheduler does not accept a completely empty one. Edit or replace them as you build real data.
 </p>
-<form method="post" action="{% url 'gui:config_new' %}" class="edit-form">
+<form method="post" action="{% url 'gui:config_new' %}" class="edit-form" data-loading="Loading…">
     {% csrf_token %}
     {% include "gui/components/form_fields.html" with form=new_form %}
     <button type="submit" class="btn">Start new configuration</button>
@@ -56,7 +56,7 @@
     The whole file is checked before anything changes. If it has a problem, you will see what is wrong and the
     configuration you have now stays as it is.
 </p>
-<form method="post" action="{% url 'gui:config_load' %}" enctype="multipart/form-data" class="edit-form">
+<form method="post" action="{% url 'gui:config_load' %}" enctype="multipart/form-data" class="edit-form" data-loading="Loading…">
     {% csrf_token %}
     {% include "gui/components/form_fields.html" with form=load_form %}
     <button type="submit" class="btn btn-primary">Load configuration</button>
