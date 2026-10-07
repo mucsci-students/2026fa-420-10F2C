@@ -1247,3 +1247,158 @@ a.area-card:focus-visible {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
+
+/* ------------------------------------------------------------------ *
+ * Dark mode. Applied when <html data-theme="dark"> (see theme.js).    *
+ * ------------------------------------------------------------------ */
+.theme-toggle {
+    background: transparent;
+    color: #d1d5db;
+    border: 1px solid #6b7280;
+    border-radius: 6px;
+    padding: 0.2rem 0.7rem;
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+.theme-toggle:hover { color: #fff; border-color: #fff; }
+.theme-toggle:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+
+html[data-theme="dark"] { color-scheme: dark; }
+
+html[data-theme="dark"] body {
+    background: #0b0b0c;
+    color: #f3f4f6;
+}
+
+html[data-theme="dark"] nav {
+    background: #000;
+    border-bottom: 1px solid #27272a;
+}
+
+html[data-theme="dark"] main a:not(.btn) { color: #93c5fd; }
+
+html[data-theme="dark"] .breadcrumb,
+html[data-theme="dark"] .required,
+html[data-theme="dark"] .help { color: #a1a1aa; }
+
+/* Messages and alerts (each still starts with a text label) */
+html[data-theme="dark"] .alert { background: #18181b; border-color: #52525b; }
+html[data-theme="dark"] .alert-success { background: #052e16; border-color: #22c55e; }
+html[data-theme="dark"] .alert-info    { background: #172554; border-color: #60a5fa; }
+html[data-theme="dark"] .alert-warning { background: #451a03; border-color: #f59e0b; }
+html[data-theme="dark"] .alert-error   { background: #450a0a; border-color: #f87171; }
+html[data-theme="dark"] .field-error   { color: #fca5a5; }
+
+html[data-theme="dark"] .empty-state { background: #111113; border-color: #52525b; }
+html[data-theme="dark"] .todo-list   { background: #2a1a08; border-color: #9a5b1a; }
+
+/* Buttons */
+html[data-theme="dark"] .btn {
+    background: #18181b;
+    color: #f3f4f6;
+    border-color: #52525b;
+}
+html[data-theme="dark"] .btn:hover { background: #27272a; }
+html[data-theme="dark"] .btn-primary {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+}
+html[data-theme="dark"] .btn-primary:hover { background: #1d4ed8; }
+html[data-theme="dark"] .btn-danger {
+    background: #18181b;
+    border-color: #f87171;
+    color: #f87171;
+}
+html[data-theme="dark"] .btn-danger:hover { background: #2a0e0e; }
+
+/* Form controls */
+html[data-theme="dark"] .field input,
+html[data-theme="dark"] .field select,
+html[data-theme="dark"] .field textarea {
+    background: #18181b;
+    color: #f3f4f6;
+    border-color: #52525b;
+}
+html[data-theme="dark"] .field--error input,
+html[data-theme="dark"] .field--error select,
+html[data-theme="dark"] .field--error textarea { border: 2px solid #f87171; }
+html[data-theme="dark"] .course-form .form-section,
+html[data-theme="dark"] .faculty-form .form-section { border-color: #3f3f46; }
+
+/* Tables */
+html[data-theme="dark"] .data-table th,
+html[data-theme="dark"] .data-table td { border-bottom-color: #27272a; }
+
+/* Time-slot weekly grid */
+html[data-theme="dark"] .week-grid__track {
+    border-color: #3f3f46;
+    background-image: repeating-linear-gradient(
+        to bottom,
+        #27272a 0, #27272a 1px,
+        transparent 1px, transparent var(--hour-pct, 10%)
+    );
+}
+html[data-theme="dark"] .week-grid__track--axis { border-color: transparent; background: none; }
+html[data-theme="dark"] .week-grid__hour { color: #a1a1aa; }
+
+/* Loading spinner */
+html[data-theme="dark"] .spinner { border-color: #1e3a8a; border-top-color: #93c5fd; }
+
+/* ------------------------------------------------------------------ *
+ * Dark mode for the layout redesign (cards, sidebar, chips, panels).  *
+ * The rules above cover the older classes; this block re-colours the *
+ * design tokens and the few colours the layout hard-codes.            *
+ * ------------------------------------------------------------------ */
+html[data-theme="dark"] {
+    --bg: #0b0b0c;
+    --surface: #141416;
+    --surface-alt: #1c1c1f;
+    --border: #27272a;
+    --border-strong: #3f3f46;
+    --text: #f3f4f6;
+    --muted: #a1a1aa;
+    --header-bg: #000;
+    --header-text: #d1d5db;
+    --accent: #60a5fa;
+    --accent-strong: #93c5fd;
+    --accent-soft: #172554;
+    --focus: #60a5fa;
+    --danger: #f87171;
+    --danger-soft: #450a0a;
+    --ok: #22c55e;
+    --ok-soft: #052e16;
+    --warn: #f59e0b;
+    --warn-soft: #451a03;
+    --warn-text: #fde68a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --shadow-hover: 0 4px 14px rgba(0, 0, 0, 0.6);
+}
+
+/* Links that act as cards or menu items keep their own colours
+   (the general "main a" colour above is for plain text links). */
+html[data-theme="dark"] main .config-sidebar a { color: var(--text); }
+html[data-theme="dark"] main .config-sidebar a.is-active { color: var(--accent-strong); }
+html[data-theme="dark"] main a.area-card,
+html[data-theme="dark"] main a.mode-card { color: var(--text); }
+
+/* Saved/unsaved pill: keep the amber pill readable on the black header. */
+html[data-theme="dark"] nav .nav-status--dirty { color: #451a03; }
+html[data-theme="dark"] nav .nav-status--dirty strong { color: #451a03; }
+
+html[data-theme="dark"] .chip { background: #27272a; border-color: #3f3f46; color: #e4e4e7; }
+html[data-theme="dark"] .chip--info { background: #172554; border-color: #1e3a8a; color: #bfdbfe; }
+html[data-theme="dark"] .chip--ok   { background: #052e16; border-color: #166534; color: #bbf7d0; }
+html[data-theme="dark"] .chip--off  { background: #18181b; border-color: #3f3f46; color: #a1a1aa; }
+html[data-theme="dark"] .chip--warn { background: #451a03; border-color: #92400e; color: #fde68a; }
+
+html[data-theme="dark"] .add-panel > summary::before { background: #2563eb; color: #fff; }
+html[data-theme="dark"] .form-actions { box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.5); }
+html[data-theme="dark"] .field input,
+html[data-theme="dark"] .field select { background: #18181b; border-color: #52525b; }
+html[data-theme="dark"] .field-error { color: #fca5a5; }
+html[data-theme="dark"] .empty-state { border-color: #52525b; }
+html[data-theme="dark"] .data-table th { background: var(--surface-alt); }
+html[data-theme="dark"] .badge { color: #451a03; }
+html[data-theme="dark"] .list-toolbar input { background: #18181b; color: #f3f4f6; border-color: #52525b; }

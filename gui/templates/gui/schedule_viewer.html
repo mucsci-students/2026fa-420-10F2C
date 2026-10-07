@@ -31,7 +31,7 @@
 <section class="card">
 <h2 id="export-schedules" class="card__title">Export</h2>
 {% if schedule_count %}
-<form method="get" action="{% url 'gui:schedule_export' %}" class="edit-form">
+<form method="get" action="{% url 'gui:schedule_export' %}" class="edit-form" data-loading="Loading…" data-loading-download>
     {% include "gui/components/form_errors.html" with form=export_form %}
     {% include "gui/components/field.html" with field=export_form.schedule %}
     <div class="button-row">
@@ -39,7 +39,7 @@
         <button type="submit" name="file_format" value="csv" class="btn">Export This Schedule (CSV)</button>
     </div>
 </form>
-<form method="get" action="{% url 'gui:schedule_export' %}" class="edit-form">
+<form method="get" action="{% url 'gui:schedule_export' %}" class="edit-form" data-loading="Loading…" data-loading-download>
     <input type="hidden" name="schedule" value="all">
     <p class="help">Every available schedule ({{ schedule_count }}) in one file.</p>
     <div class="button-row">
@@ -70,7 +70,7 @@
     The whole file is checked before anything changes. If it has a problem, you'll see what is wrong
     and the schedules already loaded stay as they are. You don't need a configuration to view loaded schedules.
 </p>
-<form method="post" action="{% url 'gui:schedule_import' %}" enctype="multipart/form-data" class="edit-form">
+<form method="post" action="{% url 'gui:schedule_import' %}" enctype="multipart/form-data" class="edit-form" data-loading="Loading…">
     {% csrf_token %}
     {% include "gui/components/form_fields.html" with form=import_form %}
     <button type="submit" class="btn btn-primary">Load schedules</button>

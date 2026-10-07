@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Scheduler{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'gui/css/style.css' %}">
+    <script src="{% static 'gui/js/theme.js' %}"></script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
@@ -21,6 +22,7 @@
         {% elif config_dirty %}<strong>Unsaved changes</strong>
         {% else %}no unsaved changes{% endif %}
     </span>
+    <button type="button" id="theme-toggle" class="theme-toggle" aria-pressed="false">Dark mode</button>
 </nav>
 <main id="main">
 {% if messages %}
