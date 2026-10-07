@@ -13,6 +13,8 @@ view functions will start calling them instead of just rendering a static
 template.
 """
 
+import re
+
 from django.contrib import messages
 from django.http import Http404, HttpResponse
 
@@ -143,7 +145,7 @@ def config_save(request):
     except ControllerError as error:
         report = {"heading": "The configuration was not saved.", "items": [item.message for item in error.errors]}
         return _render_config_editor(request, report=report)
-    return download_response(filename, content, "application/json; charset=utf-8")
+    return download_response(filename, content, "application/json; charset=utf-8", download_token(request))
 
 
 def config_validate(request):
@@ -324,7 +326,7 @@ def schedule_export(request):
     except ControllerError as error:
         messages.error(request, error.message)
         return redirect("gui:schedule_viewer")
-    return download_response(export.filename, export.content, export.content_type)
+    return download_response(export.filename, export.content, export.content_type, download_token(request))
 
 
 # ---------------------------------------------------------------------- #
@@ -343,17 +345,40 @@ def _attach_errors(form, error):
         form.add_error(target, item.message)
 
 
-def download_response(filename: str, content: str | bytes, content_type: str) -> HttpResponse:
+DOWNLOAD_TOKEN_FIELD = "download_token"
+DOWNLOAD_TOKEN_COOKIE = "download_token"
+_DOWNLOAD_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def download_token(request) -> str | None:
+    """The token gui/static/gui/js/loading.js sends with a download form, or None.
+
+    Only short letter/digit/-/_ strings are accepted, so nothing odd is
+    ever echoed back in a cookie.
+    """
+    raw = request.POST.get(DOWNLOAD_TOKEN_FIELD) or request.GET.get(DOWNLOAD_TOKEN_FIELD) or ""
+    return raw if _DOWNLOAD_TOKEN_RE.match(raw) else None
+
+
+def download_response(
+    filename: str, content: str | bytes, content_type: str, token: str | None = None
+) -> HttpResponse:
     """Send `content` as a file download (config save, schedule export).
 
     Downloads let the browser choose where the file goes and ask before
     replacing an existing file, so the app never overwrites anything on
     disk -- the documented overwrite protection for Sections 9 and 18.
     Text is sent as UTF-8; include "; charset=utf-8" in `content_type`.
+
+    `token` (from download_token(request)) is echoed back in a short-lived
+    cookie. A download doesn't load a new page, so this is how the page's
+    loading state (Section 19, user story 48) knows the file has arrived.
     """
     body = content.encode("utf-8") if isinstance(content, str) else content
     response = HttpResponse(body, content_type=content_type)
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    if token and _DOWNLOAD_TOKEN_RE.match(token):
+        response.set_cookie(DOWNLOAD_TOKEN_COOKIE, token, max_age=120, samesite="Lax")
     return response
 
 

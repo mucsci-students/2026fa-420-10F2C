@@ -147,6 +147,17 @@ The Schedule Generator keeps validated configurations that you load or save in t
 
 Code: `gui/controllers/settings.py` (Controller), `gui/views_settings.py` (View), `gui/forms.py` (`GlobalSettingsForm`).
 
+## Loading States (all modes)
+
+While a file is loading or saving, the app shows that it is busy instead of looking frozen:
+
+- The button you pressed changes to **"Loading…"** (**"Validating…"** for Validate configuration), and a banner with a spinner appears at the top of the page. The form's buttons are greyed out and a second click is ignored, so a duplicate request can't be sent.
+- **Load configuration**, **Start new configuration**, **Validate** and **Load schedules** stay busy until the server answers. The next page, with its success or error message, replaces the loading state.
+- **Save configuration** and the **Export** buttons are downloads, which don't load a new page. They stay busy until the file arrives, and the banner then says "Download started." If something goes wrong, the error page or message replaces the loading state instead.
+- Without JavaScript every button still works; there is just no loading state.
+
+How it works: `gui/static/gui/js/loading.js` (loaded by `gui/templates/gui/base.html`, which also holds the `#loading-status` banner) acts on any form with `data-loading="Message"`. For downloads (`data-loading-download`) it sends a random `download_token`, and `download_response()` in `gui/views.py` sends it back in a short-lived cookie with the file, which tells the page the download has finished.
+
 ## Loading Schedules (Schedule Viewer)
 
 **Schedule Viewer -> Load schedules from a file**: choose a `.json` file and click **Load schedules**.
@@ -214,6 +225,7 @@ Use these instead of rewriting them in each feature:
 | One schedule row: course, faculty, room, lab, meetings | `Assignment`, `MeetingTime` | `app/schedule_io.py` |
 | Write schedules as JSON / CSV | `schedules_to_json(...)`, `schedules_to_csv(...)` | same |
 | Build a download (one schedule or all, JSON or CSV) | `export_schedules(request, index_or_None, "json"\|"csv")` -> `ExportFile` | `gui/controllers/schedule_controller.py` |
+| Show a loading state while a form submits (and ignore double clicks) | `<form ... data-loading="Generating schedules…">`; add `data-loading-download` if the answer is a file download, and pass `download_token(request)` to `download_response(...)` | `gui/static/gui/js/loading.js`, `gui/views.py` |
 | Export schedules as a JSON file (one, or all with `index=None`) | `export_schedule_json(request, index)` returns an `ExportFile` for `download_response` | `gui/controllers/schedule_controller.py` |
 | Read an uploaded file (empty/unreadable/too large handled) | `read_upload(uploaded_file, "field_name")` | `gui/controllers/uploads.py` |
 | "Tick to confirm" before replacing or discarding data | `ConfirmReplaceMixin` + `require_confirmation(...)` | `gui/forms.py` |
