@@ -1,0 +1,15 @@
+{% extends "gui/base.html" %}
+{% comment %}
+    Layout for every configuration page (Time Slots, Rooms, Labs, Courses, Faculty,
+    Class Patterns, Meetings, Global Settings and their add / edit / delete pages):
+    a sidebar to jump between areas, with the page's own content beside it.
+    Child pages extend this file and fill the config_content block (not the content block).
+{% endcomment %}
+{% block content %}
+<div class="config-layout">
+    {% include "gui/components/config_sidebar.html" %}
+    <div class="config-main">
+        {% block config_content %}{% endblock %}
+    </div>
+</div>
+{% endblock %}

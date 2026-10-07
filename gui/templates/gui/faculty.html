@@ -1,9 +1,18 @@
-{% extends "gui/base.html" %}
+{% extends "gui/config_base.html" %}
 {% block title %}Scheduler — Faculty{% endblock %}
-{% block content %}
+{% block config_content %}
 <p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; Faculty</p>
-<h1>Faculty</h1>
-<p>Faculty records define workload limits, availability, required teaching days, and preferences for courses and spaces.</p>
+<div class="page-header">
+    <div>
+        <h1>Faculty</h1>
+        <p class="page-intro">Faculty records define workload limits, availability, required teaching days, and preferences for courses and spaces.</p>
+    </div>
+    {% if data.has_config %}
+    <div class="page-actions">
+        <a class="btn btn-primary" href="{% url 'gui:faculty_add' %}">Add faculty member</a>
+    </div>
+    {% endif %}
+</div>
 
 {% if not data.has_config %}
 <div class="empty-state" role="status">
@@ -12,48 +21,56 @@
 </div>
 {% else %}
 
-<p><a class="btn btn-primary" href="{% url 'gui:faculty_add' %}">Add faculty member</a></p>
-
-<h2>Current faculty</h2>
-<table class="data-table">
-    <thead>
-        <tr>
-            <th scope="col">Name</th>
-            <th scope="col">Workload</th>
-            <th scope="col">Days</th>
-            <th scope="col">Availability</th>
-            <th scope="col">Preferences</th>
-            <th scope="col">Actions</th>
-        </tr>
-    </thead>
-    <tbody>
+<h2 class="section-title">Current faculty <span class="count-chip">{{ data.faculty|length }}</span></h2>
+<div class="list-toolbar" data-filter-box hidden>
+    <input type="search" id="faculty-filter" placeholder="Search faculty" aria-label="Search faculty"
+           data-filter-input="#faculty-list" data-filter-status="#faculty-filter-status">
+    <p class="help" id="faculty-filter-status" aria-live="polite"></p>
+</div>
+<div class="card-grid" id="faculty-list">
     {% for person in data.faculty %}
-        <tr>
-            <td>{{ person.name }}</td>
-            <td>{{ person.minimum_credits }}&ndash;{{ person.maximum_credits }} credits<br>Up to {{ person.unique_course_limit }} course{{ person.unique_course_limit|pluralize }}</td>
-            <td>Up to {{ person.maximum_days }} day{{ person.maximum_days|pluralize }}{% if person.mandatory_days %}<br>Required: {{ person.mandatory_days|join:", " }}{% endif %}</td>
-            <td>{% for row in person.availability %}{{ row.day }} {{ row.ranges }}{% if not forloop.last %}<br>{% endif %}{% empty %}&mdash;{% endfor %}</td>
-            <td>
+    <article class="item-card" data-filter-item>
+        <header class="item-card__head">
+            <h3 class="item-card__title">{{ person.name }}</h3>
+            <div class="chips">
+                <span class="chip chip--info">{{ person.minimum_credits }}&ndash;{{ person.maximum_credits }} credits</span>
+                <span class="chip">Up to {{ person.unique_course_limit }} course{{ person.unique_course_limit|pluralize }}</span>
+                <span class="chip">Up to {{ person.maximum_days }} day{{ person.maximum_days|pluralize }}</span>
+            </div>
+        </header>
+        {% if person.mandatory_days %}
+        <dl class="item-card__facts">
+            <div><dt>Required days</dt><dd>{{ person.mandatory_days|join:", " }}</dd></div>
+        </dl>
+        {% endif %}
+        <details class="item-card__more">
+            <summary>Availability and preferences</summary>
+            <dl class="item-card__facts">
+                <div>
+                    <dt>Availability</dt>
+                    <dd>{% for row in person.availability %}{{ row.day }} {{ row.ranges }}{% if not forloop.last %}<br>{% endif %}{% empty %}&mdash;{% endfor %}</dd>
+                </div>
                 {% for group in person.preferences %}
-                    <strong>{{ group.label }}:</strong>
-                    {% for entry in group.entries %}{{ entry.name }} ({{ entry.weight }}){% if not forloop.last %}, {% endif %}{% empty %}&mdash;{% endfor %}
-                    {% if not forloop.last %}<br>{% endif %}
+                <div>
+                    <dt>{{ group.label }}</dt>
+                    <dd>{% for entry in group.entries %}{{ entry.name }} ({{ entry.weight }}){% if not forloop.last %}, {% endif %}{% empty %}&mdash;{% endfor %}</dd>
+                </div>
                 {% endfor %}
-            </td>
-            <td class="actions">
-                <a class="btn" href="{% url 'gui:faculty_edit' person.name %}">Edit</a>
-                {% if person.can_delete %}
-                <a class="btn btn-danger" href="{% url 'gui:faculty_delete' person.name %}">Delete</a>
-                {% else %}
-                <span class="btn btn-disabled" aria-disabled="true">Delete</span>
-                <span class="help">In use by {{ person.referenced_by|join:", " }}.</span>
-                {% endif %}
-            </td>
-        </tr>
+            </dl>
+        </details>
+        <footer class="item-card__foot">
+            <a class="btn" href="{% url 'gui:faculty_edit' person.name %}">Edit</a>
+            {% if person.can_delete %}
+            <a class="btn btn-danger" href="{% url 'gui:faculty_delete' person.name %}">Delete</a>
+            {% else %}
+            <span class="btn btn-disabled" aria-disabled="true">Delete</span>
+            <span class="chip chip--warn in-use">In use by {{ person.referenced_by|join:", " }}.</span>
+            {% endif %}
+        </footer>
+    </article>
     {% empty %}
-        <tr><td colspan="6">No faculty members yet. Add one below.</td></tr>
+    <div class="empty-state">No faculty members yet. Use &ldquo;Add faculty member&rdquo; above.</div>
     {% endfor %}
-    </tbody>
-</table>
+</div>
 {% endif %}
 {% endblock %}

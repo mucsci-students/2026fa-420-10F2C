@@ -6,24 +6,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Scheduler{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'gui/css/style.css' %}">
-    <link rel="stylesheet" href="{% static 'gui/css/style.css' %}">
     <script src="{% static 'gui/js/theme.js' %}"></script>
 </head>
 <body>
-<nav>
+<a class="skip-link" href="#main">Skip to content</a>
+<nav aria-label="Main">
+    <a href="{% url 'gui:index' %}" class="brand">Course Scheduler</a>
     <a href="{% url 'gui:index' %}" class="{% if active == 'home' %}active{% endif %}">Home</a>
     <a href="{% url 'gui:config_editor' %}" class="{% if active == 'config' %}active{% endif %}">Configuration Editor</a>
     <a href="{% url 'gui:schedule_generator' %}" class="{% if active == 'generator' %}active{% endif %}">Schedule Generator</a>
     <a href="{% url 'gui:schedule_viewer' %}" class="{% if active == 'viewer' %}active{% endif %}">Schedule Viewer</a>
-    <span class="nav-status" role="status">
+    <span class="nav-status{% if config_loaded and config_dirty %} nav-status--dirty{% endif %}" role="status">
         Configuration:
         {% if not config_loaded %}none loaded
         {% elif config_dirty %}<strong>Unsaved changes</strong>
         {% else %}no unsaved changes{% endif %}
-        </span>
+    </span>
     <button type="button" id="theme-toggle" class="theme-toggle" aria-pressed="false">Dark mode</button>
 </nav>
-<main>
+<main id="main">
 {% if messages %}
 <div class="messages" aria-live="polite">
     {% for message in messages %}
@@ -38,5 +39,6 @@
 </main>
 <script src="{% static 'gui/js/loading.js' %}" defer></script>
 {% block scripts %}{% endblock %}
+<script src="{% static 'gui/js/app.js' %}" defer></script>
 </body>
 </html>

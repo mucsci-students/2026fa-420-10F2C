@@ -1,12 +1,25 @@
 {% extends "gui/base.html" %}
 {% block title %}Scheduler — Home{% endblock %}
 {% block content %}
-<h1>Course Scheduler</h1>
-<p>Sprint 2 requires three clearly identifiable modes (Section 1):</p>
-<ul class="mode-links">
-    <li><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> — create, load, edit, validate, and save a scheduler configuration.</li>
-    <li><a href="{% url 'gui:schedule_generator' %}">Schedule Generator</a> — generate schedules from the current valid configuration.</li>
-    <li><a href="{% url 'gui:schedule_viewer' %}">Schedule Viewer</a> — inspect, navigate, and export generated schedules.</li>
-</ul>
-<p><em>Status: navigation and page structure are in place. Each mode page lists the work still required to satisfy Sprint 2.</em></p>
+<div class="page-header">
+    <div>
+        <h1>Course Scheduler</h1>
+        <p class="page-intro">Sprint 2 requires three clearly identifiable modes (Section 1):</p>
+    </div>
+</div>
+<div class="mode-grid">
+    <a class="mode-card" href="{% url 'gui:config_editor' %}">
+        <span class="mode-card__title">Configuration Editor</span>
+        <span class="mode-card__text">Create, load, edit, validate, and save a scheduler configuration.</span>
+    </a>
+    <a class="mode-card" href="{% url 'gui:schedule_generator' %}">
+        <span class="mode-card__title">Schedule Generator</span>
+        <span class="mode-card__text">Generate schedules from the current valid configuration.</span>
+    </a>
+    <a class="mode-card" href="{% url 'gui:schedule_viewer' %}">
+        <span class="mode-card__title">Schedule Viewer</span>
+        <span class="mode-card__text">Inspect, navigate, and export generated schedules.</span>
+    </a>
+</div>
+<p class="help"><em>Status: navigation and page structure are in place. Each mode page lists the work still required to satisfy Sprint 2.</em></p>
 {% endblock %}

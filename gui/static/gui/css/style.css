@@ -1,50 +1,728 @@
-body {
-    font-family: system-ui, sans-serif;
-    margin: 0;
-    color: #1f2937;
+/* ------------------------------------------------------------------ *
+ * Design tokens. Change a color or radius here and every page follows. *
+ * ------------------------------------------------------------------ */
+:root {
+    --bg: #f3f4f6;
+    --surface: #ffffff;
+    --surface-alt: #f8fafc;
+    --border: #e5e7eb;
+    --border-strong: #cbd5e1;
+    --text: #1f2937;
+    --muted: #4b5563;
+    --header-bg: #1f2937;
+    --header-text: #d1d5db;
+    --accent: #1d4ed8;
+    --accent-strong: #1e40af;
+    --accent-soft: #eff6ff;
+    --focus: #2563eb;
+    --danger: #b91c1c;
+    --danger-soft: #fef2f2;
+    --ok: #16a34a;
+    --ok-soft: #f0fdf4;
+    --warn: #d97706;
+    --warn-soft: #fffbeb;
+    --warn-text: #78350f;
+    --radius: 10px;
+    --radius-sm: 6px;
+    --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
+    --shadow-hover: 0 4px 14px rgba(16, 24, 40, 0.12);
 }
 
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+/* An author rule such as display:grid must never un-hide an element that is
+   marked hidden (the list filter box starts hidden until its script runs). */
+[hidden] {
+    display: none !important;
+}
+
+body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.5;
+    margin: 0;
+    color: var(--text);
+    background: var(--bg);
+}
+
+a {
+    color: var(--accent);
+}
+
+h1 {
+    font-size: 1.75rem;
+    line-height: 1.2;
+    margin: 0 0 0.35rem;
+}
+
+h2 {
+    font-size: 1.2rem;
+    margin: 1.75rem 0 0.75rem;
+}
+
+h3 {
+    font-size: 1.05rem;
+    margin: 0 0 0.5rem;
+}
+
+p {
+    margin: 0.5rem 0;
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.skip-link {
+    position: absolute;
+    left: 0.75rem;
+    top: -4rem;
+    z-index: 20;
+    padding: 0.5rem 0.9rem;
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.skip-link:focus {
+    top: 0.75rem;
+}
+
+/* ------------------------------------------------------------------ *
+ * Header and navigation                                              *
+ * ------------------------------------------------------------------ */
 nav {
-    background: #1f2937;
-    padding: 0.75rem 1.5rem;
+    background: var(--header-bg);
+    padding: 0.6rem 1.5rem;
     display: flex;
-    gap: 1.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.5rem;
+}
+
+nav .brand {
+    color: #fff;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    margin-right: 0.75rem;
 }
 
 nav a {
-    color: #d1d5db;
+    color: var(--header-text);
     text-decoration: none;
     font-weight: 500;
+    padding: 0.35rem 0.8rem;
+    border-radius: 999px;
+}
+
+nav a:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
 }
 
 nav a.active {
     color: #fff;
-    border-bottom: 2px solid #60a5fa;
-    padding-bottom: 2px;
+    background: rgba(96, 165, 250, 0.22);
+    box-shadow: inset 0 -2px 0 #60a5fa;
 }
 
+nav a:focus-visible {
+    outline: 2px solid #93c5fd;
+    outline-offset: 2px;
+}
+
+nav .nav-status {
+    margin-left: auto;
+    color: var(--header-text);
+    font-size: 0.85rem;
+    padding: 0.25rem 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 999px;
+}
+
+nav .nav-status strong {
+    color: #fde68a;
+}
+
+nav .nav-status--dirty {
+    background: #fde68a;
+    border-color: #fde68a;
+    color: var(--warn-text);
+}
+
+nav .nav-status--dirty strong {
+    color: var(--warn-text);
+}
+
+/* ------------------------------------------------------------------ *
+ * Page layout                                                        *
+ * ------------------------------------------------------------------ */
 main {
-    padding: 2rem;
-    max-width: 900px;
+    padding: 1.5rem 2rem 3rem;
+    max-width: 1200px;
     margin: 0 auto;
+}
+
+.breadcrumb {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin: 0 0 0.75rem;
+}
+
+.page-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem 1.5rem;
+    margin-bottom: 1.25rem;
+}
+
+/* The title block takes the space the action button leaves, so the button
+   stays on the right of the title instead of wrapping below the intro. */
+.page-header > div:first-child {
+    flex: 1 1 24rem;
+    min-width: 0;
+}
+
+.page-intro {
+    color: var(--muted);
+    max-width: 46rem;
+    margin: 0.25rem 0 0;
+}
+
+.page-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.05rem;
+    margin: 1.75rem 0 0.75rem;
+}
+
+.section-title:first-child {
+    margin-top: 0;
+}
+
+.split {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+    gap: 1rem;
+    align-items: start;
+}
+
+/* Configuration pages: a sidebar to jump between areas, content beside it. */
+.config-layout {
+    display: grid;
+    grid-template-columns: 13.5rem minmax(0, 1fr);
+    gap: 1.75rem;
+    align-items: start;
+}
+
+.config-sidebar {
+    position: sticky;
+    top: 1rem;
+    padding: 0.75rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+.config-sidebar__back {
+    display: block;
+    padding: 0.3rem 0.6rem 0.6rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.config-sidebar ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.15rem;
+}
+
+.config-sidebar li a {
+    display: block;
+    padding: 0.4rem 0.6rem;
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.config-sidebar li a:hover {
+    background: var(--surface-alt);
+}
+
+.config-sidebar li a.is-active {
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+    font-weight: 700;
+    box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.config-sidebar a:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+}
+
+.config-main {
+    min-width: 0;
+}
+
+/* ------------------------------------------------------------------ *
+ * Cards, chips and badges                                            *
+ * ------------------------------------------------------------------ */
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 1.1rem 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.card > :first-child {
+    margin-top: 0;
+}
+
+.card > :last-child {
+    margin-bottom: 0;
+}
+
+.card__title {
+    font-size: 1.05rem;
+    margin: 0 0 0.35rem;
+}
+
+.card--form {
+    max-width: 42rem;
 }
 
 .badge {
     display: inline-block;
     background: #fde68a;
-    color: #78350f;
+    color: var(--warn-text);
     padding: 2px 10px;
     border-radius: 999px;
     font-size: 0.75rem;
     font-weight: 600;
     margin-left: 0.6rem;
+    vertical-align: middle;
+}
+
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.1rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid #dbe3ec;
+    background: #eef2f7;
+    color: #334155;
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.5;
+}
+
+.chip--info { background: var(--accent-soft); border-color: #bfdbfe; color: var(--accent-strong); }
+.chip--ok   { background: var(--ok-soft); border-color: #bbf7d0; color: #166534; }
+.chip--off  { background: #f3f4f6; border-color: var(--border-strong); color: var(--muted); }
+.chip--warn { background: var(--warn-soft); border-color: #fde68a; color: var(--warn-text); }
+
+.count-chip {
+    display: inline-block;
+    min-width: 1.6rem;
+    padding: 0 0.5rem;
+    border-radius: 999px;
+    background: var(--border);
+    color: var(--text);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-align: center;
+}
+
+.status-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.8rem 1.1rem;
+    margin-bottom: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 6px solid var(--ok);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+.status-card--dirty {
+    border-left-color: var(--warn);
+    background: var(--warn-soft);
+}
+
+.status-card p {
+    margin: 0;
+}
+
+/* Grids of cards ---------------------------------------------------- */
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(21rem, 1fr));
+    gap: 1rem;
+    align-items: stretch;
+}
+
+.card-grid > .empty-state {
+    grid-column: 1 / -1;
+}
+
+.item-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: 1rem 1.1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    min-width: 0;
+}
+
+.item-card__head {
+    display: grid;
+    gap: 0.4rem;
+}
+
+.item-card__title {
+    margin: 0;
+    font-size: 1.05rem;
+    overflow-wrap: anywhere;
+}
+
+.item-card__facts {
+    display: grid;
+    gap: 0.35rem;
+    margin: 0;
+}
+
+.item-card__facts > div {
+    display: grid;
+    grid-template-columns: 6.5rem minmax(0, 1fr);
+    gap: 0.5rem;
+}
+
+.item-card__facts dt {
+    color: var(--muted);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.item-card__facts dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.item-card__facts ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.item-card__more summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.item-card__more[open] summary {
+    margin-bottom: 0.5rem;
+}
+
+.item-card__more .item-card__facts {
+    padding-top: 0.25rem;
+    border-top: 1px dashed var(--border-strong);
+}
+
+.item-card__foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: auto;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+}
+
+/* Configuration area cards (Configuration Editor dashboard) ------------ */
+.area-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(12.5rem, 1fr));
+    gap: 0.9rem;
+}
+
+.area-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 1rem 1.1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    color: var(--text);
+    text-decoration: none;
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+a.area-card:hover {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-hover);
+    transform: translateY(-1px);
+}
+
+a.area-card:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+}
+
+.area-card__label {
+    font-weight: 700;
+}
+
+.area-card__count {
+    font-size: 1.9rem;
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--accent);
+}
+
+.area-card__unit {
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.area-card__cta {
+    margin-top: 0.5rem;
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.area-card__cta::after {
+    content: " \2192";
+}
+
+.area-card--soon {
+    background: var(--surface-alt);
+    box-shadow: none;
+    color: var(--muted);
+}
+
+.area-card--soon .area-card__count {
+    color: var(--muted);
+}
+
+/* Home page mode cards ------------------------------------------------ */
+.mode-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: 1rem;
+    margin: 1rem 0;
+}
+
+.mode-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 1.25rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    color: var(--text);
+    text-decoration: none;
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+.mode-card:hover {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-hover);
+    transform: translateY(-1px);
+}
+
+.mode-card:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+}
+
+.mode-card__title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--accent-strong);
+}
+
+.mode-card__text {
+    color: var(--muted);
+}
+
+/* Collapsible "add" panels and other disclosures --------------------- */
+.add-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    margin-bottom: 1.25rem;
+}
+
+.add-panel > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.7rem 1.1rem;
+    cursor: pointer;
+    font-weight: 700;
+    list-style: none;
+}
+
+.add-panel > summary::-webkit-details-marker {
+    display: none;
+}
+
+.add-panel > summary::before {
+    content: "+";
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 700;
+    flex: none;
+}
+
+.add-panel[open] > summary::before {
+    content: "\2212";
+}
+
+.add-panel > summary span {
+    flex: 1;
+}
+
+.add-panel > summary:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: -2px;
+    border-radius: var(--radius);
+}
+
+.add-panel__body {
+    padding: 0 1.1rem 1.1rem;
+    border-top: 1px solid var(--border);
+}
+
+.add-panel__body > .help:first-child {
+    margin-top: 0.75rem;
+}
+
+/* The add form lays its fields out in a responsive grid. */
+.add-panel .edit-form {
+    max-width: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 0.75rem 1.25rem;
+    padding-top: 0.9rem;
+    align-items: start;
+}
+
+.add-panel .edit-form .field {
+    margin: 0;
+}
+
+.add-panel .edit-form > .alert,
+.add-panel .edit-form > .btn,
+.add-panel .edit-form > .form-actions {
+    grid-column: 1 / -1;
+}
+
+.add-panel .edit-form > .btn {
+    justify-self: start;
+}
+
+/* Details used as a plain "advanced" disclosure inside a card */
+.todo-list > summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ *
+ * Alerts, empty states, to-do notes                                  *
+ * ------------------------------------------------------------------ */
+/* Flash messages and inline errors. Each starts with a text label
+   ("Success:", "Error:") so color is never the only signal. */
+.alert {
+    border: 1px solid var(--border-strong);
+    border-left-width: 6px;
+    border-radius: var(--radius-sm);
+    padding: 0.6rem 0.9rem;
+    margin: 0.75rem 0;
+    background: #f9fafb;
+}
+
+.alert p {
+    margin: 0.2rem 0;
+}
+
+.alert-success { border-color: var(--ok);     background: var(--ok-soft); }
+.alert-info    { border-color: #2563eb;       background: var(--accent-soft); }
+.alert-warning { border-color: var(--warn);   background: var(--warn-soft); }
+.alert-error   { border-color: #dc2626;       background: var(--danger-soft); }
+
+.empty-state {
+    border: 2px dashed #9ca3af;
+    border-radius: var(--radius);
+    padding: 1rem 1.5rem;
+    background: var(--surface);
+}
+
+.empty-state h2 {
+    margin-top: 0;
 }
 
 .todo-list {
     background: #fff7ed;
     border: 1px solid #fdba74;
-    border-radius: 8px;
-    padding: 1rem 1.5rem;
+    border-radius: var(--radius);
+    padding: 0.9rem 1.5rem;
+    margin-top: 1.5rem;
 }
 
 .todo-list li {
@@ -65,59 +743,16 @@ main {
 }
 
 /* ------------------------------------------------------------------ *
- * Shared components (added with the Time Slots feature; reuse these) *
+ * Buttons                                                            *
+ * Destructive actions get a heavier red outline and bold text.       *
  * ------------------------------------------------------------------ */
-
-nav .nav-status {
-    margin-left: auto;
-    color: #d1d5db;
-    font-size: 0.85rem;
-}
-
-nav .nav-status strong {
-    color: #fde68a;
-}
-
-.breadcrumb {
-    color: #4b5563;
-    font-size: 0.9rem;
-}
-
-/* Flash messages and inline errors. Each starts with a text label
-   ("Success:", "Error:") so color is never the only signal. */
-.alert {
-    border: 1px solid #d1d5db;
-    border-left-width: 6px;
-    border-radius: 6px;
-    padding: 0.6rem 0.9rem;
-    margin: 0.75rem 0;
-    background: #f9fafb;
-}
-
-.alert p {
-    margin: 0.2rem 0;
-}
-
-.alert-success { border-color: #16a34a; background: #f0fdf4; }
-.alert-info    { border-color: #2563eb; background: #eff6ff; }
-.alert-warning { border-color: #d97706; background: #fffbeb; }
-.alert-error   { border-color: #dc2626; background: #fef2f2; }
-
-.empty-state {
-    border: 2px dashed #9ca3af;
-    border-radius: 8px;
-    padding: 1rem 1.5rem;
-    background: #f9fafb;
-}
-
-/* Buttons. Destructive actions get a heavier red outline and bold text. */
 .btn {
     display: inline-block;
     padding: 0.35rem 0.9rem;
     border: 1px solid #9ca3af;
-    border-radius: 6px;
-    background: #fff;
-    color: #1f2937;
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
     font: inherit;
     text-decoration: none;
     cursor: pointer;
@@ -127,30 +762,37 @@ nav .nav-status strong {
 
 .btn:focus-visible,
 .field input:focus-visible,
-.field select:focus-visible {
-    outline: 2px solid #2563eb;
+.field select:focus-visible,
+.field textarea:focus-visible {
+    outline: 2px solid var(--focus);
     outline-offset: 2px;
 }
 
 .btn-primary {
-    background: #1d4ed8;
-    border-color: #1d4ed8;
+    background: var(--accent);
+    border-color: var(--accent);
     color: #fff;
 }
 
-.btn-primary:hover { background: #1e40af; }
+.btn-primary:hover { background: var(--accent-strong); }
 
 .btn-danger {
-    border: 2px solid #b91c1c;
-    color: #b91c1c;
+    border: 2px solid var(--danger);
+    color: var(--danger);
     font-weight: 600;
 }
 
-.btn-danger:hover { background: #fef2f2; }
+.btn-danger:hover { background: var(--danger-soft); }
 
-.btn-disabled {
+.btn-disabled,
+.btn:disabled {
     opacity: 0.55;
     cursor: not-allowed;
+}
+
+.btn-small {
+    padding: 0.2rem 0.7rem;
+    font-size: 0.9rem;
 }
 
 /* A group of related buttons (e.g. the Schedule Viewer's export buttons). */
@@ -161,9 +803,48 @@ nav .nav-status strong {
     margin: 0.5rem 0 1rem;
 }
 
-/* Forms */
+.button-row form {
+    margin: 0;
+}
+
+/* The Save / Cancel bar under a form. On the long Course and Faculty forms
+   it stays in view while you scroll, so the buttons are never far away. */
+.form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.course-form .form-actions,
+.faculty-form .form-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    padding: 0.75rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 -4px 12px rgba(16, 24, 40, 0.08);
+}
+
+/* ------------------------------------------------------------------ *
+ * Forms                                                              *
+ * ------------------------------------------------------------------ */
 .edit-form {
     max-width: 28rem;
+}
+
+.card .edit-form {
+    max-width: none;
+}
+
+.card--form .edit-form {
+    max-width: 36rem;
+}
+
+.card .edit-form + .edit-form {
+    margin-top: 0.75rem;
 }
 
 .faculty-form .field textarea {
@@ -191,6 +872,14 @@ nav .nav-status strong {
     border-radius: 4px;
     font: inherit;
     min-width: 12rem;
+    max-width: 100%;
+    background: #fff;
+}
+
+/* Checkboxes and radio buttons are not text boxes: no minimum width. */
+.field input[type="checkbox"],
+.field input[type="radio"] {
+    min-width: 0;
 }
 
 .field--error input,
@@ -202,7 +891,7 @@ nav .nav-status strong {
 .help {
     font-size: 0.85rem;
     font-weight: 400;
-    color: #4b5563;
+    color: var(--muted);
 }
 
 .help {
@@ -214,7 +903,39 @@ nav .nav-status strong {
     margin: 0.25rem 0 0;
 }
 
-/* Tables */
+/* Search box above a long list (shown by app.js; hidden without it). */
+.list-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1rem;
+    margin: 0 0 1rem;
+}
+
+.list-toolbar input[type="search"] {
+    min-width: 16rem;
+    padding: 0.4rem 0.7rem;
+    border: 1px solid #9ca3af;
+    border-radius: 999px;
+    font: inherit;
+}
+
+.list-toolbar input[type="search"]:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+}
+
+.list-toolbar .help {
+    margin: 0;
+}
+
+/* ------------------------------------------------------------------ *
+ * Tables                                                             *
+ * ------------------------------------------------------------------ */
+.table-wrap {
+    overflow-x: auto;
+}
+
 .data-table {
     width: 100%;
     border-collapse: collapse;
@@ -224,16 +945,46 @@ nav .nav-status strong {
 .data-table th,
 .data-table td {
     text-align: left;
-    padding: 0.4rem 0.6rem;
-    border-bottom: 1px solid #e5e7eb;
+    padding: 0.5rem 0.7rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+}
+
+.data-table thead th {
+    background: var(--surface-alt);
+    color: var(--muted);
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.data-table tbody tr:hover td {
+    background: var(--surface-alt);
+}
+
+.card > .data-table:last-child,
+.card > .table-wrap:last-child .data-table {
+    margin-bottom: 0;
 }
 
 .data-table .actions {
     white-space: nowrap;
 }
 
+.data-table .actions .help {
+    display: block;
+    white-space: normal;
+    max-width: 16rem;
+    margin-top: 0.3rem;
+}
+
 .day-section h3 {
-    margin: 1.2rem 0 0.3rem;
+    margin: 0 0 0.5rem;
+}
+
+/* Keep a time such as "MON 08:00-12:00" on one line in the narrow day cards. */
+.day-section .data-table td:first-child {
+    white-space: nowrap;
 }
 
 .timing-options summary {
@@ -242,14 +993,21 @@ nav .nav-status strong {
     margin-bottom: 0.75rem;
 }
 
-/* Weekly overview grid: a day-by-time picture of blocks. Purely a visual
-   aid -- the tables next to it carry the same information. */
+/* ------------------------------------------------------------------ *
+ * Weekly overview grid: a day-by-time picture of blocks. Purely a    *
+ * visual aid -- the tables next to it carry the same information.    *
+ * ------------------------------------------------------------------ */
+.scroll-x {
+    overflow-x: auto;
+}
+
 .week-grid {
-    --grid-height: 28rem;
+    --grid-height: 24rem;
     display: grid;
     grid-template-columns: 3.5rem repeat(5, 1fr);
     gap: 0 0.4rem;
-    margin: 1rem 0 0.5rem;
+    margin: 0.5rem 0;
+    min-width: 34rem;
 }
 
 .week-grid__day-name {
@@ -280,7 +1038,7 @@ nav .nav-status strong {
     right: 0.3rem;
     transform: translateY(-50%);
     font-size: 0.75rem;
-    color: #4b5563;
+    color: var(--muted);
 }
 
 .week-grid__block {
@@ -310,26 +1068,58 @@ nav .nav-status strong {
     border-radius: 3px;
 }
 
+.day-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+    gap: 1rem;
+    align-items: start;
+}
 
+.day-grid .card {
+    margin-bottom: 0;
+}
 
-/* Course and Faculty add/edit forms use the same grouped control layout. */
+/* ------------------------------------------------------------------ *
+ * Course and Faculty add/edit forms: grouped sections as cards       *
+ * ------------------------------------------------------------------ */
 .course-form,
 .faculty-form {
-    max-width: 40rem;
+    max-width: 52rem;
 }
 
 .course-form .form-section,
 .faculty-form .form-section {
-    border: 1px solid #d1d5db;
-    border-radius: 4px;
-    margin: 1rem 0;
-    padding: 0.75rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    margin: 0 0 1rem;
+    padding: 0.9rem 1.25rem 0.5rem;
 }
 
 .course-form .form-section legend,
 .faculty-form .form-section legend {
-    font-weight: 600;
-    padding: 0 0.25rem;
+    font-weight: 700;
+    padding: 0 0.5rem;
+}
+
+/* Short fields sit side by side in columns; anything wide (choice lists,
+   the availability box, form-level errors) takes the full row. This keeps
+   the long Course and Faculty forms from becoming one tall column. */
+.course-form .form-section,
+.faculty-form .form-section {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    column-gap: 1.25rem;
+    align-content: start;
+}
+
+.course-form .form-section > .field:has(> div),
+.faculty-form .form-section > .field:has(> div),
+.course-form .form-section > .field:has(textarea),
+.faculty-form .form-section > .field:has(textarea),
+.faculty-form .form-section > .faculty-mandatory-days {
+    grid-column: 1 / -1;
 }
 
 /* Choice pickers use normal-weight labels beside their boxes in columns,
@@ -370,8 +1160,8 @@ nav .nav-status strong {
     flex: 0 1 10rem;
 }
 
-/* Courses list: let the "In use by" note wrap under the buttons instead of
-   widening the actions column and squeezing everything else. */
+/* The "In use by" note wraps under the buttons instead of widening the
+   actions column and squeezing everything else. */
 .course-table .in-use {
     display: block;
     white-space: normal;
@@ -379,8 +1169,74 @@ nav .nav-status strong {
     margin-top: 0.3rem;
 }
 
-.course-table td {
-    vertical-align: top;
+.in-use {
+    margin: 0;
+}
+
+/* "In use by ..." notes can be long lists of names: let them wrap. */
+.chip.in-use {
+    display: block;
+    border-radius: var(--radius-sm);
+    white-space: normal;
+}
+
+/* ------------------------------------------------------------------ *
+ * Small screens                                                      *
+ * ------------------------------------------------------------------ */
+@media (max-width: 860px) {
+    main {
+        padding: 1rem 1rem 2.5rem;
+    }
+
+    nav {
+        padding: 0.5rem 1rem;
+    }
+
+    nav .nav-status {
+        margin-left: 0;
+    }
+
+    .config-layout {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    .config-sidebar {
+        position: static;
+    }
+
+    .config-sidebar ul {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+    }
+
+    .config-sidebar li a.is-active {
+        box-shadow: none;
+    }
+
+    .card-grid,
+    .day-grid,
+    .split {
+        grid-template-columns: 1fr;
+    }
+
+    .item-card__facts > div {
+        grid-template-columns: 1fr;
+        gap: 0.1rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .area-card,
+    .mode-card {
+        transition: none;
+    }
+
+    a.area-card:hover,
+    .mode-card:hover {
+        transform: none;
+    }
 }
 
 .loading-status { display: flex; align-items: center; gap: 0.5rem; }
@@ -489,3 +1345,60 @@ html[data-theme="dark"] .week-grid__hour { color: #a1a1aa; }
 
 /* Loading spinner */
 html[data-theme="dark"] .spinner { border-color: #1e3a8a; border-top-color: #93c5fd; }
+
+/* ------------------------------------------------------------------ *
+ * Dark mode for the layout redesign (cards, sidebar, chips, panels).  *
+ * The rules above cover the older classes; this block re-colours the *
+ * design tokens and the few colours the layout hard-codes.            *
+ * ------------------------------------------------------------------ */
+html[data-theme="dark"] {
+    --bg: #0b0b0c;
+    --surface: #141416;
+    --surface-alt: #1c1c1f;
+    --border: #27272a;
+    --border-strong: #3f3f46;
+    --text: #f3f4f6;
+    --muted: #a1a1aa;
+    --header-bg: #000;
+    --header-text: #d1d5db;
+    --accent: #60a5fa;
+    --accent-strong: #93c5fd;
+    --accent-soft: #172554;
+    --focus: #60a5fa;
+    --danger: #f87171;
+    --danger-soft: #450a0a;
+    --ok: #22c55e;
+    --ok-soft: #052e16;
+    --warn: #f59e0b;
+    --warn-soft: #451a03;
+    --warn-text: #fde68a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --shadow-hover: 0 4px 14px rgba(0, 0, 0, 0.6);
+}
+
+/* Links that act as cards or menu items keep their own colours
+   (the general "main a" colour above is for plain text links). */
+html[data-theme="dark"] main .config-sidebar a { color: var(--text); }
+html[data-theme="dark"] main .config-sidebar a.is-active { color: var(--accent-strong); }
+html[data-theme="dark"] main a.area-card,
+html[data-theme="dark"] main a.mode-card { color: var(--text); }
+
+/* Saved/unsaved pill: keep the amber pill readable on the black header. */
+html[data-theme="dark"] nav .nav-status--dirty { color: #451a03; }
+html[data-theme="dark"] nav .nav-status--dirty strong { color: #451a03; }
+
+html[data-theme="dark"] .chip { background: #27272a; border-color: #3f3f46; color: #e4e4e7; }
+html[data-theme="dark"] .chip--info { background: #172554; border-color: #1e3a8a; color: #bfdbfe; }
+html[data-theme="dark"] .chip--ok   { background: #052e16; border-color: #166534; color: #bbf7d0; }
+html[data-theme="dark"] .chip--off  { background: #18181b; border-color: #3f3f46; color: #a1a1aa; }
+html[data-theme="dark"] .chip--warn { background: #451a03; border-color: #92400e; color: #fde68a; }
+
+html[data-theme="dark"] .add-panel > summary::before { background: #2563eb; color: #fff; }
+html[data-theme="dark"] .form-actions { box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.5); }
+html[data-theme="dark"] .field input,
+html[data-theme="dark"] .field select { background: #18181b; border-color: #52525b; }
+html[data-theme="dark"] .field-error { color: #fca5a5; }
+html[data-theme="dark"] .empty-state { border-color: #52525b; }
+html[data-theme="dark"] .data-table th { background: var(--surface-alt); }
+html[data-theme="dark"] .badge { color: #451a03; }
+html[data-theme="dark"] .list-toolbar input { background: #18181b; color: #f3f4f6; border-color: #52525b; }

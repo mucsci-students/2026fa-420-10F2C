@@ -1,13 +1,22 @@
-{% extends "gui/base.html" %}
+{% extends "gui/config_base.html" %}
 {% block title %}Scheduler — Courses{% endblock %}
-{% block content %}
+{% block config_content %}
 <p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; Courses</p>
-<h1>Courses</h1>
-<p>
-    Each row is one course section. Adding the same course ID again creates another section; sections are
-    numbered in list order (.01, .02, ...) unless they have a section ID. Courses have no unique name, so they
-    are numbered by position.
-</p>
+<div class="page-header">
+    <div>
+        <h1>Courses</h1>
+        <p class="page-intro">
+            Each card is one course section. Adding the same course ID again creates another section; sections are
+            numbered in list order (.01, .02, ...) unless they have a section ID. Courses have no unique name, so they
+            are numbered by position.
+        </p>
+    </div>
+    {% if data.has_config %}
+    <div class="page-actions">
+        <a class="btn btn-primary" href="{% url 'gui:course_add' %}">Add course</a>
+    </div>
+    {% endif %}
+</div>
 
 {% if not data.has_config %}
 <div class="empty-state" role="status">
@@ -16,55 +25,65 @@
 </div>
 {% else %}
 
-<p><a class="btn btn-primary" href="{% url 'gui:course_add' %}">Add course</a></p>
-
-<h2>Current courses</h2>
-<table class="data-table course-table">
-    <thead>
-        <tr>
-            <th scope="col">#</th>
-            <th scope="col">Section</th>
-            <th scope="col">Credits / capacity</th>
-            <th scope="col">Modality</th>
-            <th scope="col">Rooms and labs</th>
-            <th scope="col">Faculty</th>
-            <th scope="col">Conflicts</th>
-            <th scope="col">Actions</th>
-        </tr>
-    </thead>
-    <tbody>
+<h2 class="section-title">Current courses <span class="count-chip">{{ data.courses|length }}</span></h2>
+<div class="list-toolbar" data-filter-box hidden>
+    <input type="search" id="course-filter" placeholder="Search courses" aria-label="Search courses"
+           data-filter-input="#course-list" data-filter-status="#course-filter-status">
+    <p class="help" id="course-filter-status" aria-live="polite"></p>
+</div>
+<div class="card-grid" id="course-list">
     {% for course in data.courses %}
-        <tr>
-            <td>{{ course.index }}</td>
-            <td>{{ course.display }}</td>
-            <td>{{ course.credits }} credits<br>{{ course.capacity }} seats</td>
-            <td>{{ course.modality }}</td>
-            <td>
-                Rooms: {% if course.rooms %}{{ course.rooms|join:", " }}{% else %}&mdash;{% endif %}
-                {% if course.required_room_features %}<br>Room needs: {{ course.required_room_features|join:", " }}{% endif %}
-                <br>Labs: {% if course.labs %}{{ course.labs|join:", " }}{% else %}&mdash;{% endif %}
-                {% if course.required_lab_features %}<br>Lab needs: {{ course.required_lab_features|join:", " }}{% endif %}
-            </td>
-            <td>
-                {% if course.faculty is not None %}{{ course.faculty|join:", " }}
-                {% elif course.derived_faculty %}From preferences: {{ course.derived_faculty|join:", " }}
-                {% else %}&mdash;{% endif %}
-            </td>
-            <td>{% if course.conflicts %}{{ course.conflicts|join:", " }}{% else %}&mdash;{% endif %}</td>
-            <td class="actions">
-                <a class="btn" href="{% url 'gui:course_edit' course.index %}">Edit</a>
-                {% if course.can_delete %}
-                <a class="btn btn-danger" href="{% url 'gui:course_delete' course.index %}">Delete</a>
-                {% else %}
-                <span class="btn btn-disabled" aria-disabled="true">Delete</span>
-                <span class="help in-use">In use by {{ course.referenced_by|join:", " }}.</span>
-                {% endif %}
-            </td>
-        </tr>
+    <article class="item-card" data-filter-item>
+        <header class="item-card__head">
+            <h3 class="item-card__title">{{ course.display }}</h3>
+            <div class="chips">
+                <span class="chip">#{{ course.index }}</span>
+                <span class="chip chip--info">{{ course.credits }} credits</span>
+                <span class="chip">{{ course.capacity }} seats</span>
+                <span class="chip">{{ course.modality }}</span>
+            </div>
+        </header>
+        <dl class="item-card__facts">
+            <div>
+                <dt>Rooms</dt>
+                <dd>
+                    {% if course.rooms %}{{ course.rooms|join:", " }}{% else %}&mdash;{% endif %}
+                    {% if course.required_room_features %}<br><span class="help">Room needs: {{ course.required_room_features|join:", " }}</span>{% endif %}
+                </dd>
+            </div>
+            <div>
+                <dt>Labs</dt>
+                <dd>
+                    {% if course.labs %}{{ course.labs|join:", " }}{% else %}&mdash;{% endif %}
+                    {% if course.required_lab_features %}<br><span class="help">Lab needs: {{ course.required_lab_features|join:", " }}</span>{% endif %}
+                </dd>
+            </div>
+            <div>
+                <dt>Faculty</dt>
+                <dd>
+                    {% if course.faculty is not None %}{{ course.faculty|join:", " }}
+                    {% elif course.derived_faculty %}From preferences: {{ course.derived_faculty|join:", " }}
+                    {% else %}&mdash;{% endif %}
+                </dd>
+            </div>
+            <div>
+                <dt>Conflicts</dt>
+                <dd>{% if course.conflicts %}{{ course.conflicts|join:", " }}{% else %}&mdash;{% endif %}</dd>
+            </div>
+        </dl>
+        <footer class="item-card__foot">
+            <a class="btn" href="{% url 'gui:course_edit' course.index %}">Edit</a>
+            {% if course.can_delete %}
+            <a class="btn btn-danger" href="{% url 'gui:course_delete' course.index %}">Delete</a>
+            {% else %}
+            <span class="btn btn-disabled" aria-disabled="true">Delete</span>
+            <span class="chip chip--warn in-use">In use by {{ course.referenced_by|join:", " }}.</span>
+            {% endif %}
+        </footer>
+    </article>
     {% empty %}
-        <tr><td colspan="8">No courses yet. Use "Add course" above.</td></tr>
+    <div class="empty-state">No courses yet. Use &ldquo;Add course&rdquo; above.</div>
     {% endfor %}
-    </tbody>
-</table>
+</div>
 {% endif %}
 {% endblock %}

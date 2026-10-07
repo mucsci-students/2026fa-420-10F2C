@@ -1,14 +1,20 @@
-{% extends "gui/base.html" %}
+{% extends "gui/config_base.html" %}
 {% block title %}Scheduler — Add Faculty{% endblock %}
-{% block content %}
+{% block config_content %}
 <p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; <a href="{% url 'gui:faculty' %}">Faculty</a> &rsaquo; Add</p>
-<h1>Add faculty member</h1>
-<p>Create a faculty record. Nothing changes until you add the faculty member.</p>
+<div class="page-header">
+    <div>
+        <h1>Add faculty member</h1>
+        <p class="page-intro">Create a faculty record. Nothing changes until you add the faculty member.</p>
+    </div>
+</div>
 <form method="post" class="edit-form faculty-form">
     {% csrf_token %}
     {% include "gui/components/faculty_fields.html" %}
 
-    <button type="submit" class="btn btn-primary">Add faculty member</button>
-    <a class="btn" href="{% url 'gui:faculty' %}">Cancel</a>
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Add faculty member</button>
+        <a class="btn" href="{% url 'gui:faculty' %}">Cancel</a>
+    </div>
 </form>
 {% endblock %}

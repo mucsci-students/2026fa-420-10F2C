@@ -1,26 +1,36 @@
-{% extends "gui/base.html" %}
+{% extends "gui/config_base.html" %}
 {% block title %}Scheduler — Delete Lab{% endblock %}
-{% block content %}
+{% block config_content %}
 <p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; <a href="{% url 'gui:labs' %}">Labs</a> &rsaquo; Delete</p>
-<h1>Delete lab</h1>
-{% if not lab.can_delete %}
-<div class="alert alert-error" role="alert">
-    <p><strong>Cannot delete:</strong> {{ lab.name }} is still used by:</p>
-    <ul>
-        {% for item in lab.referenced_by %}<li>{{ item }}</li>{% endfor %}
-    </ul>
-    <p>Remove this lab from those records first.</p>
+<div class="page-header">
+    <div>
+        <h1>Delete lab</h1>
+    </div>
 </div>
-<a class="btn" href="{% url 'gui:labs' %}">Back to labs</a>
-{% else %}
-<p>
-    Are you sure you want to delete <strong>{{ lab.name }}</strong> (capacity {{ lab.capacity }})?
-    This cannot be undone.
-</p>
-<form method="post">
-    {% csrf_token %}
-    <button type="submit" name="action" value="confirm" class="btn btn-danger">Delete lab</button>
-    <button type="submit" name="action" value="cancel" class="btn">Cancel</button>
-</form>
-{% endif %}
+<div class="card">
+    {% if not lab.can_delete %}
+    <div class="alert alert-error" role="alert">
+        <p><strong>Cannot delete:</strong> {{ lab.name }} is still used by:</p>
+        <ul>
+            {% for item in lab.referenced_by %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+        <p>Remove this lab from those records first.</p>
+    </div>
+    <div class="form-actions">
+        <a class="btn" href="{% url 'gui:labs' %}">Back to labs</a>
+    </div>
+    {% else %}
+    <p>
+        Are you sure you want to delete <strong>{{ lab.name }}</strong> (capacity {{ lab.capacity }})?
+        This cannot be undone.
+    </p>
+    <form method="post">
+        {% csrf_token %}
+        <div class="form-actions">
+            <button type="submit" name="action" value="confirm" class="btn btn-danger">Delete lab</button>
+            <button type="submit" name="action" value="cancel" class="btn">Cancel</button>
+        </div>
+    </form>
+    {% endif %}
+</div>
 {% endblock %}
