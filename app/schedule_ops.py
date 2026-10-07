@@ -32,12 +32,14 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 from itertools import islice
 from pathlib import Path
 from typing import Optional
 
 from scheduler import Scheduler
+from scheduler.config import OptimizerFlags
 from scheduler.writers import CSVWriter, JSONWriter
 
 DEFAULT_EXPORT_DIR = Path.cwd() / "exports"
@@ -58,7 +60,9 @@ class GenerationResult:
     schedules: list  # list of (list of CourseInstance); empty unless outcome == SUCCESS
 
 
-def generate_schedules(config, limit_override: Optional[int] = None) -> GenerationResult:
+def generate_schedules(
+    config, limit_override: Optional[int] = None, optimizer_overrides=None
+) -> GenerationResult:
     """Runs the scheduler's public API and reports one of the four outcomes
     Req #8 requires. Does not mutate session state -- the caller (a
     commands.py function) decides whether/how to store the result, e.g.
@@ -68,12 +72,17 @@ def generate_schedules(config, limit_override: Optional[int] = None) -> Generati
     # what validates completeness, this try/except covers it. If not, add
     # an explicit completeness check here once you've confirmed the
     # library's behavior (see module docstring).
+    run_config = config
+    if optimizer_overrides is not None:
+        run_config = deepcopy(config)
+        run_config.optimizer_flags = [OptimizerFlags(flag) for flag in optimizer_overrides]
+
     try:
-        engine = Scheduler(config)
+        engine = Scheduler(run_config)
     except Exception as e:  # noqa: BLE001 -- narrow once the real exception type is known
         return GenerationResult(GenerationOutcome.INVALID_CONFIG, str(e), [])
 
-    limit = limit_override if limit_override is not None else getattr(config, "limit", None)
+    limit = limit_override if limit_override is not None else getattr(run_config, "limit", None)
 
     try:
         models = engine.get_models()

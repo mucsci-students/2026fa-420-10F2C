@@ -61,6 +61,7 @@ urlpatterns = [
     path("configuration/settings/save/", views_settings.settings_update, name="settings_update"),
     path("configuration/settings/reset-limit/", views_settings.settings_reset_limit, name="settings_reset_limit"),
     path("generate/", views.schedule_generator, name="schedule_generator"),
+    path("generate/select-config/", views.schedule_select_config, name="schedule_select_config"),
     path("schedules/", views.schedule_viewer, name="schedule_viewer"),
     path("schedules/import/", views.schedule_import, name="schedule_import"),
     path("schedules/export/", views.schedule_export, name="schedule_export"),

@@ -152,6 +152,38 @@ class ScheduleImportForm(ConfirmReplaceMixin, forms.Form):
         )
 
 
+class SavedConfigSelectionForm(forms.Form):
+    """Choose which saved configuration the scheduler should use."""
+
+    config_name = forms.ChoiceField(label="Configuration to run", choices=())
+
+    def __init__(self, *args, config_choices=(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["config_name"].choices = list(config_choices)
+
+
+class GenerationOverrideForm(forms.Form):
+    """One-run-only generation settings for the Schedule Generator."""
+
+    limit = forms.IntegerField(
+        label="Generation limit override",
+        required=False,
+        min_value=1,
+        help_text="Leave blank to use the saved configuration limit. This does not change the saved limit.",
+    )
+    optimizer_flags = forms.MultipleChoiceField(
+        label="Optimizer flags for this run",
+        required=False,
+        choices=(),
+        widget=forms.CheckboxSelectMultiple,
+        help_text="The selected flags apply only to this generation run; saved settings are unchanged.",
+    )
+
+    def __init__(self, *args, flag_choices=(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["optimizer_flags"].choices = [(flag, flag.replace("_", " ").title()) for flag in flag_choices]
+
+
 EXPORT_ALL = "all"
 
 

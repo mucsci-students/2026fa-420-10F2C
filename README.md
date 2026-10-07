@@ -131,6 +131,10 @@ Saved configuration to 'my_config.json'.
 
 Code: `gui/controllers/patterns.py` and `gui/controllers/meetings.py` (Controller), `gui/views_patterns.py` and `gui/views_meetings.py` (View), `gui/forms.py` (forms).
 
+## Selecting a Saved Configuration for Generation
+
+The Schedule Generator keeps validated configurations that you load or save in the current browser session. Use the **Configuration to run** selector to switch between those saved snapshots before generating schedules. Selecting a snapshot restores it as the active configuration and clears schedules generated from the previous configuration; unsaved edits should be saved first if they need to be retained.
+
 ## Global Settings (Configuration Editor)
 
 **Configuration Editor -> Global Settings** edits the saved generation limit and optimizer flags.

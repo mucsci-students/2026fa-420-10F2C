@@ -128,6 +128,7 @@ def load_configuration(request, uploaded_file) -> str:
     session = get_session(request)
     try:
         session.load_bytes(raw, name)
+        session.remember_config(name)
     except ConfigError as error:
         raise ControllerError(_load_problems(error)) from error
     except Exception as error:  # noqa: BLE001 -- last resort; never lose the user's configuration
@@ -174,7 +175,24 @@ def save_configuration(request) -> tuple[str, str]:
     filename = _download_name(getattr(session, "config_name", None))
     content = session.dumps()
     session.mark_saved(filename)
+    session.remember_config(filename, content)
     return filename, content
+
+
+def saved_config_choices(request) -> list[tuple[str, str]]:
+    """Return the saved configurations available to the current browser."""
+    session = get_session(request)
+    return [(name, name) for name in session.saved_config_names()]
+
+
+def select_saved_configuration(request, name: str) -> str:
+    """Make a saved configuration active for subsequent scheduler runs."""
+    session = get_session(request)
+    try:
+        session.select_saved_config(name)
+    except ConfigError as error:
+        raise ControllerError(str(error)) from error
+    return session.config_name or name
 
 
 # ---------------------------------------------------------------------- #

@@ -1,17 +1,44 @@
 {% extends "gui/base.html" %}
 {% block title %}Scheduler — Schedule Generator{% endblock %}
 {% block content %}
-<h1>Schedule Generator <span class="badge">Not yet implemented</span></h1>
-<p>Generate schedules from the current valid configuration (Sections 13&ndash;14).</p>
-<div class="todo-list">
-<strong>TODO before this mode is complete:</strong>
-<ul>
-    <li>Visible "Generate" action, disabled/guarded without a valid configuration (Section 13)</li>
-    <li>Generation-limit override field &mdash; affects only this run, saved config's limit stays untouched (Section 14)</li>
-    <li>Optimizer-flag override controls &mdash; same one-run-only rule (Section 14)</li>
-    <li>Visible in-progress state; guard against duplicate/overlapping generate requests (Section 13)</li>
-    <li>Distinct result messages: success w/ count, no feasible schedule, invalid config, invalid override, unexpected error (Section 13)</li>
-    <li>Successful results become available in the Schedule Viewer (Section 13)</li>
-</ul>
+<h1>Schedule Generator</h1>
+<p>Generate schedules from the selected saved configuration. Overrides below apply to this run only.</p>
+
+{% if config_form %}
+<form method="post" action="{% url 'gui:schedule_select_config' %}" class="edit-form">
+    {% csrf_token %}
+    {% include "gui/components/form_fields.html" with form=config_form %}
+    <button type="submit" class="btn">Use selected configuration</button>
+</form>
+{% endif %}
+
+{% if not data.has_config %}
+<div class="empty-state" role="status">
+    <h2>No configuration loaded</h2>
+    <p>Create or load a configuration in the <a href="{% url 'gui:config_editor' %}">Configuration Editor</a> before generating schedules.</p>
 </div>
+<button type="button" class="btn btn-disabled" disabled>Generate schedules</button>
+{% elif generating %}
+<div class="alert alert-info" role="status" aria-live="polite">
+    <span class="spinner" aria-hidden="true"></span> Schedule generation is in progress. Please wait.
+</div>
+{% endif %}
+
+{% if data.has_config %}
+<form method="post" class="edit-form" data-loading="Generating schedules" {% if generating %}aria-busy="true"{% endif %}>
+    {% csrf_token %}
+    {% include "gui/components/form_errors.html" with form=form %}
+    {% include "gui/components/field.html" with field=form.limit %}
+    {% include "gui/components/field.html" with field=form.optimizer_flags %}
+    <p class="help">Saved generation limit: <strong>{{ data.limit }}</strong>. Saved optimizer flags are unchanged by this page.</p>
+    <button type="submit" class="btn btn-primary" {% if generating %}disabled aria-disabled="true"{% endif %}>Generate schedules</button>
+</form>
+{% endif %}
+
+{% if result %}
+<section class="result" aria-live="polite">
+    <h2>Generation result</h2>
+    <p>{{ result.message }}</p>
+</section>
+{% endif %}
 {% endblock %}

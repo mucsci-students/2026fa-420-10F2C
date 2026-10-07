@@ -35,6 +35,7 @@ from dataclasses import dataclass
 
 from app import schedule_io, schedule_ops
 from app.schedule_io import Assignment
+from app.commands.common import VALID_OPTIMIZER_FLAGS
 from gui.controllers.common import require_config
 from gui.controllers.errors import ControllerError, FieldError
 from gui.controllers.uploads import read_upload
@@ -121,8 +122,16 @@ def generate(request, limit_override=None, optimizer_overrides=None):
         if isinstance(limit_override, bool) or not isinstance(limit_override, int) or limit_override <= 0:
             raise ControllerError([FieldError("limit", "Generation limit must be a positive whole number.")])
 
-    with generation_in_progress(request):          # <-- the wrap
-        result = schedule_ops.generate_schedules(config, limit_override)
+    if optimizer_overrides is not None:
+        optimizer_overrides = list(optimizer_overrides)
+        unknown = [flag for flag in optimizer_overrides if flag not in VALID_OPTIMIZER_FLAGS]
+        if unknown:
+            raise ControllerError(
+                [FieldError("optimizer_flags", f"'{flag}' is not a valid optimizer flag.") for flag in unknown]
+            )
+
+    with generation_in_progress(request):
+        result = schedule_ops.generate_schedules(config, limit_override, optimizer_overrides)
 
     if result.outcome == schedule_ops.GenerationOutcome.SUCCESS:
         replace_schedules(request, result.schedules)

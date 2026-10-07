@@ -17,18 +17,22 @@ import re
 
 from django.contrib import messages
 from django.http import Http404, HttpResponse
+
+from app import schedule_ops
 from django.shortcuts import redirect, render
 from django.urls import reverse
 
 from gui.constants import DAY_NAMES
-from gui.controllers import config_controller, schedule_controller
+from gui.controllers import config_controller, schedule_controller, settings as settings_controller
 from gui.controllers import timeslots as timeslot_controller
 from gui.controllers.errors import ControllerError
 from gui.forms import (
     AddTimeBlockForm,
     ScheduleExportForm,
+    GenerationOverrideForm,
     ConfigLoadForm,
     ConfigNewForm,
+    SavedConfigSelectionForm,
     ScheduleImportForm,
     TimeBlockFieldsForm,
     TimingOptionsForm,
@@ -161,10 +165,80 @@ def config_validate(request):
     )
 
 
+def _render_schedule_generator(request, form=None, result=None, config_form=None):
+    data = settings_controller.describe_settings(request)
+    config_choices = config_controller.saved_config_choices(request)
+    context = {
+        "active": "generator",
+        "data": data,
+        "generating": schedule_controller.is_generating(request),
+        "result": result,
+        "config_choices": config_choices,
+    }
+    if config_form is None:
+        config_form = SavedConfigSelectionForm(
+            config_choices=config_choices,
+            initial={"config_name": getattr(config_controller.get_session(request), "config_name", "")},
+        ) if config_choices else None
+    context["config_form"] = config_form
+    if data["has_config"]:
+        if form is None:
+            form = GenerationOverrideForm(
+                flag_choices=data["flag_choices"],
+                initial={"optimizer_flags": data["enabled_flags"]},
+            )
+        context["form"] = form
+    return render(request, "gui/schedule_generator.html", context)
+
+
+def schedule_select_config(request):
+    if request.method != "POST":
+        return redirect("gui:schedule_generator")
+    form = SavedConfigSelectionForm(
+        request.POST,
+        config_choices=config_controller.saved_config_choices(request),
+    )
+    if form.is_valid():
+        try:
+            name = config_controller.select_saved_configuration(request, form.cleaned_data["config_name"])
+        except ControllerError as error:
+            _attach_errors(form, error)
+        else:
+            messages.success(request, f"Selected {name} for schedule generation.")
+            return redirect("gui:schedule_generator")
+    return _render_schedule_generator(request, config_form=form)
+
+
 def schedule_generator(request):
-    """Schedule Generator mode (Sections 13-14). Placeholder page today;
-    see gui/controllers/schedule_controller.py."""
-    return render(request, "gui/schedule_generator.html", {"active": "generator"})
+    """Generate schedules using saved settings or one-run overrides."""
+    if request.method != "POST":
+        return _render_schedule_generator(request)
+
+    data = settings_controller.describe_settings(request)
+    form = GenerationOverrideForm(request.POST, flag_choices=data.get("flag_choices", ()))
+    if not form.is_valid():
+        return _render_schedule_generator(request, form=form)
+
+    try:
+        result = schedule_controller.generate(
+            request,
+            limit_override=form.cleaned_data["limit"],
+            optimizer_overrides=form.cleaned_data["optimizer_flags"],
+        )
+    except ControllerError as error:
+        _attach_errors(form, error)
+        return _render_schedule_generator(request, form=form)
+
+    if result.outcome == schedule_ops.GenerationOutcome.SUCCESS:
+        messages.success(request, result.message)
+        return redirect("gui:schedule_viewer")
+    if result.outcome == schedule_ops.GenerationOutcome.NO_FEASIBLE_SCHEDULE:
+        messages.warning(request, "No feasible schedule was found. Check the configuration and try again.")
+    elif result.outcome == schedule_ops.GenerationOutcome.INVALID_CONFIG:
+        messages.error(request, f"The configuration is invalid: {result.message}")
+    else:
+        messages.error(request, f"Schedule generation failed unexpectedly: {result.message}")
+    return _render_schedule_generator(request, form=form, result=result)
 
 
 def schedule_viewer(request, import_form=None):
