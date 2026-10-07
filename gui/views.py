@@ -30,6 +30,7 @@ from gui.forms import (
     GenerationOverrideForm,
     ConfigLoadForm,
     ConfigNewForm,
+    SavedConfigSelectionForm,
     ScheduleImportForm,
     TimeBlockFieldsForm,
     TimingOptionsForm,
@@ -162,14 +163,22 @@ def config_validate(request):
     )
 
 
-def _render_schedule_generator(request, form=None, result=None):
+def _render_schedule_generator(request, form=None, result=None, config_form=None):
     data = settings_controller.describe_settings(request)
+    config_choices = config_controller.saved_config_choices(request)
     context = {
         "active": "generator",
         "data": data,
         "generating": schedule_controller.is_generating(request),
         "result": result,
+        "config_choices": config_choices,
     }
+    if config_form is None:
+        config_form = SavedConfigSelectionForm(
+            config_choices=config_choices,
+            initial={"config_name": getattr(config_controller.get_session(request), "config_name", "")},
+        ) if config_choices else None
+    context["config_form"] = config_form
     if data["has_config"]:
         if form is None:
             form = GenerationOverrideForm(
@@ -178,6 +187,24 @@ def _render_schedule_generator(request, form=None, result=None):
             )
         context["form"] = form
     return render(request, "gui/schedule_generator.html", context)
+
+
+def schedule_select_config(request):
+    if request.method != "POST":
+        return redirect("gui:schedule_generator")
+    form = SavedConfigSelectionForm(
+        request.POST,
+        config_choices=config_controller.saved_config_choices(request),
+    )
+    if form.is_valid():
+        try:
+            name = config_controller.select_saved_configuration(request, form.cleaned_data["config_name"])
+        except ControllerError as error:
+            _attach_errors(form, error)
+        else:
+            messages.success(request, f"Selected {name} for schedule generation.")
+            return redirect("gui:schedule_generator")
+    return _render_schedule_generator(request, config_form=form)
 
 
 def schedule_generator(request):

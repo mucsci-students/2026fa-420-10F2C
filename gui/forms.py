@@ -152,6 +152,16 @@ class ScheduleImportForm(ConfirmReplaceMixin, forms.Form):
         )
 
 
+class SavedConfigSelectionForm(forms.Form):
+    """Choose which saved configuration the scheduler should use."""
+
+    config_name = forms.ChoiceField(label="Configuration to run", choices=())
+
+    def __init__(self, *args, config_choices=(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["config_name"].choices = list(config_choices)
+
+
 class GenerationOverrideForm(forms.Form):
     """One-run-only generation settings for the Schedule Generator."""
 

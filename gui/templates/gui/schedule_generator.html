@@ -2,7 +2,15 @@
 {% block title %}Scheduler — Schedule Generator{% endblock %}
 {% block content %}
 <h1>Schedule Generator</h1>
-<p>Generate schedules from the current configuration. Overrides below apply to this run only.</p>
+<p>Generate schedules from the selected saved configuration. Overrides below apply to this run only.</p>
+
+{% if config_form %}
+<form method="post" action="{% url 'gui:schedule_select_config' %}" class="edit-form">
+    {% csrf_token %}
+    {% include "gui/components/form_fields.html" with form=config_form %}
+    <button type="submit" class="btn">Use selected configuration</button>
+</form>
+{% endif %}
 
 {% if not data.has_config %}
 <div class="empty-state" role="status">

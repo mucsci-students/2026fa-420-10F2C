@@ -132,6 +132,26 @@ class Session:
         self.dirty: bool = False
         # True while a schedule generation is running for this session (Section 13).
         self.generating: bool = False
+        # JSON snapshots keyed by the file name shown in the GUI. Keeping
+        # snapshots rather than model instances makes switching atomic and
+        # reuses the same validation path as loading an uploaded file.
+        self.saved_configs: dict[str, str] = {}
+
+    def remember_config(self, name: str, content: Optional[str] = None) -> None:
+        """Store the current valid configuration as a selectable snapshot."""
+        if not name:
+            return
+        self.saved_configs[Path(name).name] = content if content is not None else self.dumps()
+
+    def saved_config_names(self) -> list[str]:
+        """Return selectable saved configuration names in stable order."""
+        return sorted(self.saved_configs)
+
+    def select_saved_config(self, name: str) -> None:
+        """Replace the active configuration with a validated saved snapshot."""
+        if name not in self.saved_configs:
+            raise ConfigError(f"No saved configuration named '{name}'.")
+        self.load_bytes(self.saved_configs[name].encode("utf-8"), name)
 
     # ---------------------------------------------------------------- #
     #  Configuration lifecycle (Req #4)                                #

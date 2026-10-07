@@ -49,8 +49,10 @@ def _new_session() -> Session:
         except ConfigError:
             pass  # leave it empty; pages show the "no configuration" state
         else:
-            # Never let a later "save" silently overwrite the shipped example.
+            # Keep the shipped example available as an initial scheduler choice,
+            # while still preventing a later save from targeting it on disk.
             session.config_path = None
+            session.remember_config("config_example.json")
     return session
 
 
