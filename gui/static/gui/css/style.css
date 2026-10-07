@@ -391,3 +391,101 @@ nav .nav-status strong {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
+
+/* ------------------------------------------------------------------ *
+ * Dark mode. Applied when <html data-theme="dark"> (see theme.js).    *
+ * ------------------------------------------------------------------ */
+.theme-toggle {
+    background: transparent;
+    color: #d1d5db;
+    border: 1px solid #6b7280;
+    border-radius: 6px;
+    padding: 0.2rem 0.7rem;
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+.theme-toggle:hover { color: #fff; border-color: #fff; }
+.theme-toggle:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+
+html[data-theme="dark"] { color-scheme: dark; }
+
+html[data-theme="dark"] body {
+    background: #0b0b0c;
+    color: #f3f4f6;
+}
+
+html[data-theme="dark"] nav {
+    background: #000;
+    border-bottom: 1px solid #27272a;
+}
+
+html[data-theme="dark"] main a:not(.btn) { color: #93c5fd; }
+
+html[data-theme="dark"] .breadcrumb,
+html[data-theme="dark"] .required,
+html[data-theme="dark"] .help { color: #a1a1aa; }
+
+/* Messages and alerts (each still starts with a text label) */
+html[data-theme="dark"] .alert { background: #18181b; border-color: #52525b; }
+html[data-theme="dark"] .alert-success { background: #052e16; border-color: #22c55e; }
+html[data-theme="dark"] .alert-info    { background: #172554; border-color: #60a5fa; }
+html[data-theme="dark"] .alert-warning { background: #451a03; border-color: #f59e0b; }
+html[data-theme="dark"] .alert-error   { background: #450a0a; border-color: #f87171; }
+html[data-theme="dark"] .field-error   { color: #fca5a5; }
+
+html[data-theme="dark"] .empty-state { background: #111113; border-color: #52525b; }
+html[data-theme="dark"] .todo-list   { background: #2a1a08; border-color: #9a5b1a; }
+
+/* Buttons */
+html[data-theme="dark"] .btn {
+    background: #18181b;
+    color: #f3f4f6;
+    border-color: #52525b;
+}
+html[data-theme="dark"] .btn:hover { background: #27272a; }
+html[data-theme="dark"] .btn-primary {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+}
+html[data-theme="dark"] .btn-primary:hover { background: #1d4ed8; }
+html[data-theme="dark"] .btn-danger {
+    background: #18181b;
+    border-color: #f87171;
+    color: #f87171;
+}
+html[data-theme="dark"] .btn-danger:hover { background: #2a0e0e; }
+
+/* Form controls */
+html[data-theme="dark"] .field input,
+html[data-theme="dark"] .field select,
+html[data-theme="dark"] .field textarea {
+    background: #18181b;
+    color: #f3f4f6;
+    border-color: #52525b;
+}
+html[data-theme="dark"] .field--error input,
+html[data-theme="dark"] .field--error select,
+html[data-theme="dark"] .field--error textarea { border: 2px solid #f87171; }
+html[data-theme="dark"] .course-form .form-section,
+html[data-theme="dark"] .faculty-form .form-section { border-color: #3f3f46; }
+
+/* Tables */
+html[data-theme="dark"] .data-table th,
+html[data-theme="dark"] .data-table td { border-bottom-color: #27272a; }
+
+/* Time-slot weekly grid */
+html[data-theme="dark"] .week-grid__track {
+    border-color: #3f3f46;
+    background-image: repeating-linear-gradient(
+        to bottom,
+        #27272a 0, #27272a 1px,
+        transparent 1px, transparent var(--hour-pct, 10%)
+    );
+}
+html[data-theme="dark"] .week-grid__track--axis { border-color: transparent; background: none; }
+html[data-theme="dark"] .week-grid__hour { color: #a1a1aa; }
+
+/* Loading spinner */
+html[data-theme="dark"] .spinner { border-color: #1e3a8a; border-top-color: #93c5fd; }
