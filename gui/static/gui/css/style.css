@@ -1248,7 +1248,6 @@ a.area-card:focus-visible {
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
 
-<<<<<<< ours
 /* ------------------------------------------------------------------ *
  * Dark mode. Applied when <html data-theme="dark"> (see theme.js).    *
  * ------------------------------------------------------------------ */
@@ -1403,7 +1402,7 @@ html[data-theme="dark"] .empty-state { border-color: #52525b; }
 html[data-theme="dark"] .data-table th { background: var(--surface-alt); }
 html[data-theme="dark"] .badge { color: #451a03; }
 html[data-theme="dark"] .list-toolbar input { background: #18181b; color: #f3f4f6; border-color: #52525b; }
-=======
+
 /* Error page (gui/templates/gui/error.html): technical details stay folded away. */
 .error-details {
     margin-top: 1rem;
@@ -1413,4 +1412,3 @@ html[data-theme="dark"] .list-toolbar input { background: #18181b; color: #f3f4f
     white-space: pre-wrap;
     word-break: break-word;
 }
->>>>>>> theirs
