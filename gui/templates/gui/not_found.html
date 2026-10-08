@@ -1,0 +1,14 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Page not found{% endblock %}
+{% block content %}
+<h1>Page not found</h1>
+<div class="alert alert-error" role="alert">
+    <p><strong>Error:</strong> There is nothing at <code>{{ path }}</code>. The link may be out of date, or the item may have been removed.</p>
+</div>
+<h2>Where to go next</h2>
+<ul class="mode-links">
+    <li><a href="{% url 'gui:config_editor' %}">Configuration Editor</a></li>
+    <li><a href="{% url 'gui:schedule_generator' %}">Schedule Generator</a></li>
+    <li><a href="{% url 'gui:schedule_viewer' %}">Schedule Viewer</a></li>
+</ul>
+{% endblock %}
