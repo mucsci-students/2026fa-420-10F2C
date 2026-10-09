@@ -140,7 +140,7 @@ The Schedule Generator keeps validated configurations that you load or save in t
 **Configuration Editor -> Global Settings** edits the saved generation limit and optimizer flags.
 
 - **Generation limit:** a positive whole number. **Reset limit to default** puts it back to 10. The limit can't be removed, because every configuration has one.
-- **Optimizer flags:** one checkbox per flag the scheduler library supports. Ticked flags are enabled; unticking a flag disables it. **Save settings** applies the limit and the flags together and reports each change ("Generation limit set to 50.", "Optimizer flag 'pack_labs' added.").
+- **Optimizer flags:** one checkbox per flag the scheduler library supports. Ticked flags are enabled; unticking a flag disables it. Each flag has a short plain-language description under its checkbox, which also appears as a tooltip when you hover over or focus it (for example, `pack_rooms`: "Try to use rooms back to back..."). The Schedule Generator's one-run flag checkboxes show the same descriptions. Descriptions live in `gui/constants.py` (`OPTIMIZER_FLAG_HELP`) and follow the scheduler library's own definitions. **Save settings** applies the limit and the flags together and reports each change ("Generation limit set to 50.", "Optimizer flag 'pack_labs' added.").
 - **Invalid data:** a limit of zero or less is rejected on the form, and a rejected change leaves the configuration as it was.
 - **Deletion:** nothing refers to these settings, so there are no references to block. "Deleting" a setting means unticking a flag or resetting the limit, and both are always allowed.
 - **Saved vs. one-run:** these are saved with the configuration. The Schedule Generator's one-run overrides never change them.

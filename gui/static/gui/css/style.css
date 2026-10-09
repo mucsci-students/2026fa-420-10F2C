@@ -898,6 +898,14 @@ a.area-card:focus-visible {
     margin: 0.2rem 0 0;
 }
 
+/* Optimizer flag descriptions under each checkbox (user story 53). */
+.option-help {
+    display: block;
+    margin: 0.1rem 0 0.5rem 1.6rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
 .field-error {
     color: #991b1b;
     margin: 0.25rem 0 0;
