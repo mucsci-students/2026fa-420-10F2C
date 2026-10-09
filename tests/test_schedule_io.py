@@ -103,7 +103,7 @@ def test_leading_bom_is_accepted():
     (b"42", "expected a list"),
     (b'{"schedules": 3}', "must be a list"),
     (b'{"hello": 1}', 'no "schedules"'),
-    (b'{"format": "something-else", "schedules": []}', "Unsupported file format"),
+    (b'{"format": "something-else", "schedules": []}', "not a supported schedule format"),
     (b'{"format": "course-scheduler-schedules", "version": 99, "schedules": [[]]}', "version 99"),
     (b'[[{"course": "A"}], {"course": "B"}]', "mixes"),
 ])

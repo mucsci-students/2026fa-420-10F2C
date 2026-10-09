@@ -173,6 +173,7 @@ How it works: `gui/static/gui/js/loading.js` (loaded by `gui/templates/gui/base.
 **Schedule Viewer -> Load schedules from a file**: choose a `.json` file and click **Load schedules**.
 
 - The whole file is checked before anything changes. If it is not valid JSON, is a configuration file instead of a schedule file, or has an invalid entry, the errors appear under the file field (up to five specific problems, each naming the schedule and course), and the schedules already loaded stay as they were.
+- A file that isn't a schedule file at all (a configuration file, a different `format`, or JSON with no schedules) is reported as "This is not a supported schedule format", with a hint such as "Load it from the Configuration Editor instead." for configuration files.
 - If schedules are already loaded, you must tick **Replace the N schedule(s) currently loaded** first.
 - Loaded schedules don't need a configuration, and the scheduler doesn't rerun.
 
