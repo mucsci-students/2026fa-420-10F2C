@@ -1,0 +1,10 @@
+{% comment %}
+    The two ways forward when no configuration is loaded (user story 47:
+    "I'm offered New Configuration or Load Configuration"). Both open the
+    matching section of the Configuration Editor. Used by the Editor and the
+    Schedule Generator empty states.
+{% endcomment %}
+<div class="button-row">
+    <a class="btn btn-primary" href="{% url 'gui:config_editor' %}#new-configuration">New Configuration</a>
+    <a class="btn" href="{% url 'gui:config_editor' %}#load-configuration">Load Configuration</a>
+</div>

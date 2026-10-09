@@ -16,6 +16,7 @@
 <div class="empty-state" role="status">
     <h2>No configuration loaded</h2>
     <p>Create or load a configuration in the <a href="{% url 'gui:config_editor' %}">Configuration Editor</a> before generating schedules.</p>
+    {% include "gui/components/no_config_actions.html" %}
 </div>
 <button type="button" class="btn btn-disabled" disabled>Generate schedules</button>
 {% elif generating %}
