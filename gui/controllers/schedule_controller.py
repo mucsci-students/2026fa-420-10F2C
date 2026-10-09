@@ -143,9 +143,17 @@ def generate(request, limit_override=None, optimizer_overrides=None):
 # ---------------------------------------------------------------------- #
 #  Schedule Viewer (James)
 # ---------------------------------------------------------------------- #
-def clear_schedules(request):
-    """TODO (Section 15): replace_schedules(request, [])."""
-    raise NotImplementedError
+def clear_schedules(request) -> int:
+    """Section 15 / user stories 32, 54: remove every available schedule
+    (generated or loaded) and return how many were removed. The view asks
+    for confirmation first. Raises ControllerError when there is nothing to
+    clear. The configuration is not touched.
+    """
+    count = schedule_count(request)
+    if count == 0:
+        raise ControllerError(NO_SCHEDULES_MESSAGE)
+    replace_schedules(request, [])
+    return count
 
 
 def view_schedule(request, index):

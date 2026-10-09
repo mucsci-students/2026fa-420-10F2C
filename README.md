@@ -193,6 +193,16 @@ How it works: `gui/static/gui/js/loading.js` (loaded by `gui/templates/gui/base.
 
 **Overwrite protection:** exports are browser downloads. Your browser chooses where the file goes and asks before replacing an existing file (or renames the new one). The application never writes to a path on your computer, so it cannot overwrite your files.
 
+### Clearing schedules
+
+**Schedule Viewer -> Clear schedules** removes every schedule from the viewer (generated or loaded).
+
+- It always asks first: "Remove all N schedules from the viewer? This cannot be undone." **Clear schedules** removes them; **Cancel** keeps them. Export them first if you want to keep a copy.
+- The button is disabled, with "Nothing to clear yet.", when there are no schedules.
+- Only the schedules are removed. The configuration stays loaded.
+
+Code: `clear_schedules()` in `gui/controllers/schedule_controller.py` (Controller), `schedule_clear` in `gui/views.py` and `gui/templates/gui/schedules_clear.html` (View).
+
 ### Supported schedule JSON format (version 1)
 
 ```json
