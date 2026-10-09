@@ -1,0 +1,28 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Something went wrong{% endblock %}
+{% block content %}
+<h1>Something went wrong</h1>
+<div class="alert alert-error" role="alert">
+    <p><strong>Error:</strong> The app hit an unexpected problem and couldn't finish that action.</p>
+</div>
+<p>
+    The last action may not have been applied. Everything else you were working on is still loaded,
+    so you can keep going without restarting.
+</p>
+<h2>What you can do</h2>
+<ul class="mode-links">
+    <li><a href="javascript:history.back()">Go back</a> to the page you were on and try again.</li>
+    <li>Check the <a href="{% url 'gui:config_editor' %}">Configuration Editor</a> to see whether your last change was saved.</li>
+    <li>Open the <a href="{% url 'gui:schedule_generator' %}">Schedule Generator</a> or the <a href="{% url 'gui:schedule_viewer' %}">Schedule Viewer</a>.</li>
+</ul>
+{% if reference %}
+<p class="help">If it keeps happening, tell the team and include this reference: <code id="error-reference">{{ reference }}</code></p>
+{% endif %}
+{% if details %}
+<details class="error-details">
+    <summary>Technical details</summary>
+    <p><code>{{ details }}</code></p>
+    <p class="help">Shown because the app is running in development mode. The full report is in the terminal running the server.</p>
+</details>
+{% endif %}
+{% endblock %}

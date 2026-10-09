@@ -119,6 +119,16 @@ Saved configuration to 'my_config.json'.
 ```
 
 ## Loading and Exporting Schedules (Schedule Viewer)
+## Error Messages and Error Pages (all modes)
+
+Problems are always shown inside the app, never only in the terminal:
+
+- **Problems you can fix** (a value out of range, a file that isn't valid JSON, a change the scheduler rejects) appear on the page you're on, next to the field or form, starting with **"Error:"**. Whatever was loaded before stays as it was. For example, a failed schedule import keeps the schedules already in the Viewer.
+- **Unexpected problems** (a bug) show a **"Something went wrong"** page with the usual navigation, what to do next, and a short reference code. Nothing is restarted, so you can go back and keep working; only the last action may not have been applied. The full technical report, with the same reference code, is printed in the terminal running the server. In development mode (`DEBUG = True`) a folded "Technical details" line on the page shows the error type and message, but never a traceback.
+- **Pages that don't exist** (an old link, a removed item) show a friendly **"Page not found"** page with links to the three modes.
+
+Code: `gui/middleware.py` (catches unexpected errors and logs them), `gui/views_errors.py` and `gui/templates/gui/error.html` / `not_found.html` (the pages); `config/urls.py` sets them as Django's `handler404` / `handler500`.
+
 ## Class Patterns and Meetings (Configuration Editor)
 
 **Configuration Editor -> Class Patterns** and **-> Meetings** manage `time_slot_config.classes`. Patterns have no name, so they are numbered by position.
@@ -140,7 +150,7 @@ The Schedule Generator keeps validated configurations that you load or save in t
 **Configuration Editor -> Global Settings** edits the saved generation limit and optimizer flags.
 
 - **Generation limit:** a positive whole number. **Reset limit to default** puts it back to 10. The limit can't be removed, because every configuration has one.
-- **Optimizer flags:** one checkbox per flag the scheduler library supports. Ticked flags are enabled; unticking a flag disables it. **Save settings** applies the limit and the flags together and reports each change ("Generation limit set to 50.", "Optimizer flag 'pack_labs' added.").
+- **Optimizer flags:** one checkbox per flag the scheduler library supports. Ticked flags are enabled; unticking a flag disables it. Each flag has a short plain-language description under its checkbox, which also appears as a tooltip when you hover over or focus it (for example, `pack_rooms`: "Try to use rooms back to back..."). The Schedule Generator's one-run flag checkboxes show the same descriptions. Descriptions live in `gui/constants.py` (`OPTIMIZER_FLAG_HELP`) and follow the scheduler library's own definitions. **Save settings** applies the limit and the flags together and reports each change ("Generation limit set to 50.", "Optimizer flag 'pack_labs' added.").
 - **Invalid data:** a limit of zero or less is rejected on the form, and a rejected change leaves the configuration as it was.
 - **Deletion:** nothing refers to these settings, so there are no references to block. "Deleting" a setting means unticking a flag or resetting the limit, and both are always allowed.
 - **Saved vs. one-run:** these are saved with the configuration. The Schedule Generator's one-run overrides never change them.

@@ -30,7 +30,7 @@ import re
 
 from django import forms
 
-from gui.constants import DAY_NAMES
+from gui.constants import DAY_NAMES, OPTIMIZER_FLAG_HELP, OPTIMIZER_FLAGS_INTRO
 
 # <input type="time"> submits "HH:MM" (or "HH:MM:SS" if a step is set); a plain
 # text fallback in older browsers may send "9:00", which %H:%M also accepts.
@@ -162,6 +162,27 @@ class SavedConfigSelectionForm(forms.Form):
         self.fields["config_name"].choices = list(config_choices)
 
 
+class OptimizerFlagsWidget(forms.CheckboxSelectMultiple):
+    """Checkboxes for optimizer flags, each with a description (user story 53).
+
+    The description is the checkbox's tooltip (title, shown on hover) and is
+    also printed in a short line under it, linked with aria-describedby so
+    screen readers read it when the checkbox gets keyboard focus.
+    """
+
+    option_template_name = "gui/widgets/flag_option.html"
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex=subindex, attrs=attrs)
+        description = OPTIMIZER_FLAG_HELP.get(str(value), "")
+        option["help"] = description
+        if description:
+            option["attrs"]["title"] = description
+            if option["attrs"].get("id"):
+                option["attrs"]["aria-describedby"] = f"{option['attrs']['id']}_help"
+        return option
+
+
 class GenerationOverrideForm(forms.Form):
     """One-run-only generation settings for the Schedule Generator."""
 
@@ -175,8 +196,9 @@ class GenerationOverrideForm(forms.Form):
         label="Optimizer flags for this run",
         required=False,
         choices=(),
-        widget=forms.CheckboxSelectMultiple,
-        help_text="The selected flags apply only to this generation run; saved settings are unchanged.",
+        widget=OptimizerFlagsWidget,
+        help_text="The selected flags apply only to this generation run; saved settings are unchanged. "
+        + OPTIMIZER_FLAGS_INTRO,
     )
 
     def __init__(self, *args, flag_choices=(), **kwargs):
@@ -839,11 +861,8 @@ class GlobalSettingsForm(forms.Form):
         label="Optimizer flags",
         required=False,
         choices=[],
-        widget=forms.CheckboxSelectMultiple,
-        help_text=(
-            "Tick the optimizations to turn on. What each one does is defined by the "
-            "scheduler library; see its documentation."
-        ),
+        widget=OptimizerFlagsWidget,
+        help_text="Tick the optimizations to turn on. " + OPTIMIZER_FLAGS_INTRO,
     )
 
     def __init__(self, *args, flag_choices=(), **kwargs):
