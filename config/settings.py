@@ -32,7 +32,18 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    # Unexpected crashes show a friendly page instead of a traceback (Section 19).
+    "gui.middleware.FriendlyErrorMiddleware",
 ]
+
+# Technical details of unexpected errors go to the terminal running the
+# server; the page only shows a short reference code (gui/middleware.py).
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "loggers": {"gui.errors": {"handlers": ["console"], "level": "ERROR", "propagate": True}},
+}
 
 # Flash messages ("Time Slot Added Successfully", ...) are kept in a cookie
 # rather than in request.session, so showing a message never rewrites the

@@ -119,6 +119,16 @@ Saved configuration to 'my_config.json'.
 ```
 
 ## Loading and Exporting Schedules (Schedule Viewer)
+## Error Messages and Error Pages (all modes)
+
+Problems are always shown inside the app, never only in the terminal:
+
+- **Problems you can fix** (a value out of range, a file that isn't valid JSON, a change the scheduler rejects) appear on the page you're on, next to the field or form, starting with **"Error:"**. Whatever was loaded before stays as it was. For example, a failed schedule import keeps the schedules already in the Viewer.
+- **Unexpected problems** (a bug) show a **"Something went wrong"** page with the usual navigation, what to do next, and a short reference code. Nothing is restarted, so you can go back and keep working; only the last action may not have been applied. The full technical report, with the same reference code, is printed in the terminal running the server. In development mode (`DEBUG = True`) a folded "Technical details" line on the page shows the error type and message, but never a traceback.
+- **Pages that don't exist** (an old link, a removed item) show a friendly **"Page not found"** page with links to the three modes.
+
+Code: `gui/middleware.py` (catches unexpected errors and logs them), `gui/views_errors.py` and `gui/templates/gui/error.html` / `not_found.html` (the pages); `config/urls.py` sets them as Django's `handler404` / `handler500`.
+
 ## Class Patterns and Meetings (Configuration Editor)
 
 **Configuration Editor -> Class Patterns** and **-> Meetings** manage `time_slot_config.classes`. Patterns have no name, so they are numbered by position.
