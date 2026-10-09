@@ -129,6 +129,15 @@ Problems are always shown inside the app, never only in the terminal:
 
 Code: `gui/middleware.py` (catches unexpected errors and logs them), `gui/views_errors.py` and `gui/templates/gui/error.html` / `not_found.html` (the pages); `config/urls.py` sets them as Django's `handler404` / `handler500`.
 
+## Empty States (all modes)
+
+Pages never show up blank. When there is nothing to show yet, they say so and offer the next step:
+
+- **No configuration loaded** (Configuration Editor and Schedule Generator): **New Configuration** and **Load Configuration** buttons jump to those sections of the Configuration Editor. **Generate schedules** stays disabled until a configuration is loaded.
+- **No schedules yet** (Schedule Viewer): links to the Schedule Generator and to loading a schedule file. Export and Clear are disabled until there are schedules.
+
+Code: `gui/templates/gui/components/no_config_actions.html`.
+
 ## Class Patterns and Meetings (Configuration Editor)
 
 **Configuration Editor -> Class Patterns** and **-> Meetings** manage `time_slot_config.classes`. Patterns have no name, so they are numbered by position.
