@@ -267,6 +267,36 @@ def schedule_viewer(request, import_form=None):
     )
 
 
+def schedule_clear(request):
+    """Clear all schedules, after a confirmation page (Section 15, user
+    stories 32, 54, 57).
+
+    GET shows "Remove all N schedules?" with Clear and Cancel. POST with
+    action=confirm clears them; anything else (Cancel) keeps them. With no
+    schedules there is nothing to confirm, so it goes back to the viewer.
+    """
+    count = schedule_controller.schedule_count(request)
+    if count == 0:
+        messages.info(request, "There are no schedules to clear.")
+        return redirect("gui:schedule_viewer")
+
+    if request.method == "POST":
+        noun = "schedule" if count == 1 else "schedules"
+        if request.POST.get("action") != "confirm":
+            messages.info(request, f"Cancelled. Your {count} {noun} were kept.")
+            return redirect("gui:schedule_viewer")
+        try:
+            cleared = schedule_controller.clear_schedules(request)
+        except ControllerError as error:
+            messages.error(request, error.message)
+        else:
+            noun = "schedule" if cleared == 1 else "schedules"
+            messages.success(request, f"Cleared {cleared} {noun}.")
+        return redirect("gui:schedule_viewer")
+
+    return render(request, "gui/schedules_clear.html", {"active": "viewer", "schedule_count": count})
+
+
 def _current_schedule_number(request, count):
     raw = request.GET.get("schedule", "")
     number = int(raw) if raw.isdigit() else 1

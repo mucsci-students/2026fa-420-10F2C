@@ -78,6 +78,21 @@
 </section>
 </div>
 
+<section class="card">
+<h2 id="clear-schedules" class="card__title">Clear schedules</h2>
+{% if schedule_count %}
+<p class="help">Removes every schedule from the viewer. You'll be asked to confirm first. Export them first if you want to keep them.</p>
+<div class="button-row">
+    <a class="btn btn-danger" href="{% url 'gui:schedule_clear' %}">Clear schedules</a>
+</div>
+{% else %}
+<p class="help" id="clear-unavailable">Nothing to clear yet.</p>
+<div class="button-row">
+    <button type="button" class="btn btn-disabled" disabled aria-describedby="clear-unavailable">Clear schedules</button>
+</div>
+{% endif %}
+</section>
+
 <details class="todo-list">
 <summary>Still to do in this mode</summary>
 <strong>Still to do in this mode:</strong>
@@ -85,7 +100,6 @@
     <li>Navigate among schedules; identify which one is displayed (Section 15)</li>
     <li>Room-oriented view &mdash; includes both rooms and labs (Section 16.1)</li>
     <li>Faculty-oriented view (Section 16.2)</li>
-    <li>Clear / replace the currently available results (Section 15)</li>
 </ul>
 </details>
 {% endblock %}
