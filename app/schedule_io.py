@@ -58,6 +58,7 @@ MAX_REPORTED_PROBLEMS = 5
 
 DAYS = ("MON", "TUE", "WED", "THU", "FRI")
 DAY_NAMES = {"MON": "Monday", "TUE": "Tuesday", "WED": "Wednesday", "THU": "Thursday", "FRI": "Friday"}
+_LIBRARY_DAY_NAMES = {number: day for number, day in enumerate(DAYS, start=1)}
 
 CSV_COLUMNS = (
     "schedule", "course", "faculty", "room", "lab",
@@ -353,7 +354,7 @@ def _library_instances_to_assignments(instances: list[Any]) -> list[Assignment]:
         value = as_json()
         as_json_items.append(json.loads(value) if isinstance(value, str) else value)
     else:
-        return parse_schedule_data([as_json_items])[0]
+        return parse_schedule_data([_normalize_library_schedule(as_json_items)])[0]
 
     # Fallback: the same JSONWriter Sprint 1's export used.
     from scheduler.writers import JSONWriter
@@ -363,7 +364,42 @@ def _library_instances_to_assignments(instances: list[Any]) -> list[Assignment]:
         with JSONWriter(str(path)) as writer:
             writer.add_schedule(instances)
         data = json.loads(path.read_text(encoding="utf-8"))
-    return parse_schedule_data(data)[0]
+    return parse_schedule_data([_normalize_library_schedule(schedule) for schedule in data])[0]
+
+
+def _normalize_library_schedule(schedule: list[Any]) -> list[Any]:
+    """Translate the scheduler library's JSON conventions into our file format.
+
+    The library serializes weekdays as 1 through 5 and marks the lab meeting
+    with the assignment-level ``lab_index``. Imported files stay strict; only
+    generated records pass through this adapter.
+    """
+    normalized = []
+    for raw_assignment in schedule:
+        if not isinstance(raw_assignment, dict):
+            normalized.append(raw_assignment)
+            continue
+
+        assignment = dict(raw_assignment)
+        lab_index = assignment.pop("lab_index", None)
+        times = assignment.get("times")
+        if isinstance(times, list):
+            normalized_times = []
+            for index, raw_time in enumerate(times):
+                if not isinstance(raw_time, dict):
+                    normalized_times.append(raw_time)
+                    continue
+
+                meeting = dict(raw_time)
+                day_name = _LIBRARY_DAY_NAMES.get(meeting.get("day"))
+                if day_name is not None:
+                    meeting["day"] = day_name
+                if index == lab_index:
+                    meeting["lab"] = True
+                normalized_times.append(meeting)
+            assignment["times"] = normalized_times
+        normalized.append(assignment)
+    return normalized
 
 
 # --------------------------------------------------------------------------- #

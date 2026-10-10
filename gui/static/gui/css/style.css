@@ -390,6 +390,87 @@ main {
     margin: 0;
 }
 
+/* The viewer pager is request-driven: these links only change ?schedule=N. */
+.schedule-status-card {
+    flex-wrap: wrap;
+}
+
+.schedule-status-card .status-line,
+.schedule-pager {
+    flex: 1 1 100%;
+}
+
+.schedule-pager {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+}
+
+.schedule-pager__previous {
+    justify-self: start;
+}
+
+.schedule-pager__current {
+    color: var(--muted);
+    font-weight: 600;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.schedule-pager__next {
+    justify-self: end;
+}
+
+.week-grid.schedule-grid {
+    --grid-height: 40rem;
+}
+
+.week-grid__block.schedule-grid__meeting {
+    container-type: inline-size;
+    overflow: visible;
+    padding: 0.2rem 0.3rem;
+    color: #fff;
+}
+
+.schedule-grid__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 0.3rem;
+    row-gap: 0.2rem;
+    min-width: 0;
+}
+
+.schedule-grid__cluster .schedule-grid__header + .schedule-grid__header {
+    margin-top: 0.4rem;
+}
+
+.schedule-grid__header .week-grid__label {
+    background: #1e3a8a;
+    padding: 0 0.25rem;
+    margin: 1px;
+    border-radius: 3px;
+    font-weight: 600;
+    line-height: 1.15;
+    flex: 0 0 auto;
+    min-width: min-content;
+    overflow-wrap: normal;
+    white-space: normal;
+    font-size: clamp(0.5rem, 13cqi, 0.7rem);
+}
+
+.schedule-grid__time {
+    flex: 0 1 auto;
+    min-width: 0;
+    margin: 0 0 0 calc(0.25rem - 1px);
+    font-size: clamp(0.45rem, 11cqi, 0.68rem);
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
 /* Grids of cards ---------------------------------------------------- */
 .card-grid {
     display: grid;

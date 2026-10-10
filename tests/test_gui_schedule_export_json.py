@@ -22,6 +22,7 @@ from app.schedule_io import Assignment, MeetingTime
 from app.session import Session
 from gui.controllers import schedule_controller as ctrl
 from gui.controllers.errors import ControllerError
+from gui.views import _schedule_grid
 
 VIEWER_URL = "/schedules/"
 IMPORT_URL = "/schedules/import/"
@@ -178,6 +179,7 @@ def test_export_buttons_are_disabled_when_there_are_no_schedules(client, label):
     assert "Nothing to export yet" in html
     assert f'disabled aria-describedby="export-unavailable">{label}</button>' in html
     assert 'name="schedule"' not in html
+    assert 'aria-label="Schedule navigation"' not in html
 
 
 def test_viewer_lists_every_schedule_to_export(client):
@@ -193,6 +195,133 @@ def test_current_schedule_is_preselected(client):
     load(client, "A", "B", "C")
     html = client.get(VIEWER_URL, {"schedule": "2"}).content.decode()
     assert '<option value="2" selected>' in html
+
+
+def test_viewer_shows_selected_schedule_meetings_in_chronological_order(client):
+    schedules = [
+        [
+            Assignment(
+                "CMSC 161.01",
+                "Hogg",
+                "Roddy 136",
+                None,
+                (
+                    MeetingTime("WED", "10:00", "10:50", 50),
+                    MeetingTime("MON", "09:00", "09:50", 50),
+                ),
+            ),
+            Assignment(
+                "CMSC 162.01",
+                "Killen",
+                None,
+                "Roddy 147",
+                (MeetingTime("TUE", "13:00", "14:50", 110, lab=True),),
+            ),
+        ],
+        [Assignment("CMSC 201.01", "Zoppetti", "Roddy 140", None, (MeetingTime("FRI", "11:00", "11:50", 50),))],
+    ]
+    upload = SimpleUploadedFile(
+        "meetings.json",
+        schedule_io.schedules_to_json(schedules).encode("utf-8"),
+        content_type="application/json",
+    )
+    client.post(IMPORT_URL, {"schedule_file": upload}, follow=True)
+
+    html = client.get(VIEWER_URL).content.decode()
+    assert "Schedule 1 weekly overview" in html
+    assert 'class="week-grid schedule-grid"' in html
+    assert "CMSC 161.01" in html and "CMSC 162.01" in html
+    assert "Hogg" not in html and "Roddy 136" not in html
+    assert html.index("Monday") < html.index("Tuesday") < html.index("Wednesday")
+
+    selected_html = client.get(VIEWER_URL, {"schedule": "2"}).content.decode()
+    assert "Schedule 2 weekly overview" in selected_html
+    assert "CMSC 201.01" in selected_html
+    assert "CMSC 161.01" not in selected_html
+
+
+def test_schedule_grid_places_overlapping_meetings_in_separate_lanes():
+    assignments = [
+        Assignment("CMSC 140.01", meetings=(MeetingTime("MON", "09:00", "10:00", 60),)),
+        Assignment("CMSC 140.02", meetings=(MeetingTime("MON", "09:30", "10:30", 60),)),
+        Assignment("CMSC 152.01", meetings=(MeetingTime("MON", "11:00", "11:50", 50),)),
+    ]
+
+    monday = _schedule_grid(assignments)["days"][0]["meetings"]
+
+    assert [(meeting["course"], meeting["left"], meeting["width"]) for meeting in monday] == [
+        ("CMSC 140.01", "0.00", "50.00"),
+        ("CMSC 140.02", "50.00", "50.00"),
+        ("CMSC 152.01", "0.00", "100.00"),
+    ]
+
+
+def test_dense_overlaps_stack_into_one_cluster_block_listing_course_and_time():
+    assignments = [
+        Assignment("CMSC 140.01", meetings=(MeetingTime("MON", "09:00", "10:00", 60),)),
+        Assignment("CMSC 140.02", meetings=(MeetingTime("MON", "09:00", "10:00", 60),)),
+        Assignment("CMSC 140.03", meetings=(MeetingTime("MON", "09:30", "10:30", 60),)),
+    ]
+
+    grid = _schedule_grid(assignments)
+    monday = grid["days"][0]
+
+    assert monday["meetings"] == []
+    [cluster] = monday["clusters"]
+    assert [meeting["course"] for meeting in cluster["meetings"]] == [
+        "CMSC 140.01",
+        "CMSC 140.02",
+        "CMSC 140.03",
+    ]
+    assert grid["min_width"] == "34rem"
+
+
+def test_grid_min_width_grows_with_two_lane_overlaps():
+    assignments = [
+        Assignment("CMSC 140.01", meetings=(MeetingTime("MON", "09:00", "10:00", 60),)),
+        Assignment("CMSC 140.02", meetings=(MeetingTime("MON", "09:30", "10:30", 60),)),
+    ]
+
+    assert _schedule_grid(assignments)["min_width"] == "46rem"
+
+
+def test_single_schedule_pager_identifies_the_selection_and_disables_boundaries(client):
+    load(client, "A")
+    html = client.get(VIEWER_URL).content.decode()
+
+    assert 'aria-label="Schedule navigation"' in html
+    assert 'role="status" aria-live="polite">\n            Schedule 1 of 1' in html
+    assert '<span class="btn btn-disabled schedule-pager__previous" aria-disabled="true">Previous</span>' in html
+    assert '<span class="btn btn-disabled schedule-pager__next" aria-disabled="true">Next</span>' in html
+
+
+def test_middle_schedule_pager_links_to_its_neighbors_and_keeps_export_selected(client):
+    load(client, "A", "B", "C")
+    html = client.get(VIEWER_URL, {"schedule": "2"}).content.decode()
+
+    assert 'Schedule 2 of 3' in html
+    assert 'href="?schedule=1">Previous</a>' in html
+    assert 'href="?schedule=3">Next</a>' in html
+    assert '<option value="2" selected>' in html
+
+
+def test_last_schedule_pager_disables_next(client):
+    load(client, "A", "B", "C")
+    html = client.get(VIEWER_URL, {"schedule": "3"}).content.decode()
+
+    assert 'Schedule 3 of 3' in html
+    assert 'href="?schedule=2">Previous</a>' in html
+    assert '<span class="btn btn-disabled schedule-pager__next" aria-disabled="true">Next</span>' in html
+
+
+@pytest.mark.parametrize("invalid_schedule", ["9", "0", "-1", "abc", ""])
+def test_invalid_viewer_schedule_falls_back_to_the_first_schedule(client, invalid_schedule):
+    load(client, "A", "B", "C")
+    html = client.get(VIEWER_URL, {"schedule": invalid_schedule}).content.decode()
+
+    assert 'Schedule 1 of 3' in html
+    assert '<option value="1" selected>' in html
+    assert '<span class="btn btn-disabled schedule-pager__previous" aria-disabled="true">Previous</span>' in html
 
 
 def test_download_contains_only_the_chosen_schedule(client):

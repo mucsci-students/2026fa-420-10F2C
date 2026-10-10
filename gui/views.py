@@ -39,6 +39,9 @@ from gui.forms import (
 )
 
 
+MINUTES_PER_HOUR = 60
+
+
 def index(request):
     """Welcome screen -- links to the three required modes (Section 1)."""
     return render(request, "gui/index.html", {"active": "home"})
@@ -251,9 +254,11 @@ def schedule_viewer(request, import_form=None):
     """
     count = schedule_controller.schedule_count(request)
     current = _current_schedule_number(request, count)
+    schedule_grid = _schedule_grid(schedule_controller.get_schedule(request, current - 1)) if count else None
     if import_form is None:
         import_form = ScheduleImportForm(schedule_count=count)
     export_form = ScheduleExportForm(schedule_count=count, initial={"schedule": current})
+    pager = _schedule_pager_context(current, count)
     return render(
         request,
         "gui/schedule_viewer.html",
@@ -261,6 +266,8 @@ def schedule_viewer(request, import_form=None):
             "active": "viewer",
             "schedule_count": count,
             "current_schedule": current,
+            "schedule_grid": schedule_grid,
+            **pager,
             "import_form": import_form,
             "export_form": export_form,
         },
@@ -301,6 +308,183 @@ def _current_schedule_number(request, count):
     raw = request.GET.get("schedule", "")
     number = int(raw) if raw.isdigit() else 1
     return number if 1 <= number <= count else 1
+
+
+def _schedule_pager_context(current: int, count: int) -> dict[str, int | bool | None]:
+    """Build valid one-based pager values from the selected schedule.
+
+    Selection remains request-derived, so navigating never mutates session
+    state or creates a second source of truth for the export form.
+    """
+    has_previous = current > 1
+    has_next = current < count
+    return {
+        "has_previous": has_previous,
+        "has_next": has_next,
+        "previous_schedule": current - 1 if has_previous else None,
+        "next_schedule": current + 1 if has_next else None,
+    }
+
+
+def _schedule_rows(assignments):
+    """Expand a selected schedule into chronological, human-readable meeting rows."""
+    day_order = {day: index for index, day in enumerate(DAY_NAMES)}
+    rows = []
+    for assignment in assignments:
+        for meeting in assignment.meetings:
+            is_lab = meeting.lab
+            rows.append(
+                {
+                    "day": meeting.day,
+                    "day_name": DAY_NAMES.get(meeting.day, meeting.day),
+                    "start": meeting.start,
+                    "end": meeting.end,
+                    "course": assignment.course,
+                    "faculty": assignment.faculty,
+                    "meeting_type": "Lab" if is_lab else "Class",
+                    "location": assignment.lab if is_lab else assignment.room,
+                    "sort_key": (day_order.get(meeting.day, len(day_order)), meeting.start, assignment.course),
+                }
+            )
+    return sorted(rows, key=lambda row: row["sort_key"])
+
+
+DENSE_LANE_COUNT = 3
+LANE_MIN_WIDTH_REM = 34
+LANE_WIDTH_STEP_REM = 12
+
+
+def _schedule_grid(assignments):
+    """Build the same day-by-time geometry used by the Time Slots overview.
+
+    Assignment records are already normalized by schedule_controller, so this
+    only organizes the selected schedule for display and never changes it.
+    """
+    rows = _schedule_rows(assignments)
+    minutes = [
+        value
+        for row in rows
+        for value in (_clock_minutes(row["start"]), _clock_minutes(row["end"]))
+    ]
+    axis_start, axis_end = _schedule_axis_bounds(minutes)
+    span = axis_end - axis_start
+    meetings_by_day = {day: [] for day in DAY_NAMES}
+
+    for row in rows:
+        start = _clock_minutes(row["start"])
+        end = _clock_minutes(row["end"])
+        meetings_by_day[row["day"]].append(
+            {
+                **row,
+                "top": f"{(start - axis_start) / span * 100:.2f}",
+                "height": f"{(end - start) / span * 100:.2f}",
+            }
+        )
+
+    days = []
+    max_lanes = 1
+    for day in DAY_NAMES:
+        meetings = meetings_by_day[day]
+        _assign_meeting_lanes(meetings)
+        lanes = [meeting for meeting in meetings if meeting["lane_count"] < DENSE_LANE_COUNT]
+        dense = [meeting for meeting in meetings if meeting["lane_count"] >= DENSE_LANE_COUNT]
+        max_lanes = max([max_lanes, *(meeting["lane_count"] for meeting in lanes)])
+        days.append({"day": day, "name": DAY_NAMES[day], "meetings": lanes, "clusters": _stack_clusters(dense)})
+
+    return {
+        "days": days,
+        "hours": [
+            {"label": f"{minute // MINUTES_PER_HOUR:02d}:00", "top": f"{(minute - axis_start) / span * 100:.2f}"}
+            for minute in range(axis_start, axis_end + 1, MINUTES_PER_HOUR)
+        ],
+        "hour_pct": f"{MINUTES_PER_HOUR / span * 100:.3f}",
+        "min_width": f"{LANE_MIN_WIDTH_REM + LANE_WIDTH_STEP_REM * (max_lanes - 1)}rem",
+    }
+
+
+def _stack_clusters(meetings):
+    """Merge each dense overlap cluster into one block that lists its courses."""
+    clusters = {}
+    for meeting in meetings:
+        clusters.setdefault(meeting["cluster"], []).append(meeting)
+
+    stacked = []
+    for group in clusters.values():
+        top = min(float(meeting["top"]) for meeting in group)
+        bottom = max(float(meeting["top"]) + float(meeting["height"]) for meeting in group)
+        stacked.append(
+            {
+                "top": f"{top:.2f}",
+                "height": f"{bottom - top:.2f}",
+                "meetings": sorted(group, key=lambda meeting: (meeting["start"], meeting["course"])),
+            }
+        )
+    return stacked
+
+
+def _assign_meeting_lanes(meetings):
+    """Give overlapping meetings separate horizontal lanes in a day column.
+
+    A connected overlap group shares its widest lane count so adjacent blocks
+    never jump between widths while one course remains in progress.
+    """
+    meetings.sort(key=lambda meeting: (meeting["start"], meeting["end"], meeting["course"]))
+    group = []
+    latest_end = None
+    cluster_id = 0
+
+    for meeting in meetings:
+        start = _clock_minutes(meeting["start"])
+        end = _clock_minutes(meeting["end"])
+        if group and start >= latest_end:
+            _layout_overlap_group(group, cluster_id)
+            cluster_id += 1
+            group = []
+            latest_end = None
+        group.append(meeting)
+        latest_end = end if latest_end is None else max(latest_end, end)
+
+    if group:
+        _layout_overlap_group(group, cluster_id)
+
+
+def _layout_overlap_group(meetings, cluster_id):
+    """Set zero-based lane position and width for one connected overlap group."""
+    lane_end_times = []
+    for meeting in meetings:
+        start = _clock_minutes(meeting["start"])
+        end = _clock_minutes(meeting["end"])
+        lane = next(
+            (index for index, lane_end in enumerate(lane_end_times) if lane_end <= start),
+            len(lane_end_times),
+        )
+        if lane == len(lane_end_times):
+            lane_end_times.append(end)
+        else:
+            lane_end_times[lane] = end
+        meeting["lane"] = lane
+
+    lane_count = len(lane_end_times)
+    for meeting in meetings:
+        meeting["cluster"] = cluster_id
+        meeting["lane_count"] = lane_count
+        meeting["left"] = f"{meeting['lane'] / lane_count * 100:.2f}"
+        meeting["width"] = f"{100 / lane_count:.2f}"
+
+
+def _schedule_axis_bounds(minutes):
+    """Return whole-hour bounds that contain every meeting in the grid."""
+    if not minutes:
+        return 8 * MINUTES_PER_HOUR, 17 * MINUTES_PER_HOUR
+    earliest = min(minutes) // MINUTES_PER_HOUR * MINUTES_PER_HOUR
+    latest = -(-max(minutes) // MINUTES_PER_HOUR) * MINUTES_PER_HOUR
+    return earliest, max(latest, earliest + MINUTES_PER_HOUR)
+
+
+def _clock_minutes(value: str) -> int:
+    """Convert a validated 24-hour clock string into minutes after midnight."""
+    hour, minute = value.split(":", 1)
+    return int(hour) * MINUTES_PER_HOUR + int(minute)
 
 
 def schedule_import(request):

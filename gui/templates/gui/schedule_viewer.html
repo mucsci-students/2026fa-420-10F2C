@@ -9,8 +9,25 @@
 </div>
 
 {% if schedule_count %}
-<div class="status-card">
+<div class="status-card schedule-status-card">
     <p class="status-line" role="status"><strong>{{ schedule_count }}</strong> schedule{{ schedule_count|pluralize }} available.</p>
+    <nav class="schedule-pager" aria-label="Schedule navigation">
+        {% if has_previous %}
+        <a class="btn schedule-pager__previous" href="?schedule={{ previous_schedule }}">Previous</a>
+        {% else %}
+        <span class="btn btn-disabled schedule-pager__previous" aria-disabled="true">Previous</span>
+        {% endif %}
+
+        <p class="schedule-pager__current" role="status" aria-live="polite">
+            Schedule {{ current_schedule }} of {{ schedule_count }}
+        </p>
+
+        {% if has_next %}
+        <a class="btn schedule-pager__next" href="?schedule={{ next_schedule }}">Next</a>
+        {% else %}
+        <span class="btn btn-disabled schedule-pager__next" aria-disabled="true">Next</span>
+        {% endif %}
+    </nav>
 </div>
 {% comment %}
     James: schedule navigation and the room/faculty views go here (Sections 15-16).
@@ -24,6 +41,51 @@
         Generate schedules in the <a href="{% url 'gui:schedule_generator' %}">Schedule Generator</a>,
         or load a schedule file you exported earlier (below).
     </p>
+</div>
+{% endif %}
+
+{% if schedule_count %}
+<h2 id="schedule-overview-heading" class="section-title">Schedule {{ current_schedule }} weekly overview</h2>
+<div class="card schedule-details" aria-labelledby="schedule-overview-heading">
+    <div class="scroll-x">
+        <div class="week-grid schedule-grid" style="--hour-pct: {{ schedule_grid.hour_pct }}%; min-width: {{ schedule_grid.min_width }};" role="img"
+             aria-label="Weekly grid for schedule {{ current_schedule }}.">
+            <div class="week-grid__col">
+                <div class="week-grid__day-name">&nbsp;</div>
+                <div class="week-grid__track week-grid__track--axis">
+                    {% for hour in schedule_grid.hours %}<span class="week-grid__hour" style="top: {{ hour.top }}%;">{{ hour.label }}</span>{% endfor %}
+                </div>
+            </div>
+            {% for day in schedule_grid.days %}
+            <div class="week-grid__col">
+                <div class="week-grid__day-name">{{ day.day }}</div>
+                <div class="week-grid__track">
+                    {% for meeting in day.meetings %}
+                    <div class="week-grid__block schedule-grid__meeting"
+                         style="top: {{ meeting.top }}%; min-height: calc({{ meeting.height }}% - 3px); left: calc(3px + {{ meeting.left }}%); width: calc({{ meeting.width }}% - 6px);"
+                         title="{{ day.name }} {{ meeting.start }}-{{ meeting.end }}: {{ meeting.course }}">
+                        <div class="schedule-grid__header">
+                            <span class="week-grid__label">{{ meeting.course }}</span>
+                            <span class="schedule-grid__time">{{ meeting.start }}&ndash;{{ meeting.end }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% for cluster in day.clusters %}
+                    <div class="week-grid__block schedule-grid__meeting schedule-grid__cluster"
+                         style="top: {{ cluster.top }}%; min-height: calc({{ cluster.height }}% - 3px);">
+                        {% for meeting in cluster.meetings %}
+                        <div class="schedule-grid__header">
+                            <span class="week-grid__label">{{ meeting.course }}</span>
+                            <span class="schedule-grid__time">{{ meeting.start }}&ndash;{{ meeting.end }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
 </div>
 {% endif %}
 
@@ -97,7 +159,6 @@
 <summary>Still to do in this mode</summary>
 <strong>Still to do in this mode:</strong>
 <ul>
-    <li>Navigate among schedules; identify which one is displayed (Section 15)</li>
     <li>Room-oriented view &mdash; includes both rooms and labs (Section 16.1)</li>
     <li>Faculty-oriented view (Section 16.2)</li>
 </ul>
