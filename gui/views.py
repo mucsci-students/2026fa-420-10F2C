@@ -22,7 +22,15 @@ from app import schedule_ops
 from django.shortcuts import redirect, render
 from django.urls import reverse
 
-from gui.constants import DAY_NAMES
+from gui.constants import (
+    DAY_NAMES,
+    NO_FACULTY_LABEL,
+    NO_LOCATION_LABEL,
+    VIEW_COURSES,
+    VIEW_FACULTY,
+    VIEW_OPTIONS,
+    VIEW_ROOMS,
+)
 from gui.controllers import config_controller, schedule_controller, settings as settings_controller
 from gui.controllers import timeslots as timeslot_controller
 from gui.controllers.errors import ControllerError
@@ -245,20 +253,24 @@ def schedule_generator(request):
 
 
 def schedule_viewer(request, import_form=None):
-    """Schedule Viewer mode (Sections 15-18). Loading schedules from JSON
-    and exporting one as JSON work; navigation and the room/faculty views
-    are still to come (see gui/controllers/schedule_controller.py).
+    """Schedule Viewer mode (Sections 15-18). Loading schedules from JSON,
+    exporting one as JSON, and the grid filter views work; see
+    gui/controllers/schedule_controller.py for the schedule data.
 
     ?schedule=N (1-based) selects the current schedule; anything missing or
-    out of range falls back to schedule 1.
+    out of range falls back to schedule 1. ?view=rooms labels the grid by
+    room and ?view=faculty by faculty member (see _current_view_mode).
     """
     count = schedule_controller.schedule_count(request)
     current = _current_schedule_number(request, count)
-    schedule_grid = _schedule_grid(schedule_controller.get_schedule(request, current - 1)) if count else None
+    view_mode = _current_view_mode(request)
+    schedule_grid = (
+        _schedule_grid(schedule_controller.get_schedule(request, current - 1), view_mode) if count else None
+    )
     if import_form is None:
         import_form = ScheduleImportForm(schedule_count=count)
     export_form = ScheduleExportForm(schedule_count=count, initial={"schedule": current})
-    pager = _schedule_pager_context(current, count)
+    pager = _schedule_pager_context(current, count, view_mode)
     return render(
         request,
         "gui/schedule_viewer.html",
@@ -267,6 +279,8 @@ def schedule_viewer(request, import_form=None):
             "schedule_count": count,
             "current_schedule": current,
             "schedule_grid": schedule_grid,
+            "view_mode": view_mode,
+            "view_options": VIEW_OPTIONS,
             **pager,
             "import_form": import_form,
             "export_form": export_form,
@@ -310,11 +324,20 @@ def _current_schedule_number(request, count):
     return number if 1 <= number <= count else 1
 
 
-def _schedule_pager_context(current: int, count: int) -> dict[str, int | bool | None]:
+def _current_view_mode(request):
+    """The ?view= value when it is a known option; anything else means Courses."""
+    requested = request.GET.get("view")
+    return requested if requested in VIEW_OPTIONS else VIEW_COURSES
+
+
+def _schedule_pager_context(
+    current: int, count: int, view_mode: str = VIEW_COURSES
+) -> dict[str, int | bool | str | None]:
     """Build valid one-based pager values from the selected schedule.
 
     Selection remains request-derived, so navigating never mutates session
-    state or creates a second source of truth for the export form.
+    state or creates a second source of truth for the export form. view_query
+    carries the chosen view across Previous/Next (empty for the default view).
     """
     has_previous = current > 1
     has_next = current < count
@@ -323,16 +346,27 @@ def _schedule_pager_context(current: int, count: int) -> dict[str, int | bool | 
         "has_next": has_next,
         "previous_schedule": current - 1 if has_previous else None,
         "next_schedule": current + 1 if has_next else None,
+        "view_query": "" if view_mode == VIEW_COURSES else f"&view={view_mode}",
     }
 
 
-def _schedule_rows(assignments):
+def _block_label(view_mode, course, location, faculty):
+    """Text on a grid block: the course, its room/lab, or its faculty member."""
+    if view_mode == VIEW_ROOMS:
+        return location or NO_LOCATION_LABEL
+    if view_mode == VIEW_FACULTY:
+        return faculty or NO_FACULTY_LABEL
+    return course
+
+
+def _schedule_rows(assignments, view_mode=VIEW_COURSES):
     """Expand a selected schedule into chronological, human-readable meeting rows."""
     day_order = {day: index for index, day in enumerate(DAY_NAMES)}
     rows = []
     for assignment in assignments:
         for meeting in assignment.meetings:
             is_lab = meeting.lab
+            location = assignment.lab if is_lab else assignment.room
             rows.append(
                 {
                     "day": meeting.day,
@@ -342,7 +376,8 @@ def _schedule_rows(assignments):
                     "course": assignment.course,
                     "faculty": assignment.faculty,
                     "meeting_type": "Lab" if is_lab else "Class",
-                    "location": assignment.lab if is_lab else assignment.room,
+                    "location": location,
+                    "label": _block_label(view_mode, assignment.course, location, assignment.faculty),
                     "sort_key": (day_order.get(meeting.day, len(day_order)), meeting.start, assignment.course),
                 }
             )
@@ -354,13 +389,13 @@ LANE_MIN_WIDTH_REM = 34
 LANE_WIDTH_STEP_REM = 12
 
 
-def _schedule_grid(assignments):
+def _schedule_grid(assignments, view_mode=VIEW_COURSES):
     """Build the same day-by-time geometry used by the Time Slots overview.
 
     Assignment records are already normalized by schedule_controller, so this
     only organizes the selected schedule for display and never changes it.
     """
-    rows = _schedule_rows(assignments)
+    rows = _schedule_rows(assignments, view_mode)
     minutes = [
         value
         for row in rows
@@ -403,7 +438,7 @@ def _schedule_grid(assignments):
 
 
 def _stack_clusters(meetings):
-    """Merge each dense overlap cluster into one block that lists its courses."""
+    """Merge each dense overlap cluster into one block that lists its labels."""
     clusters = {}
     for meeting in meetings:
         clusters.setdefault(meeting["cluster"], []).append(meeting)

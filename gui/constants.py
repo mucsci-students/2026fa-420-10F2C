@@ -14,6 +14,20 @@ DAY_NAMES = {
     "FRI": "Friday",
 }
 
+# Schedule Viewer filter (Sections 16.1-16.2): ?view=courses (default), rooms, or faculty.
+VIEW_COURSES = "courses"
+VIEW_ROOMS = "rooms"
+VIEW_FACULTY = "faculty"
+
+# Filter option values mapped to their menu labels, in display order.
+VIEW_OPTIONS = {VIEW_COURSES: "Courses", VIEW_ROOMS: "Rooms", VIEW_FACULTY: "Faculty"}
+
+# Block text for a meeting that has no room or lab (e.g. an online section).
+NO_LOCATION_LABEL = "No room assigned"
+
+# Block text for a meeting whose course has no faculty member assigned.
+NO_FACULTY_LABEL = "No faculty assigned"
+
 # Plain-language descriptions of the scheduler library's optimizer flags
 # (user story 53: hovering over or focusing an option such as "pack_rooms"
 # shows what it does). Worded from the library's own OptimizerFlags

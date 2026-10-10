@@ -212,6 +212,31 @@ def test_to_assignments_uses_as_json():
     assert records[1].meetings[0].lab is True
 
 
+def test_to_assignments_normalizes_library_weekdays_and_lab_index():
+    schedule = [
+        _FakeInstance(
+            {
+                "course": "CMSC 152.01",
+                "faculty": "Hogg",
+                "room": "Roddy 136",
+                "lab": "Roddy 147",
+                "lab_index": 1,
+                "times": [
+                    {"day": 1, "start": 540, "duration": 50},
+                    {"day": 3, "start": 780, "duration": 110},
+                ],
+            }
+        )
+    ]
+
+    [record] = schedule_io.to_assignments(schedule)
+
+    assert record.meetings == (
+        MeetingTime("MON", "09:00", "09:50", 50, False),
+        MeetingTime("WED", "13:00", "14:50", 110, True),
+    )
+
+
 def test_to_assignments_falls_back_to_library_json_writer(monkeypatch):
     written = {}
 

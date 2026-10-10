@@ -888,6 +888,50 @@ a.area-card:focus-visible {
     margin: 0;
 }
 
+/* Schedule Viewer filter: the menu opens on hover or while the trigger has focus (click). */
+.view-filter {
+    position: relative;
+    display: inline-block;
+    margin: 0.5rem 0 1rem;
+}
+
+.view-filter__trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.35rem 0.5rem;
+}
+
+.view-filter__menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 10;
+    padding-top: 0.25rem;
+}
+
+.view-filter:hover .view-filter__menu,
+.view-filter:focus-within .view-filter__menu {
+    display: block;
+}
+
+.view-filter__options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 8rem;
+    padding: 0.35rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.view-filter__options .btn {
+    text-align: left;
+}
+
 /* The Save / Cancel bar under a form. On the long Course and Faculty forms
    it stays in view while you scroll, so the buttons are never far away. */
 .form-actions {
