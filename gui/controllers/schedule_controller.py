@@ -17,7 +17,6 @@ the viewer tables and exports never need to know which.
 Who uses what:
     generate()          -> replace_schedules(request, result.schedules)
     clear_schedules()   -> replace_schedules(request, [])
-    view_schedule()     -> get_schedule(request, index), then group by room/faculty
     exports             -> get_schedule / get_schedules + app.schedule_io writers
     load_schedule_json  -> done (Section 17)
     export_schedules    -> done (Section 18): JSON or CSV, one schedule or all;
@@ -34,6 +33,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 
 from app import schedule_io, schedule_ops
+from app.generation_job import STATE_FINISHED, GenerationJob
 from app.schedule_io import Assignment
 from app.commands.common import VALID_OPTIMIZER_FLAGS
 from gui.controllers.common import require_config
@@ -91,7 +91,7 @@ def replace_schedules(request, schedules: list) -> None:
     The one place session.schedules is written, so anything that should
     happen whenever results change can be added here.
     """
-    get_session(request).schedules = list(schedules)
+    _set_schedules(get_session(request), schedules)
 
 
 def _as_records(schedule, number: int) -> list[Assignment]:
@@ -118,17 +118,7 @@ def generate(request, limit_override=None, optimizer_overrides=None):
     session = get_session(request)
     config = require_config(session, "generating schedules")
 
-    if limit_override is not None:
-        if isinstance(limit_override, bool) or not isinstance(limit_override, int) or limit_override <= 0:
-            raise ControllerError([FieldError("limit", "Generation limit must be a positive whole number.")])
-
-    if optimizer_overrides is not None:
-        optimizer_overrides = list(optimizer_overrides)
-        unknown = [flag for flag in optimizer_overrides if flag not in VALID_OPTIMIZER_FLAGS]
-        if unknown:
-            raise ControllerError(
-                [FieldError("optimizer_flags", f"'{flag}' is not a valid optimizer flag.") for flag in unknown]
-            )
+    optimizer_overrides = _validated_overrides(limit_override, optimizer_overrides)
 
     with generation_in_progress(request):
         result = schedule_ops.generate_schedules(config, limit_override, optimizer_overrides)
@@ -154,12 +144,6 @@ def clear_schedules(request) -> int:
         raise ControllerError(NO_SCHEDULES_MESSAGE)
     replace_schedules(request, [])
     return count
-
-
-def view_schedule(request, index):
-    """TODO (Section 15-16): start from get_schedule(request, index) and
-    return the rows grouped by room/lab and by faculty for the templates."""
-    raise NotImplementedError
 
 
 # ---------------------------------------------------------------------- #
@@ -267,3 +251,140 @@ def generation_in_progress(request):
 
 def is_generating(request) -> bool:
     return get_session(request).generating
+
+
+# ---------------------------------------------------------------------- #
+#  Background generation with live progress (Sections 13 and 19)
+#
+#  generate() above runs the solver inside the request and is what the form
+#  uses without JavaScript. These functions run the same generation on a
+#  background thread (app.generation_job.GenerationJob) so the page can show
+#  a progress bar and a Cancel button:
+#
+#      start_generation(request, limit, flags) -> status dict (the run starts)
+#      generation_status(request)               -> status dict, or {"state": "idle"}
+#      cancel_generation(request)               -> status dict
+#      collect_generation_result(request)       -> GenerationResult, once
+#      describe_outcome(result)                 -> (level, user-facing text)
+#
+#  Overrides apply to this run only; the saved configuration is never changed.
+# ---------------------------------------------------------------------- #
+def _validated_overrides(limit_override, optimizer_overrides):
+    """Check a run's one-off overrides; return the flag list (or None)."""
+    if limit_override is not None:
+        if isinstance(limit_override, bool) or not isinstance(limit_override, int) or limit_override <= 0:
+            raise ControllerError([FieldError("limit", "Generation limit must be a positive whole number.")])
+
+    if optimizer_overrides is not None:
+        optimizer_overrides = list(optimizer_overrides)
+        unknown = [flag for flag in optimizer_overrides if flag not in VALID_OPTIMIZER_FLAGS]
+        if unknown:
+            raise ControllerError(
+                [FieldError("optimizer_flags", f"'{flag}' is not a valid optimizer flag.") for flag in unknown]
+            )
+    return optimizer_overrides
+
+
+def _set_schedules(session, schedules) -> None:
+    """The one place session.schedules is written (see replace_schedules)."""
+    session.schedules = list(schedules)
+
+
+def _finish_generation(session, job, result) -> None:
+    """Runs on the worker thread when a background run ends: store the
+    results exactly as generate() does, then release the session."""
+    try:
+        if result.outcome == schedule_ops.GenerationOutcome.SUCCESS:
+            _set_schedules(session, result.schedules)
+        elif result.outcome == schedule_ops.GenerationOutcome.NO_FEASIBLE_SCHEDULE:
+            _set_schedules(session, [])  # don't leave stale results, same as generate()
+        # invalid configuration, runtime error and cancel keep the previous results
+    finally:
+        with _GENERATION_LOCK:
+            session.generating = False
+
+
+def start_generation(request, limit_override=None, optimizer_overrides=None) -> dict:
+    """Start a background generation and return its first status.
+
+    Raises ControllerError for a missing configuration, a bad override, or a
+    run that is already going (BUSY_MESSAGE).
+    """
+    session = get_session(request)
+    config = require_config(session, "generating schedules")
+    optimizer_overrides = _validated_overrides(limit_override, optimizer_overrides)
+
+    with _GENERATION_LOCK:
+        if session.generating:
+            raise ControllerError(BUSY_MESSAGE)
+        session.generating = True
+        job = GenerationJob(
+            config,
+            limit_override,
+            optimizer_overrides,
+            on_finish=lambda finished_job, result: _finish_generation(session, finished_job, result),
+        )
+        session.generation_job = job
+    try:
+        job.start()
+    except Exception:
+        with _GENERATION_LOCK:
+            session.generating = False
+            session.generation_job = None
+        raise
+    return job.snapshot()
+
+
+def _current_job(request):
+    return getattr(get_session(request), "generation_job", None)
+
+
+def generation_job_active(request) -> bool:
+    """True while a background run exists or its outcome is still unreported."""
+    return _current_job(request) is not None
+
+
+def generation_status(request) -> dict:
+    """The current run's progress, or {"state": "idle"} when there is none."""
+    job = _current_job(request)
+    if job is None:
+        return {"state": "idle"}
+    return job.snapshot()
+
+
+def cancel_generation(request) -> dict:
+    """Ask the running generation to stop. Raises ControllerError if none is running."""
+    job = _current_job(request)
+    if job is None or job.finished:
+        raise ControllerError("No schedule generation is running right now.")
+    job.cancel()
+    return job.snapshot()
+
+
+def collect_generation_result(request):
+    """Return the finished run's GenerationResult once, then forget the run.
+
+    Returns None while the run is still going, or when there is nothing (left)
+    to report. The view calls this to turn the outcome into a message.
+    """
+    session = get_session(request)
+    with _GENERATION_LOCK:
+        job = getattr(session, "generation_job", None)
+        if job is None or not job.finished:
+            return None
+        session.generation_job = None
+        return job.result
+
+
+def describe_outcome(result) -> tuple[str, str]:
+    """(level, text) for a GenerationResult; level is success, warning or error."""
+    outcome = schedule_ops.GenerationOutcome
+    if result.outcome == outcome.SUCCESS:
+        return "success", result.message
+    if result.outcome == outcome.NO_FEASIBLE_SCHEDULE:
+        return "warning", "No feasible schedule was found. Check the configuration and try again."
+    if result.outcome == outcome.CANCELLED:
+        return "warning", result.message
+    if result.outcome == outcome.INVALID_CONFIG:
+        return "error", f"The configuration is invalid: {result.message}"
+    return "error", f"Schedule generation failed unexpectedly: {result.message}"

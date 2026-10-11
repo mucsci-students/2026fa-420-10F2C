@@ -132,6 +132,9 @@ class Session:
         self.dirty: bool = False
         # True while a schedule generation is running for this session (Section 13).
         self.generating: bool = False
+        # The background app.generation_job.GenerationJob for this session, kept
+        # until its outcome has been reported to the browser (None otherwise).
+        self.generation_job = None
         # JSON snapshots keyed by the file name shown in the GUI. Keeping
         # snapshots rather than model instances makes switching atomic and
         # reuses the same validation path as loading an uploaded file.
