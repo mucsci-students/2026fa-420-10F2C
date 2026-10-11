@@ -734,6 +734,36 @@ a.area-card:focus-visible {
     margin-top: 0.75rem;
 }
 
+/* A link styled as an add-panel summary bar, for add pages that are not inline. */
+.add-panel-link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.7rem 1.1rem;
+    color: var(--text);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.add-panel-link::before {
+    content: "+";
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 700;
+    flex: none;
+}
+
+.add-panel-link:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: -2px;
+}
+
 /* The add form lays its fields out in a responsive grid. */
 .add-panel .edit-form {
     max-width: none;
@@ -1031,6 +1061,13 @@ a.area-card:focus-visible {
     color: var(--muted);
 }
 
+/* Schedule Generator flags: checkboxes in a responsive grid of columns. */
+.flag-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+    gap: 0 1rem;
+}
+
 .field-error {
     color: #991b1b;
     margin: 0.25rem 0 0;
@@ -1258,7 +1295,8 @@ a.area-card:focus-visible {
 /* Choice pickers use normal-weight labels beside their boxes in columns,
    instead of the block/12rem text-input style. */
 .course-form .field input[type="checkbox"],
-.faculty-form .field input[type="checkbox"] {
+.faculty-form .field input[type="checkbox"],
+.flag-grid input[type="checkbox"] {
     min-width: 0;
     margin: 0;
 }
@@ -1271,12 +1309,36 @@ a.area-card:focus-visible {
 }
 
 .course-form .field > div label,
-.faculty-form .field > div label {
+.faculty-form .field > div label,
+.flag-grid label {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
     font-weight: 400;
     margin: 0;
+}
+
+/* Flags: box and name left-aligned on one line, description below. */
+.flag-grid {
+    text-align: left;
+}
+
+.flag-grid > div {
+    display: block;
+}
+
+.flag-grid label {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    width: auto;
+}
+
+.flag-grid input[type="checkbox"] {
+    flex: 0 0 auto;
+    width: 1rem;
+    height: 1rem;
+    padding: 0;
 }
 
 /* Mandatory-day choices are a compact Faculty-only picker: keep the group
@@ -1526,7 +1588,9 @@ html[data-theme="dark"] .chip--ok   { background: #052e16; border-color: #166534
 html[data-theme="dark"] .chip--off  { background: #18181b; border-color: #3f3f46; color: #a1a1aa; }
 html[data-theme="dark"] .chip--warn { background: #451a03; border-color: #92400e; color: #fde68a; }
 
-html[data-theme="dark"] .add-panel > summary::before { background: #2563eb; color: #fff; }
+html[data-theme="dark"] .add-panel > summary::before,
+html[data-theme="dark"] .add-panel-link::before { background: #2563eb; color: #fff; }
+html[data-theme="dark"] main a.add-panel-link { color: var(--text); }
 html[data-theme="dark"] .form-actions { box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.5); }
 html[data-theme="dark"] .field input,
 html[data-theme="dark"] .field select { background: #18181b; border-color: #52525b; }

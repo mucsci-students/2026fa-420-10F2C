@@ -7,11 +7,6 @@
         <h1>Faculty</h1>
         <p class="page-intro">Faculty records define workload limits, availability, required teaching days, and preferences for courses and spaces.</p>
     </div>
-    {% if data.has_config %}
-    <div class="page-actions">
-        <a class="btn btn-primary" href="{% url 'gui:faculty_add' %}">Add faculty member</a>
-    </div>
-    {% endif %}
 </div>
 
 {% if not data.has_config %}
@@ -20,6 +15,10 @@
     <p>Create or load a configuration in the <a href="{% url 'gui:config_editor' %}">Configuration Editor</a> before editing faculty.</p>
 </div>
 {% else %}
+
+<a class="add-panel add-panel-link" href="{% url 'gui:faculty_add' %}">
+    <span>Add a faculty member</span>
+</a>
 
 <h2 class="section-title">Current faculty <span class="count-chip">{{ data.faculty|length }}</span></h2>
 <div class="list-toolbar" data-filter-box hidden>

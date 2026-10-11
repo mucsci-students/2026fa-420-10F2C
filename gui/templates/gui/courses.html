@@ -11,11 +11,6 @@
             are numbered by position.
         </p>
     </div>
-    {% if data.has_config %}
-    <div class="page-actions">
-        <a class="btn btn-primary" href="{% url 'gui:course_add' %}">Add course</a>
-    </div>
-    {% endif %}
 </div>
 
 {% if not data.has_config %}
@@ -24,6 +19,10 @@
     <p>Create or load a configuration in the <a href="{% url 'gui:config_editor' %}">Configuration Editor</a> before editing courses.</p>
 </div>
 {% else %}
+
+<a class="add-panel add-panel-link" href="{% url 'gui:course_add' %}">
+    <span>Add a course</span>
+</a>
 
 <h2 class="section-title">Current courses <span class="count-chip">{{ data.courses|length }}</span></h2>
 <div class="list-toolbar" data-filter-box hidden>

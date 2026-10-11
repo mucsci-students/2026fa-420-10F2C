@@ -204,6 +204,7 @@ class GenerationOverrideForm(forms.Form):
     def __init__(self, *args, flag_choices=(), **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["optimizer_flags"].choices = [(flag, flag.replace("_", " ").title()) for flag in flag_choices]
+        self.fields["optimizer_flags"].widget.attrs["class"] = "flag-grid"
 
 
 EXPORT_ALL = "all"
