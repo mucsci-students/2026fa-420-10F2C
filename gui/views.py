@@ -62,9 +62,7 @@ def index(request):
 #  (failure) -- the current configuration is never touched by a failure.
 # ---------------------------------------------------------------------- #
 # One row per configuration area on the editor home page: (count key from
-# config_controller.describe_configuration, label, URL name). When an area's
-# pages exist, put its URL name here -- that is the only change the home page
-# needs to link to it.
+# config_controller.describe_configuration, label, URL name).
 _CONFIG_AREAS = (
     ("time_blocks", "Time Slots", "gui:timeslots"),
     ("rooms", "Rooms", "gui:rooms"),
@@ -79,7 +77,7 @@ _CONFIG_AREAS = (
 
 def _config_areas(counts):
     return [
-        {"label": label, "count": counts.get(key), "url": reverse(url_name) if url_name else None}
+        {"label": label, "count": counts.get(key), "url": reverse(url_name)}
         for key, label, url_name in _CONFIG_AREAS
     ]
 
@@ -183,6 +181,7 @@ def _render_schedule_generator(request, form=None, result=None, config_form=None
         "active": "generator",
         "data": data,
         "generating": schedule_controller.is_generating(request),
+        "job_active": schedule_controller.generation_job_active(request),
         "result": result,
         "config_choices": config_choices,
     }

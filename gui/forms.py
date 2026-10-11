@@ -15,15 +15,11 @@ Done:
     - MeetingFieldsForm / AddMeetingForm (meetings: day, duration, lab,
       delivery mode, optional start time)
     - GlobalSettingsForm (global settings: generation limit, optimizer flags)
-        - FacultyForm (workload limits, availability, mandatory days, preferences)
-        - CourseForm (course sections, resources, conflicts, faculty, and requirements)
-
-TODO: one Form class per remaining area, matching the "Required editable data"
-column in Section 7's table:
-    - GenerationOverrideForm  (Section 14: limit override + optimizer overrides,
-                                for the Schedule Generator page, separate from
-                                GlobalSettingsForm since these must NOT touch
-                                the saved configuration)
+    - FacultyForm (workload limits, availability, mandatory days, preferences)
+    - CourseForm (course sections, resources, conflicts, faculty, and requirements)
+    - GenerationOverrideForm (Schedule Generator: one-run generation limit and
+      optimizer overrides; kept apart from GlobalSettingsForm because they
+      must NOT touch the saved configuration)
 """
 
 import re

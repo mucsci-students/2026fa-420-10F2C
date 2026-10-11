@@ -107,7 +107,7 @@ Every add, edit and delete runs through the library's edit mode, which re-valida
 
 1. **Configuration to run.** Configurations you load or save in this browser session are kept as snapshots. Pick one from the selector to make it the active configuration. Switching clears schedules generated from the previous configuration, so save unsaved edits first.
 2. **One-run overrides (optional).** A generation limit and a set of optimizer flags that apply **to this run only**. They never change the saved configuration; to change the saved values, use **Configuration Editor → Global Settings**. The flag checkboxes start with the configuration's saved flags ticked.
-3. **Generate schedules.** While the solver runs, the button is disabled and a busy banner is shown; a second run in the same session is refused until the first finishes.
+3. **Generate schedules.** Generation runs in the background and the page shows a **progress bar** with the number of schedules found out of the limit (for example "Found 3 of 10 schedules (30%) · 12s elapsed") and the elapsed time. The bar moves when a schedule is found, so it can stay empty while the solver works on the first one; with no limit it is indeterminate. **Cancel generation** stops the run once the solver finishes the schedule it is working on, and your previous schedules are kept. While a run is going the button is disabled and a second run in the same session is refused until the first finishes; if you reload the page the progress bar picks up where the run is. Without JavaScript the form still works: the page waits for the run to finish and then shows the result, without the progress bar.
 
 The result is always one of:
 
@@ -117,6 +117,7 @@ The result is always one of:
 | No feasible schedule | A warning that no schedule satisfies every hard constraint. Previous results are cleared. |
 | Invalid configuration | The library's reason the configuration can't be scheduled. Previous results are kept. |
 | Invalid override | The bad field (a limit that isn't a positive whole number, an unknown flag) is marked on the form. Nothing runs. |
+| Cancelled | "Generation was cancelled." Nothing is saved; previous results are kept. |
 | Unexpected error | "Schedule generation failed unexpectedly" with the reason. Previous results are kept. |
 
 Large limits can take a long time to solve; try a small number first.
