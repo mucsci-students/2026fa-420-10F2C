@@ -1,219 +1,166 @@
-# 2026fa-420-10F2C
+# 2026fa-420-10F2C — Course Scheduler
 
-## Contributors
-Calvin Becker,
-Alan Reider, 
-Henry Malesker, 
-Joseph Lucks, 
-Samsong Tamang, 
-James Liranzo, 
+A web application for building, validating and solving university course-scheduling configurations, with a web GUI organized into three modes: **Configuration Editor**, **Schedule Generator** and **Schedule Viewer**. It is built on the [`course-constraint-scheduler`](https://github.com/mucsci/scheduler) library, which uses the Z3 solver to find schedules that satisfy every hard constraint (faculty availability, room and lab capacity, course conflicts, meeting patterns).
 
-# Course Scheduler
+The Sprint 1 command-line shell is still included and shares the same model code (see [Command-line shell](#command-line-shell-sprint-1)).
 
-An interactive command-line tool for building, validating, and solving university course scheduling configurations. It wraps the [`course-constraint-scheduler`](https://pypi.org/project/course-constraint-scheduler/) library, which uses the Z3 solver to find schedules that satisfy every hard constraint (faculty availability, room and lab capacity, course conflicts, meeting patterns).
+**Contributors:** Calvin Becker, Alan Reider, Henry Malesker, Joseph Lucks, Samsong Tamang, James Liranzo
 
-## Install and Start
+## Contents
 
-**Prerequisites:** Python 3.14+, [uv](https://docs.astral.sh/uv/), and Git.
+- [Install and start](#install-and-start)
+- [The three modes](#the-three-modes)
+- [Representative workflow](#representative-workflow)
+- [Configuration Editor](#configuration-editor)
+- [Schedule Generator](#schedule-generator)
+- [Schedule Viewer](#schedule-viewer)
+- [Behavior shared by every page](#behavior-shared-by-every-page)
+- [Architecture (MVC)](#architecture-mvc)
+- [Running the tests](#running-the-tests)
+- [Command-line shell (Sprint 1)](#command-line-shell-sprint-1)
+- [Developer reference](#developer-reference)
+
+## Install and start
+
+**Prerequisites:** [uv](https://docs.astral.sh/uv/) and Git. The project requires Python 3.14 (`pyproject.toml`, `.python-version`); if it isn't installed, `uv` downloads it automatically.
 
 ```bash
-git clone git@github.com:mucsci-students/2026fa-420-10F2C.git
+# install uv if you don't have it (it is not preinstalled on the department Arch machines)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+
+git clone https://github.com/mucsci-students/2026fa-420-10F2C.git
 cd 2026fa-420-10F2C
-uv sync                      # creates a venv and installs pinned dependencies
-uv run python main.py        # starts the shell (run from the repo root)
-uv run pytest                # optional: run the test suite
+uv sync                                  # creates .venv and installs pinned dependencies
+uv run python manage.py runserver        # starts the web GUI
 ```
 
-On startup the shell auto-loads the example dataset (`app/examples/config_example.json`), so you can explore immediately.
+Then open **http://127.0.0.1:8000/** in a browser. Run every command from the repository root.
 
-## Getting Help
+- No database and no migrations are needed. Each browser gets its own in-memory session (configuration plus schedules); it is lost when the server stops, so **save** your configuration and **export** schedules you want to keep.
+- A new browser session starts with the example configuration (`app/examples/config_example.json`) loaded, so every page has data to explore immediately.
+- To reach the server from another machine (for example when working over SSH), run `uv run python manage.py runserver 0.0.0.0:8000` and browse to that host's address on port 8000.
+- Running plain `python manage.py ...` without `uv run` fails with `ModuleNotFoundError`: the dependencies live in `.venv`.
 
-At the main menu, type `help` to list every available command. Every menu also has a `0. Back` option, and each prompt states what it expects (for example `(y/n)` or `HH:MM`).
+## The three modes
 
-## Interaction Model and Command Structure
+Every page has the same navigation bar with links to **Home**, **Configuration Editor**, **Schedule Generator** and **Schedule Viewer**, a status indicator for the configuration (**none loaded**, **Unsaved changes**, or **no unsaved changes**), and a **Dark mode** toggle.
 
-The shell is a **guided, numbered-menu** interface. It holds one in-memory session (the current configuration plus any generated schedules) for the whole run.
-
-```
-1. Configuration               -> Faculty, Courses, Rooms, Labs, Time Slots,
-                                  Class Meeting Patterns, Meetings, Global Settings
-2. Run Scheduler
-3. View / Export Schedules
-4. Config File (new / load / save / print / validate)
-0. Exit
-```
-
-Each entity menu offers **Add / Modify / Delete / View**. Time Slots also offers global timing options (max gap / min overlap), and Global Settings covers the generation limit and optimizer flags.
-
-Equivalent typed commands are also accepted at the main menu, in the form `<area> <action>`:
-
-| Command | Actions |
+| Mode | What it is for |
 |---|---|
-| `faculty` | `add`, `modify`, `delete`, `view` |
-| `course`, `lab`, `room`, `pattern`, `meeting` | `add`, `modify`, `delete` |
-| `timeslot` | `add`, `modify`, `delete`, `timing` |
-| `settings` | `limit N`, `limit --reset`, `enable-flag F`, `disable-flag F` |
-| `config` | `new`, `print`, `load <path>`, `save [path]`, `validate` |
-| `schedule` | `generate [--limit N]`, `summary`, `view <index>`, `clear`, `export <json\|csv> <path> [--index N] [--overwrite]` |
+| **Configuration Editor** | Create, load, edit, validate and save a scheduler configuration. Eight areas: Time Slots, Rooms, Labs, Courses, Faculty, Class Patterns, Meetings, Global Settings. |
+| **Schedule Generator** | Pick a configuration, optionally override the limit or optimizer flags for one run, and generate schedules. |
+| **Schedule Viewer** | Browse generated or loaded schedules, load schedules from a file, export them as JSON or CSV, and clear them. |
 
-## Configurations: Create, Load, Validate, Save
+## Representative workflow
 
-From **Main menu -> 4. Config File** (or the `config` commands):
+This walk-through touches all three modes, starting from a fresh browser session (the example configuration is already loaded).
 
-- **New:** starts a fresh configuration seeded with one placeholder room, course, faculty member, and class pattern (the library does not accept a completely empty configuration). Edit or delete the placeholders as you build real data.
-- **Load:** reads and validates a JSON file. Leaving the path blank loads the example config.
-- **Validate:** re-checks the entire current configuration and reports whether it is valid.
-- **Save:** writes the configuration as JSON. Leaving the path blank reuses the last loaded or saved path.
-- **Print:** shows the current configuration as JSON.
+1. **Configuration Editor → Rooms → Add room.** Enter `Roddy 150`, capacity `30`. The room appears in the list and the navigation bar now shows **Unsaved changes**.
+2. **Configuration Editor → Rooms**, try to delete `Roddy 136`. Its **Delete** button is disabled, and the row lists the courses that still use the room. Remove the room from those courses first, or leave it.
+3. **Configuration Editor → Global Settings.** Set the generation limit to `5`, tick `pack_rooms`, and click **Save settings**. The page confirms each change.
+4. **Configuration Editor → Validate configuration.** "Configuration is valid" appears. Click **Save configuration**; the browser downloads the JSON file and the status returns to **no unsaved changes**.
+5. **Schedule Generator.** Leave the one-run fields alone (or change them — they never alter the saved configuration) and click **Generate schedules**. The button shows a busy state, and on success you land in the Schedule Viewer.
+6. **Schedule Viewer.** Step through the schedules with **Previous** / **Next**, and switch between the course, room and faculty views.
+7. **Schedule Viewer → Export → Export All Schedules (JSON).** The file downloads.
+8. **Schedule Viewer → Clear schedules**, confirm. Then **Load schedules from a file** with the JSON from step 7: the same schedules come back without running the solver again.
 
-The shell tracks unsaved changes and offers to save before you exit, start a new configuration, or load another one.
+## Configuration Editor
 
-## Generating and Exporting Schedules
+### Configuration lifecycle
 
-1. **Main menu -> 2. Run Scheduler.** Enter a generation limit, or leave it blank to use the configuration's own limit. Large limits can take a while to solve, so try a small number first.
-2. The result is one of: success, no feasible schedule, invalid configuration, or a solver error. Each is reported with its own message.
-3. **Main menu -> 3. View / Export Schedules** lets you see a summary, view one schedule by index, clear results, or export.
-4. **Export** takes a format (`json` or `csv`), an output path, and an optional schedule index (blank exports all schedules). An existing file is never overwritten unless you confirm overwrite (`--overwrite` on the command line).
+The editor home page shows the current configuration (file name, unsaved-changes state, how many items each area holds) and four actions:
 
-## Invalid Data and Referenced-Item Deletion
+- **New configuration** starts a fresh configuration seeded with one placeholder room, course, faculty member and class pattern. The scheduler library does not accept a completely empty configuration, so edit or replace the placeholders as you add real data.
+- **Load configuration** uploads a JSON file and validates it completely before replacing anything. If the file is not valid JSON or is not a valid configuration, the problems are listed under the file field and the current configuration is kept exactly as it was.
+- **Save configuration** validates, then downloads the configuration as JSON (named after the file it was loaded from, or `scheduler_config.json`). It is serialized through the library's own Pydantic model.
+- **Validate configuration** re-checks the entire configuration through the library and lists any problems.
 
-**Invalid data.** Numeric and time prompts re-ask or reject bad input instead of crashing. Every add, modify, and delete runs inside the library's edit mode, which re-validates the *complete* configuration. If the edit would make it invalid, the change is rolled back, the previous valid configuration stays intact, and a message names the affected area (for example `Could not save changes, previous version kept: ...`). A failed load likewise leaves the current configuration untouched.
+**Unsaved-changes protection.** Any successful edit marks the configuration as having unsaved changes. Before **New** or **Load** would discard unsaved changes or loaded schedules, the form says exactly what will be lost and requires you to tick a confirmation box. Saving clears the flag.
 
-**Referenced items.** Deleting a room, lab, or faculty member that a course still references is blocked, and the message lists the courses that reference it. Deleting the last section of a course is blocked while other courses list it as a conflict or a faculty member lists it as a preference. Other safeguards: the last time block on a weekday and the last meeting in a class pattern cannot be deleted. Every delete asks for confirmation first.
+### Configuration areas
 
-## Example Session
+Every area offers add, edit and delete, with forms that label each field and mark the required ones.
 
-```
-$ uv run python main.py
-Loaded example configuration from 'app/examples/config_example.json'.
+| Area | What you edit |
+|---|---|
+| **Time Slots** | Time blocks per weekday (start, end, spacing between start times), plus the global timing options *Maximum time gap* and *Minimum time overlap* (minutes). |
+| **Rooms** / **Labs** | Name, capacity, features. |
+| **Courses** | Course ID, credits, capacity, candidate rooms and labs, conflicts, eligible faculty. |
+| **Faculty** | Name, credit limits, unique-course limit, available times, mandatory and maximum days, course/room/lab preferences. |
+| **Class Patterns** | Credits, optional fixed start time, enabled. Patterns have no name, so they are numbered by position. A new pattern needs one meeting, so the Add form takes the first. |
+| **Meetings** | Day, duration, lab meeting, delivery mode, optional start time, on any pattern. |
+| **Global Settings** | Saved generation limit (a positive whole number; **Reset limit to default** sets it to 10) and the seven optimizer flags, each with a plain-language description shown under the checkbox and as a tooltip. |
 
-Select: 1                       # Configuration
-Select: 3                       # Rooms
-Select: 1                       # Add Room
-Enter the room's name: Roddy 150
-Enter the room's max student capacity: 30
-  Features this room provides (comma-separated, blank for none):
-  Restrict this room's availability? (y/n, default n = available any time): n
-Room added.
+### Invalid data
 
-Select: 3                       # Delete Room
-What is the name of the room you want to remove? Roddy 136
-Cannot delete 'Roddy 136': still referenced by CMSC 140, CMSC 140, ...
- -- remove this room from those courses first.
+Every add, edit and delete runs through the library's edit mode, which re-validates the **whole** configuration on a copy. If the change would make the configuration invalid, it is rejected, the error appears on the form next to the field or area it concerns, and the configuration stays exactly as it was. A meeting longer than every time block on its day is accepted with a warning that schedules needing it may not be feasible.
 
-Select: 0 / 0                   # back to main menu
-Select: 2                       # Run Scheduler
-Schedule generation limit (blank = use config's limit): 3
-Generated 3 schedule(s).
+### Deleting and renaming referenced items
 
-Select: 3 / 3                   # View / Export -> Export
-Format (json/csv): csv
-Output file path: schedules.csv
-Export a single index, or blank for all:
-Overwrite if it exists? (y/n): n
-Exported to '/.../schedules.csv'.
+- **Blocked deletes.** A room, lab, faculty member or course that something else still refers to (a course's candidate list, a conflict, a faculty preference) cannot be deleted. Its **Delete** button is disabled and the page lists what refers to it, so you can see the references before trying.
+- **Other guards.** The last time block on a weekday and the only meeting in a pattern cannot be deleted. Deleting a pattern lists the meetings it removes; if a course would be left with no usable pattern, the change is rejected and nothing is removed.
+- **Confirmation.** Every delete asks for confirmation first.
+- **Renames propagate.** Renaming a room, lab, faculty member or course shows a confirmation page listing every reference that will be updated. Confirming renames the item and all of its references in one validated step.
 
-Select: 0 / 4 / 3               # Config File -> Save
-Path to save to (blank = reuse last path): my_config.json
-Saved configuration to 'my_config.json'.
-```
+## Schedule Generator
 
-## Loading and Exporting Schedules (Schedule Viewer)
-## Error Messages and Error Pages (all modes)
+1. **Configuration to run.** Configurations you load or save in this browser session are kept as snapshots. Pick one from the selector to make it the active configuration. Switching clears schedules generated from the previous configuration, so save unsaved edits first.
+2. **One-run overrides (optional).** A generation limit and a set of optimizer flags that apply **to this run only**. They never change the saved configuration; to change the saved values, use **Configuration Editor → Global Settings**. The flag checkboxes start with the configuration's saved flags ticked.
+3. **Generate schedules.** While the solver runs, the button is disabled and a busy banner is shown; a second run in the same session is refused until the first finishes.
 
-Problems are always shown inside the app, never only in the terminal:
+The result is always one of:
 
-- **Problems you can fix** (a value out of range, a file that isn't valid JSON, a change the scheduler rejects) appear on the page you're on, next to the field or form, starting with **"Error:"**. Whatever was loaded before stays as it was. For example, a failed schedule import keeps the schedules already in the Viewer.
-- **Unexpected problems** (a bug) show a **"Something went wrong"** page with the usual navigation, what to do next, and a short reference code. Nothing is restarted, so you can go back and keep working; only the last action may not have been applied. The full technical report, with the same reference code, is printed in the terminal running the server. In development mode (`DEBUG = True`) a folded "Technical details" line on the page shows the error type and message, but never a traceback.
-- **Pages that don't exist** (an old link, a removed item) show a friendly **"Page not found"** page with links to the three modes.
+| Outcome | What you see |
+|---|---|
+| Success | "Generated N schedule(s)." and the Schedule Viewer opens with the new results. |
+| No feasible schedule | A warning that no schedule satisfies every hard constraint. Previous results are cleared. |
+| Invalid configuration | The library's reason the configuration can't be scheduled. Previous results are kept. |
+| Invalid override | The bad field (a limit that isn't a positive whole number, an unknown flag) is marked on the form. Nothing runs. |
+| Unexpected error | "Schedule generation failed unexpectedly" with the reason. Previous results are kept. |
 
-Code: `gui/middleware.py` (catches unexpected errors and logs them), `gui/views_errors.py` and `gui/templates/gui/error.html` / `not_found.html` (the pages); `config/urls.py` sets them as Django's `handler404` / `handler500`.
+Large limits can take a long time to solve; try a small number first.
 
-## Empty States (all modes)
+## Schedule Viewer
 
-Pages never show up blank. When there is nothing to show yet, they say so and offer the next step:
+<!-- The navigation and view-mode bullets below describe feature/schedule_view; keep them in step with that branch as it merges. -->
 
-- **No configuration loaded** (Configuration Editor and Schedule Generator): **New Configuration** and **Load Configuration** buttons jump to those sections of the Configuration Editor. **Generate schedules** stays disabled until a configuration is loaded.
-- **No schedules yet** (Schedule Viewer): links to the Schedule Generator and to loading a schedule file. Export and Clear are disabled until there are schedules.
+The viewer shows whatever schedules are currently available, whether generated or loaded from a file.
 
-Code: `gui/templates/gui/components/no_config_actions.html`.
+- **Navigation.** The page shows how many schedules are available and which one you are viewing. **Previous** and **Next** step through them (they are disabled at either end), and `?schedule=N` in the address links straight to one.
+- **Views.** One schedule at a time as a weekly overview, in three views:
+  - **Course** — each meeting labelled by course section.
+  - **Room** — grouped by room and lab; lab meetings appear under the lab, other meetings under the room.
+  - **Faculty** — grouped by faculty member.
 
-## Class Patterns and Meetings (Configuration Editor)
+### Loading schedules
 
-**Configuration Editor -> Class Patterns** and **-> Meetings** manage `time_slot_config.classes`. Patterns have no name, so they are numbered by position.
+**Load schedules from a file**: choose a `.json` file and click **Load schedules**.
 
-- **Class patterns:** add, edit (credits, optional fixed start time, enabled) and delete. A new pattern needs one meeting, so the Add form takes the first; editing a pattern keeps its meetings.
-- **Meetings:** add, edit and delete a meeting on any pattern (day, duration, lab, delivery mode, optional start time). A pattern's **only meeting cannot be deleted** (delete the pattern instead).
-- **Invalid data:** every change re-validates the whole configuration. A rejected change shows what is wrong on the form and leaves the configuration as it was.
-- **Deletion:** nothing in the configuration points at a pattern by name, so there is no reference list. Deleting a pattern asks for confirmation and lists the meetings it removes; if a course would be left with no usable pattern, the scheduler rejects the change and nothing is removed.
-- **Fit warning:** a meeting longer than every time block on its day is accepted, with a warning that schedules needing it may not be feasible.
-
-Code: `gui/controllers/patterns.py` and `gui/controllers/meetings.py` (Controller), `gui/views_patterns.py` and `gui/views_meetings.py` (View), `gui/forms.py` (forms).
-
-## Selecting a Saved Configuration for Generation
-
-The Schedule Generator keeps validated configurations that you load or save in the current browser session. Use the **Configuration to run** selector to switch between those saved snapshots before generating schedules. Selecting a snapshot restores it as the active configuration and clears schedules generated from the previous configuration; unsaved edits should be saved first if they need to be retained.
-
-## Global Settings (Configuration Editor)
-
-**Configuration Editor -> Global Settings** edits the saved generation limit and optimizer flags.
-
-- **Generation limit:** a positive whole number. **Reset limit to default** puts it back to 10. The limit can't be removed, because every configuration has one.
-- **Optimizer flags:** one checkbox per flag the scheduler library supports. Ticked flags are enabled; unticking a flag disables it. Each flag has a short plain-language description under its checkbox, which also appears as a tooltip when you hover over or focus it (for example, `pack_rooms`: "Try to use rooms back to back..."). The Schedule Generator's one-run flag checkboxes show the same descriptions. Descriptions live in `gui/constants.py` (`OPTIMIZER_FLAG_HELP`) and follow the scheduler library's own definitions. **Save settings** applies the limit and the flags together and reports each change ("Generation limit set to 50.", "Optimizer flag 'pack_labs' added.").
-- **Invalid data:** a limit of zero or less is rejected on the form, and a rejected change leaves the configuration as it was.
-- **Deletion:** nothing refers to these settings, so there are no references to block. "Deleting" a setting means unticking a flag or resetting the limit, and both are always allowed.
-- **Saved vs. one-run:** these are saved with the configuration. The Schedule Generator's one-run overrides never change them.
-
-Code: `gui/controllers/settings.py` (Controller), `gui/views_settings.py` (View), `gui/forms.py` (`GlobalSettingsForm`).
-
-## Loading States (all modes)
-
-While a file is loading or saving, the app shows that it is busy instead of looking frozen:
-
-- The button you pressed changes to **"Loading…"** (**"Validating…"** for Validate configuration), and a banner with a spinner appears at the top of the page. The form's buttons are greyed out and a second click is ignored, so a duplicate request can't be sent.
-- **Load configuration**, **Start new configuration**, **Validate** and **Load schedules** stay busy until the server answers. The next page, with its success or error message, replaces the loading state.
-- **Save configuration** and the **Export** buttons are downloads, which don't load a new page. They stay busy until the file arrives, and the banner then says "Download started." If something goes wrong, the error page or message replaces the loading state instead.
-- Without JavaScript every button still works; there is just no loading state.
-
-How it works: `gui/static/gui/js/loading.js` (loaded by `gui/templates/gui/base.html`, which also holds the `#loading-status` banner) acts on any form with `data-loading="Message"`. For downloads (`data-loading-download`) it sends a random `download_token`, and `download_response()` in `gui/views.py` sends it back in a short-lived cookie with the file, which tells the page the download has finished.
-
-## Loading Schedules (Schedule Viewer)
-
-**Schedule Viewer -> Load schedules from a file**: choose a `.json` file and click **Load schedules**.
-
-- The whole file is checked before anything changes. If it is not valid JSON, is a configuration file instead of a schedule file, or has an invalid entry, the errors appear under the file field (up to five specific problems, each naming the schedule and course), and the schedules already loaded stay as they were.
-- A file that isn't a schedule file at all (a configuration file, a different `format`, or JSON with no schedules) is reported as "This is not a supported schedule format", with a hint such as "Load it from the Configuration Editor instead." for configuration files.
+- The whole file is checked before anything changes. If it is not valid JSON, is a configuration file, or has an invalid entry, up to five specific problems (each naming the schedule and course) appear under the file field and the current schedules stay as they were.
+- A file that isn't a schedule file at all is reported as "This is not a supported schedule format", with a hint such as "Load it from the Configuration Editor instead." for configuration files.
 - If schedules are already loaded, you must tick **Replace the N schedule(s) currently loaded** first.
-- Loaded schedules don't need a configuration, and the scheduler doesn't rerun.
+- Loaded schedules don't need a configuration, and the solver does not rerun.
 
-### Exporting schedules (JSON and CSV)
-
-**Schedule Viewer -> Export** has two rows of buttons:
+### Exporting schedules
 
 | Button | Downloads |
 |---|---|
-| **Export This Schedule (JSON)** | The schedule picked in the list (the one you are viewing is preselected), as `schedule-<n>.json` |
+| **Export This Schedule (JSON)** | The selected schedule (the one you are viewing is preselected), as `schedule-<n>.json` |
 | **Export This Schedule (CSV)** | The same schedule as `schedule-<n>.csv` |
 | **Export All Schedules (JSON)** | Every available schedule in one file, `schedules-all-<count>.json` |
 | **Export All Schedules (CSV)** | Every available schedule in one file, `schedules-all-<count>.csv` |
 
-- **JSON** uses the format below, so a single schedule or the whole set can be loaded back into the viewer later without rerunning the scheduler.
-- **CSV** (the Sprint 1 export) is for spreadsheets: one row per meeting with the columns `schedule, course, faculty, room, lab, day, start, end, duration_minutes, lab_meeting`. A section with no meetings (for example an online course) gets one row with blank meeting columns. The `schedule` column keeps the number shown in the viewer. CSV files can't be loaded back into the viewer; use JSON for that.
-- Export buttons are disabled until schedules are generated or loaded. Exporting never changes the loaded schedules.
-
-**Overwrite protection:** exports are browser downloads. Your browser chooses where the file goes and asks before replacing an existing file (or renames the new one). The application never writes to a path on your computer, so it cannot overwrite your files.
+- **JSON** uses the format below, so a single schedule or the whole set can be loaded back later.
+- **CSV** is for spreadsheets: one row per meeting with the columns `schedule, course, faculty, room, lab, day, start, end, duration_minutes, lab_meeting`. A section with no meetings (for example an online course) gets one row with blank meeting columns. CSV can't be loaded back into the viewer; use JSON for that.
+- Export buttons are disabled until there are schedules. Exporting never changes the loaded schedules.
+- **Overwrite protection:** exports (and configuration saves) are browser downloads. The browser decides where the file goes and asks before replacing an existing file, or renames the new one. The application never writes to a path on your computer, so it cannot overwrite your files.
 
 ### Clearing schedules
 
-**Schedule Viewer -> Clear schedules** removes every schedule from the viewer (generated or loaded).
+**Clear schedules** removes every schedule from the viewer, generated or loaded. It always asks first ("Remove all N schedules from the viewer? This cannot be undone."). Only the schedules are removed; the configuration stays loaded. The button is disabled with "Nothing to clear yet." when there are no schedules.
 
-- It always asks first: "Remove all N schedules from the viewer? This cannot be undone." **Clear schedules** removes them; **Cancel** keeps them. Export them first if you want to keep a copy.
-- The button is disabled, with "Nothing to clear yet.", when there are no schedules.
-- Only the schedules are removed. The configuration stays loaded.
-
-Code: `clear_schedules()` in `gui/controllers/schedule_controller.py` (Controller), `schedule_clear` in `gui/views.py` and `gui/templates/gui/schedules_clear.html` (View).
-
-### Supported schedule JSON format (version 1)
+### Schedule JSON format (version 1)
 
 ```json
 {
@@ -237,27 +184,100 @@ Code: `clear_schedules()` in `gui/controllers/schedule_controller.py` (Controlle
 ```
 
 - `schedules` is a list of schedules; each schedule is a list of course assignments.
-- `faculty`, `room`, and `lab` are names or `null`. `meetings` may be empty (for example, an online course).
-- `day` is `MON`-`FRI`; times are 24-hour `HH:MM`. A meeting needs `duration` (minutes) or `end`; if both are given, `duration` is used.
-- Also accepted: **a single schedule** (just the list of assignments), **a bare list of schedules** (the scheduler library's `JSONWriter` output, where `meetings` may be called `times`), and meetings written as `"MON 09:00-09:50"`.
+- `faculty`, `room` and `lab` are names or `null`. `meetings` may be empty (for example an online course).
+- `day` is `MON`–`FRI`; times are 24-hour `HH:MM`. A meeting needs `duration` (minutes) or `end`; if both are given, `duration` is used.
+- Also accepted: a single schedule (just the list of assignments); a bare list of schedules, as written by the scheduler library's `JSONWriter` (where `meetings` may be called `times`); and meetings written as `"MON 09:00-09:50"`.
 - Rejected: a `version` newer than 1, a different `format` value, and files over 5 MB.
 
-Code: `app/schedule_io.py` (Model: format and validation), `gui/controllers/schedule_controller.py` (Controller), `gui/views.py` + `gui/templates/gui/schedule_viewer.html` (View).
+## Behavior shared by every page
 
-### Shared building blocks (for developers)
+### Errors and error pages
 
-Use these instead of rewriting them in each feature:
+- **Problems you can fix** (a value out of range, a file that isn't valid JSON, a change the scheduler rejects) appear on the page you are on, next to the field or form, starting with **"Error:"**. Whatever was loaded before stays as it was.
+- **Unexpected problems** show a **"Something went wrong"** page with the normal navigation, what to do next and a short reference code. Nothing is restarted; only the last action may not have been applied. The full technical report, with the same reference code, is printed in the terminal running the server. In development mode (`DEBUG = True`) a folded "Technical details" line shows the error type and message, never a traceback.
+- **Pages that don't exist** show a **"Page not found"** page with links to the three modes.
+
+### Empty states
+
+Pages never appear blank. With no configuration loaded, the Configuration Editor and Schedule Generator offer **New Configuration** and **Load Configuration** buttons, and **Generate schedules** is disabled. With no schedules, the Schedule Viewer links to the generator and to loading a file, and Export and Clear are disabled.
+
+### Loading states
+
+While a file loads, saves, validates or generates, the button you pressed changes to a busy label ("Loading…", "Validating…") and a banner with a spinner appears at the top of the page. The form's buttons are greyed out and a second click is ignored. Downloads (Save, Export) stay busy until the file arrives, then the banner says "Download started." Without JavaScript every button still works, just without the busy state.
+
+### Usability and accessibility
+
+- Every action is reachable with the keyboard (Tab / Shift+Tab, Enter, Space); forms use real labels tied to their fields.
+- Status never relies on colour alone: the unsaved-changes indicator is text, errors begin with "Error:", disabled actions say why they are disabled.
+- Destructive actions (delete, clear, replacing loaded data, starting a new configuration over unsaved work) always ask for confirmation.
+- Controls whose purpose isn't obvious, such as the optimizer flags and timing options, have help text and tooltips.
+- Light and dark themes; the **Dark mode** toggle remembers your choice in this browser.
+
+## Architecture (MVC)
+
+The GUI follows Model–View–Controller. User actions go through a controller; views never run scheduler workflows themselves, and models never build web responses.
+
+```
+ Browser ──HTTP──▶ View (gui/views*.py)          parse the request, pick a form, render a template
+                     │  calls
+                     ▼
+                  Controller (gui/controllers/)  validate the request, run the workflow,
+                     │  calls                      raise ControllerError for fixable problems
+                     ▼
+                  Model (app/ + scheduler lib)   configuration, edits, generation, schedule files
+```
+
+| Layer | Where | Responsibility |
+|---|---|---|
+| **Model** | `app/session.py` | `Session`: the current `CombinedConfig`, available schedules, unsaved-changes flag, saved configuration snapshots. Load/save through the library's Pydantic models. |
+| | `app/crud.py` | `apply_edit()`: every configuration change runs inside the library's `edit_mode()`, so only a fully valid configuration is ever stored. |
+| | `app/schedule_ops.py` | Schedule generation through `Scheduler`, reported as a `GenerationOutcome`. |
+| | `app/schedule_io.py` | Neutral schedule records (`Assignment`, `MeetingTime`) used by both generated and loaded schedules; JSON/CSV reading, writing and validation. |
+| | `course-constraint-scheduler` | The configuration models, validation rules and Z3 solver. Validation is never reimplemented in this project. |
+| **Controller** | `gui/controllers/` | One module per area: `config_controller.py` (lifecycle), `timeslots.py`, `rooms.py`, `labs.py`, `courses.py`, `faculty.py`, `patterns.py`, `meetings.py`, `settings.py`, `schedule_controller.py` (generate, load, export, clear). `errors.py` defines `ControllerError` / `FieldError`; `uploads.py` reads uploaded files safely. Controllers return plain data and never touch templates or `HttpResponse`. |
+| **View** | `gui/views.py`, `gui/views_*.py` | Thin request handlers: call a controller, then redirect with a message or re-render the form with its errors. `views_errors.py` renders the error pages. |
+| | `gui/templates/gui/` | Pages and shared components (`components/`), including `base.html` (navigation, status, loading banner). |
+| | `gui/forms.py` | Django forms: field types, labels, help text, confirmation checkboxes. |
+| | `gui/static/gui/` | CSS and JavaScript (`loading.js` for busy states, `theme.js` for dark mode). |
+| **Glue** | `gui/session_store.py` | Gives each browser its own `Session` (keyed by an id in a signed-cookie session). |
+| | `gui/middleware.py` | Turns unexpected exceptions into the friendly error page and logs the traceback. |
+| | `config/` | Django settings and root URL configuration; `gui/urls.py` maps each URL to a view. |
+
+The Sprint 1 shell (`app/shell.py`, `app/commands/`) uses the same Model layer, which is why both interfaces validate and save configurations identically.
+
+## Running the tests
+
+```bash
+uv run pytest            # whole suite
+uv run pytest tests/test_gui_rooms_labs.py -q   # one file
+```
+
+The tests live in `tests/`: `test_crud_*` and `test_schedule_*` cover the model and CLI layer, `test_gui_*` cover the controllers and pages through Django's test client.
+
+## Command-line shell (Sprint 1)
+
+```bash
+uv run python main.py
+```
+
+A numbered-menu interface over the same model code: configuration CRUD for every area, generate, view and export schedules, and new/load/save/validate. Type `help` at any menu prompt for that screen's options; `0` goes back. The web GUI is the Sprint 2 interface; the shell is kept for reference.
+
+## Developer reference
+
+Shared building blocks — use these instead of rewriting them per feature:
 
 | Need | Use | Where |
 |---|---|---|
-| Read the schedules in the session (generated or loaded) as rows | `get_schedule(request, i)`, `get_schedules(request)`, `schedule_count(request)` | `gui/controllers/schedule_controller.py` |
+| Apply a configuration change safely | `apply_edit()` via the controller helpers in `gui/controllers/common.py` | `app/crud.py` |
+| Read the session's schedules (generated or loaded) as rows | `get_schedule(request, i)`, `get_schedules(request)`, `schedule_count(request)` | `gui/controllers/schedule_controller.py` |
 | Store new results (generate, load, clear) | `replace_schedules(request, schedules)` | same |
 | One schedule row: course, faculty, room, lab, meetings | `Assignment`, `MeetingTime` | `app/schedule_io.py` |
 | Write schedules as JSON / CSV | `schedules_to_json(...)`, `schedules_to_csv(...)` | same |
-| Build a download (one schedule or all, JSON or CSV) | `export_schedules(request, index_or_None, "json"\|"csv")` -> `ExportFile` | `gui/controllers/schedule_controller.py` |
-| Show a loading state while a form submits (and ignore double clicks) | `<form ... data-loading="Generating schedules…">`; add `data-loading-download` if the answer is a file download, and pass `download_token(request)` to `download_response(...)` | `gui/static/gui/js/loading.js`, `gui/views.py` |
-| Export schedules as a JSON file (one, or all with `index=None`) | `export_schedule_json(request, index)` returns an `ExportFile` for `download_response` | `gui/controllers/schedule_controller.py` |
+| Build a download (one schedule or all, JSON or CSV) | `export_schedules(request, index_or_None, "json"\|"csv")` → `ExportFile` | `gui/controllers/schedule_controller.py` |
 | Read an uploaded file (empty/unreadable/too large handled) | `read_upload(uploaded_file, "field_name")` | `gui/controllers/uploads.py` |
+| Report a fixable problem on a form | `raise ControllerError([FieldError("field", "message")])` | `gui/controllers/errors.py` |
 | "Tick to confirm" before replacing or discarding data | `ConfirmReplaceMixin` + `require_confirmation(...)` | `gui/forms.py` |
-| Send a file download (overwrite-safe save/export) | `download_response(filename, content, content_type)` | `gui/views.py` |
+| Send a file download | `download_response(filename, content, content_type, download_token(request))` | `gui/views.py` |
+| Show a loading state on submit (and ignore double clicks) | `<form ... data-loading="Generating schedules…">`, plus `data-loading-download` for downloads | `gui/static/gui/js/loading.js` |
 | Render a whole form (errors + every field) | `{% include "gui/components/form_fields.html" with form=my_form %}` | `gui/templates/gui/components/` |
+| "No configuration" actions on an empty page | `{% include "gui/components/no_config_actions.html" %}` | same |
