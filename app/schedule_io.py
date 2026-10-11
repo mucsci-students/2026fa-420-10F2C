@@ -300,6 +300,10 @@ def _meeting_from_data(obj: Any, where: str) -> MeetingTime:
 
 
 def _parse_day(value: Any, where: str) -> str:
+    # The scheduler library serializes weekdays as ISO-style numbers (1=MON
+    # through 5=FRI), while the schedule file format uses weekday names.
+    if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= len(DAYS):
+        return DAYS[value - 1]
     if isinstance(value, str) and value.strip()[:3].upper() in DAYS:
         return value.strip()[:3].upper()
     raise ScheduleFileError(f"{where}: {value!r} is not a weekday (use MON, TUE, WED, THU, or FRI).")
