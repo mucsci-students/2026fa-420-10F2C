@@ -1,5 +1,5 @@
 """Configuration lifecycle commands."""
-
+from scheduler.config import CombinedConfig
 from app.session import ConfigError
 
 
@@ -38,7 +38,7 @@ def revalidate(session):
     plain-language messages. Raises ConfigError when nothing is loaded."""
     config = session.require_config()
     try:
-        type(config).model_validate(config.model_dump())
+        validate_combined_config_data(config.model_dump())
     except Exception as error:  # noqa: BLE001 -- library validation type is not stable
         return error
     return None
@@ -51,3 +51,13 @@ def validate_config(session):
         print(f"Configuration is INVALID: {error}")
         return
     print("Configuration is valid.")
+
+
+def validate_combined_config_data(data):
+    """Validate plain configuration data against the complete CombinedConfig.
+
+    Returns the validated model. Raises the library's ValidationError if the
+    data is invalid; nothing is stored or changed. Single entry point for
+    whole-configuration validation (Sprint 2 Sections 3 and 10).
+    """
+    return CombinedConfig.model_validate(data)
