@@ -81,6 +81,21 @@ def test_accepts_library_style_times_key_and_string_meetings():
     assert a.meetings[1].start == "09:00" and a.meetings[1].end == "09:50"
 
 
+def test_accepts_scheduler_numeric_weekdays():
+    data = [[{"course": "CMSC 140.01", "times": [
+        {"day": 1, "start": 540, "duration": 50},
+        {"day": 5, "start": 600, "duration": 50},
+    ]}]]
+    [[assignment]] = schedule_io.parse_schedule_data(data)
+    assert [meeting.day for meeting in assignment.meetings] == ["MON", "FRI"]
+
+
+def test_rejects_boolean_weekday():
+    with pytest.raises(ScheduleFileError) as info:
+        schedule_io.parse_schedule_data([[{"course": "A", "meetings": [{"day": True, "start": "09:00", "duration": 50}]}]])
+    assert "not a weekday" in info.value.problems[0]
+
+
 def test_duration_wins_when_end_also_given():
     [[a]] = schedule_io.parse_schedule_data(
         [[{"course": "X", "meetings": [{"day": "MON", "start": "09:00", "end": "09:49", "duration": 50}]}]])
