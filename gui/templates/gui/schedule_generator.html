@@ -1,0 +1,62 @@
+{% extends "gui/base.html" %}
+{% load static %}
+{% block title %}Scheduler — Schedule Generator{% endblock %}
+{% block content %}
+<h1>Schedule Generator</h1>
+<p>Generate schedules from the selected saved configuration. Overrides below apply to this run only.</p>
+
+{% if config_form %}
+<form method="post" action="{% url 'gui:schedule_select_config' %}" class="edit-form">
+    {% csrf_token %}
+    {% include "gui/components/form_fields.html" with form=config_form %}
+    <button type="submit" class="btn">Use selected configuration</button>
+</form>
+{% endif %}
+
+{% if not data.has_config %}
+<div class="empty-state" role="status">
+    <h2>No configuration loaded</h2>
+    <p>Create or load a configuration in the <a href="{% url 'gui:config_editor' %}">Configuration Editor</a> before generating schedules.</p>
+    {% include "gui/components/no_config_actions.html" %}
+</div>
+<button type="button" class="btn btn-disabled" disabled>Generate schedules</button>
+{% elif generating and not job_active %}
+<div class="alert alert-info" role="status" aria-live="polite">
+    <span class="spinner" aria-hidden="true"></span> Schedule generation is in progress. Please wait.
+</div>
+{% endif %}
+
+{% if data.has_config %}
+<form method="post" class="edit-form" data-loading="Generating schedules" data-generation-form data-start-url="{% url 'gui:generation_start' %}" {% if generating %}aria-busy="true"{% endif %}>
+    {% csrf_token %}
+    <div id="generation-errors" class="alert alert-error" role="alert" hidden></div>
+    {% include "gui/components/form_errors.html" with form=form %}
+    {% include "gui/components/field.html" with field=form.limit %}
+    {% include "gui/components/field.html" with field=form.optimizer_flags %}
+    <p class="help">Saved generation limit: <strong>{{ data.limit }}</strong>. Saved optimizer flags are unchanged by this page.</p>
+    <button type="submit" class="btn btn-primary" {% if generating %}disabled aria-disabled="true"{% endif %}>Generate schedules</button>
+</form>
+{% endif %}
+
+<section id="generation-progress" class="progress-panel" aria-labelledby="generation-progress-title"
+         data-status-url="{% url 'gui:generation_status' %}" data-cancel-url="{% url 'gui:generation_cancel' %}"
+         {% if job_active %}data-active="true"{% else %}hidden{% endif %}>
+    <h2 id="generation-progress-title">Generating schedules</h2>
+    <progress class="progress-bar" max="100" aria-labelledby="generation-progress-title"></progress>
+    <p class="progress-text" data-progress-text>Checking progress&hellip;</p>
+    <p class="visually-hidden" role="status" data-progress-announce></p>
+    <button type="button" class="btn btn-danger" data-progress-cancel>Cancel generation</button>
+    <p class="help">The bar counts schedules found out of the limit, so it can stay empty while the solver works on the first one. Cancelling takes effect when the solver finishes the schedule it is working on, and your previous schedules are kept.</p>
+</section>
+
+{% if result %}
+<section class="result" aria-live="polite">
+    <h2>Generation result</h2>
+    <p>{{ result.message }}</p>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'gui/js/generation_progress.js' %}" defer></script>
+{% endblock %}

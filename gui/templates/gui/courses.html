@@ -1,0 +1,88 @@
+{% extends "gui/config_base.html" %}
+{% block title %}Scheduler — Courses{% endblock %}
+{% block config_content %}
+<p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; Courses</p>
+<div class="page-header">
+    <div>
+        <h1>Courses</h1>
+        <p class="page-intro">
+            Each card is one course section. Adding the same course ID again creates another section; sections are
+            numbered in list order (.01, .02, ...) unless they have a section ID. Courses have no unique name, so they
+            are numbered by position.
+        </p>
+    </div>
+</div>
+
+{% if not data.has_config %}
+<div class="empty-state" role="status">
+    <h2>No configuration is loaded</h2>
+    <p>Create or load a configuration in the <a href="{% url 'gui:config_editor' %}">Configuration Editor</a> before editing courses.</p>
+</div>
+{% else %}
+
+<a class="add-panel add-panel-link" href="{% url 'gui:course_add' %}">
+    <span>Add a course</span>
+</a>
+
+<h2 class="section-title">Current courses <span class="count-chip">{{ data.courses|length }}</span></h2>
+<div class="list-toolbar" data-filter-box hidden>
+    <input type="search" id="course-filter" placeholder="Search courses" aria-label="Search courses"
+           data-filter-input="#course-list" data-filter-status="#course-filter-status">
+    <p class="help" id="course-filter-status" aria-live="polite"></p>
+</div>
+<div class="card-grid" id="course-list">
+    {% for course in data.courses %}
+    <article class="item-card" data-filter-item>
+        <header class="item-card__head">
+            <h3 class="item-card__title">{{ course.display }}</h3>
+            <div class="chips">
+                <span class="chip">#{{ course.index }}</span>
+                <span class="chip chip--info">{{ course.credits }} credits</span>
+                <span class="chip">{{ course.capacity }} seats</span>
+                <span class="chip">{{ course.modality }}</span>
+            </div>
+        </header>
+        <dl class="item-card__facts">
+            <div>
+                <dt>Rooms</dt>
+                <dd>
+                    {% if course.rooms %}{{ course.rooms|join:", " }}{% else %}&mdash;{% endif %}
+                    {% if course.required_room_features %}<br><span class="help">Room needs: {{ course.required_room_features|join:", " }}</span>{% endif %}
+                </dd>
+            </div>
+            <div>
+                <dt>Labs</dt>
+                <dd>
+                    {% if course.labs %}{{ course.labs|join:", " }}{% else %}&mdash;{% endif %}
+                    {% if course.required_lab_features %}<br><span class="help">Lab needs: {{ course.required_lab_features|join:", " }}</span>{% endif %}
+                </dd>
+            </div>
+            <div>
+                <dt>Faculty</dt>
+                <dd>
+                    {% if course.faculty is not None %}{{ course.faculty|join:", " }}
+                    {% elif course.derived_faculty %}From preferences: {{ course.derived_faculty|join:", " }}
+                    {% else %}&mdash;{% endif %}
+                </dd>
+            </div>
+            <div>
+                <dt>Conflicts</dt>
+                <dd>{% if course.conflicts %}{{ course.conflicts|join:", " }}{% else %}&mdash;{% endif %}</dd>
+            </div>
+        </dl>
+        <footer class="item-card__foot">
+            <a class="btn" href="{% url 'gui:course_edit' course.index %}">Edit</a>
+            {% if course.can_delete %}
+            <a class="btn btn-danger" href="{% url 'gui:course_delete' course.index %}">Delete</a>
+            {% else %}
+            <span class="btn btn-disabled" aria-disabled="true">Delete</span>
+            <span class="chip chip--warn in-use">In use by {{ course.referenced_by|join:", " }}.</span>
+            {% endif %}
+        </footer>
+    </article>
+    {% empty %}
+    <div class="empty-state">No courses yet. Use &ldquo;Add course&rdquo; above.</div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

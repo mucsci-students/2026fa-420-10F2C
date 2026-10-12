@@ -1,0 +1,5 @@
+{% comment %}
+    One optimizer-flag checkbox (gui/forms.py OptimizerFlagsWidget, user story 53):
+    the label carries the description as a tooltip, and the description is also
+    shown underneath and linked to the checkbox with aria-describedby.
+{% endcomment %}<label for="{{ widget.attrs.id }}"{% if widget.help %} title="{{ widget.help }}"{% endif %}>{% include "django/forms/widgets/input.html" %} {{ widget.label }}</label>{% if widget.help %}<span class="option-help" id="{{ widget.attrs.id }}_help">{{ widget.help }}</span>{% endif %}

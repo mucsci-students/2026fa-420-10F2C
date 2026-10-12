@@ -1,0 +1,24 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Clear Schedules{% endblock %}
+{% block content %}
+<p class="breadcrumb"><a href="{% url 'gui:schedule_viewer' %}">Schedule Viewer</a> &rsaquo; Clear schedules</p>
+<div class="page-header">
+    <div>
+        <h1>Clear schedules</h1>
+    </div>
+</div>
+<div class="card">
+    <p>
+        Remove all <strong>{{ schedule_count }}</strong> schedule{{ schedule_count|pluralize }} from the viewer?
+        This cannot be undone. If you want to keep them, export them first.
+    </p>
+    <p class="help">Your configuration is not affected.</p>
+    <form method="post">
+        {% csrf_token %}
+        <div class="form-actions">
+            <button type="submit" name="action" value="confirm" class="btn btn-danger">Clear schedules</button>
+            <button type="submit" name="action" value="cancel" class="btn">Cancel</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

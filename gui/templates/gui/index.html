@@ -1,0 +1,24 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Home{% endblock %}
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Course Scheduler</h1>
+        <p class="page-intro">Choose a mode to get started:</p>
+    </div>
+</div>
+<div class="mode-grid">
+    <a class="mode-card" href="{% url 'gui:config_editor' %}">
+        <span class="mode-card__title">Configuration Editor</span>
+        <span class="mode-card__text">Create, load, edit, validate, and save a scheduler configuration.</span>
+    </a>
+    <a class="mode-card" href="{% url 'gui:schedule_generator' %}">
+        <span class="mode-card__title">Schedule Generator</span>
+        <span class="mode-card__text">Generate schedules from the current valid configuration.</span>
+    </a>
+    <a class="mode-card" href="{% url 'gui:schedule_viewer' %}">
+        <span class="mode-card__title">Schedule Viewer</span>
+        <span class="mode-card__text">Inspect, navigate, and export generated schedules.</span>
+    </a>
+</div>
+{% endblock %}

@@ -32,12 +32,13 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
-from itertools import islice
 from pathlib import Path
 from typing import Optional
 
 from scheduler import Scheduler
+from scheduler.config import OptimizerFlags
 from scheduler.writers import CSVWriter, JSONWriter
 
 DEFAULT_EXPORT_DIR = Path.cwd() / "exports"
@@ -49,6 +50,7 @@ class GenerationOutcome:
     NO_FEASIBLE_SCHEDULE = "no_feasible_schedule"
     INVALID_CONFIG = "invalid_config"
     RUNTIME_ERROR = "runtime_error"
+    CANCELLED = "cancelled"  # the user stopped a run in progress; nothing is stored
 
 
 @dataclass
@@ -58,7 +60,13 @@ class GenerationResult:
     schedules: list  # list of (list of CourseInstance); empty unless outcome == SUCCESS
 
 
-def generate_schedules(config, limit_override: Optional[int] = None) -> GenerationResult:
+def generate_schedules(
+    config,
+    limit_override: Optional[int] = None,
+    optimizer_overrides=None,
+    on_progress=None,
+    should_cancel=None,
+) -> GenerationResult:
     """Runs the scheduler's public API and reports one of the four outcomes
     Req #8 requires. Does not mutate session state -- the caller (a
     commands.py function) decides whether/how to store the result, e.g.
@@ -68,16 +76,45 @@ def generate_schedules(config, limit_override: Optional[int] = None) -> Generati
     # what validates completeness, this try/except covers it. If not, add
     # an explicit completeness check here once you've confirmed the
     # library's behavior (see module docstring).
+    run_config = config
+    if optimizer_overrides is not None:
+        run_config = deepcopy(config)
+        run_config.optimizer_flags = [OptimizerFlags(flag) for flag in optimizer_overrides]
+
     try:
-        engine = Scheduler(config)
+        engine = Scheduler(run_config)
     except Exception as e:  # noqa: BLE001 -- narrow once the real exception type is known
         return GenerationResult(GenerationOutcome.INVALID_CONFIG, str(e), [])
 
-    limit = limit_override if limit_override is not None else getattr(config, "limit", None)
+    limit = limit_override if limit_override is not None else getattr(run_config, "limit", None)
+
+    # The solver yields one schedule at a time, so progress is simply "schedules
+    # found so far" out of `limit`. Both hooks are optional:
+    #   on_progress(found, limit)  called after every schedule that is found
+    #   should_cancel()            polled between schedules; True stops the run
+    # A Z3 call that is already searching cannot be interrupted, so a cancel is
+    # noticed when the schedule being searched for comes back.
+    schedules: list = []
+
+    def cancelled() -> GenerationResult:
+        return GenerationResult(
+            GenerationOutcome.CANCELLED,
+            f"Generation was cancelled after {len(schedules)} schedule(s) were found. "
+            "Nothing was saved; your previous schedules are unchanged.",
+            [],
+        )
 
     try:
-        models = engine.get_models()
-        schedules = list(islice(models, limit)) if limit else list(models)
+        if should_cancel is not None and should_cancel():
+            return cancelled()
+        for schedule in engine.get_models():
+            schedules.append(schedule)
+            if on_progress is not None:
+                on_progress(len(schedules), limit)
+            if limit and len(schedules) >= limit:
+                break
+            if should_cancel is not None and should_cancel():
+                return cancelled()
     except Exception as e:  # noqa: BLE001 -- the Z3 layer; treat as unexpected runtime error
         return GenerationResult(GenerationOutcome.RUNTIME_ERROR, str(e), [])
 

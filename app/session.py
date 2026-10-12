@@ -16,7 +16,7 @@
 #                                                                                                                         #
 #   STILL UNCONFIRMED -- new_config()'s seed data below:                                                                 #
 #   `CombinedConfig(config={"rooms": [], ...})` raised 9 pydantic ValidationErrors        #
-#   requiring >=1 room/course/faculty, a time block for every weekday, and    #
+#   requiring >=1 room/course/faculty, a time block for every weekday, and               #
 #   >=1 class pattern -- an empty config is not a valid CombinedConfig. The              #
 #   seed values below are my best reconstruction from the JSON shapes seen               #
 #   in the Sprint 1 slides/docs (course_id, credits, room/lab lists, times as             #
@@ -36,6 +36,8 @@
 
 from __future__ import annotations
 
+import json
+import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -114,6 +116,10 @@ class Session:
     def __init__(self) -> None:
         self.config: Optional[CombinedConfig] = None
         self.config_path: Optional[Path] = None
+        # Display name of the file the config was last loaded from or saved as
+        # (the web GUI has no real path for an upload, only a name). Used to
+        # name the Save download. None for a new, never-saved configuration.
+        self.config_name: Optional[str] = None
         # Each generated schedule is whatever Scheduler.get_models() yields
         # (a list of CourseInstance, per the library's Python API docs).
         # Kept as a plain list so "schedule summary/view/clear" (Req #9)
@@ -124,6 +130,31 @@ class Session:
         # successful add/modify/delete; cleared here on new/load/save so
         # the shell can warn before exiting or discarding unsaved work.
         self.dirty: bool = False
+        # True while a schedule generation is running for this session (Section 13).
+        self.generating: bool = False
+        # The background app.generation_job.GenerationJob for this session, kept
+        # until its outcome has been reported to the browser (None otherwise).
+        self.generation_job = None
+        # JSON snapshots keyed by the file name shown in the GUI. Keeping
+        # snapshots rather than model instances makes switching atomic and
+        # reuses the same validation path as loading an uploaded file.
+        self.saved_configs: dict[str, str] = {}
+
+    def remember_config(self, name: str, content: Optional[str] = None) -> None:
+        """Store the current valid configuration as a selectable snapshot."""
+        if not name:
+            return
+        self.saved_configs[Path(name).name] = content if content is not None else self.dumps()
+
+    def saved_config_names(self) -> list[str]:
+        """Return selectable saved configuration names in stable order."""
+        return sorted(self.saved_configs)
+
+    def select_saved_config(self, name: str) -> None:
+        """Replace the active configuration with a validated saved snapshot."""
+        if name not in self.saved_configs:
+            raise ConfigError(f"No saved configuration named '{name}'.")
+        self.load_bytes(self.saved_configs[name].encode("utf-8"), name)
 
     # ---------------------------------------------------------------- #
     #  Configuration lifecycle (Req #4)                                #
@@ -144,6 +175,7 @@ class Session:
             raise ConfigError(f"Could not create new configuration: {e}") from e
 
         self.config_path = None
+        self.config_name = None
         self.schedules = []
         self.dirty = False
 
@@ -170,6 +202,7 @@ class Session:
         # Only swap state in after a fully successful load+validate.
         self.config = new_config
         self.config_path = p
+        self.config_name = p.name
         self.schedules = []
         self.dirty = False
 
@@ -187,8 +220,62 @@ class Session:
 
         target.write_text(self.config.model_dump_json(indent=2), encoding="utf-8")
         self.config_path = target
+        self.config_name = target.name
         self.dirty = False
         return target
+
+    # ---------------------------------------------------------------- #
+    #  Web/GUI helpers (a browser upload is bytes, a download is text) #
+    # ---------------------------------------------------------------- #
+    def load_bytes(self, raw: bytes, name: str = "the uploaded file") -> None:
+        """Load + validate a configuration from raw file bytes, e.g. a
+        browser upload. Same all-or-nothing rule as load(): the previous
+        config, schedules and dirty flag are only replaced after the
+        library has fully validated the new one; any failure raises a
+        ConfigError with a readable message and changes nothing.
+
+        The library's own loader only reads paths, so the bytes are written
+        to a throwaway folder first; that keeps this on exactly the same
+        loading code (and validation) as the CLI's load()."""
+        try:
+            data = json.loads(raw)
+        except UnicodeDecodeError as e:
+            raise ConfigError(f"'{name}' is not a text file (it is not valid UTF-8).") from e
+        except json.JSONDecodeError as e:
+            raise ConfigError(
+                f"'{name}' is not valid JSON: {e.msg} (line {e.lineno}, column {e.colno})."
+            ) from e
+        if not isinstance(data, dict):
+            raise ConfigError(f"'{name}' must contain a JSON object, like the files saved by this app.")
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "configuration.json"
+            path.write_bytes(raw)
+            try:
+                new_config = load_config_from_file(CombinedConfig, str(path))
+            except ValidationError as e:
+                raise ConfigError(f"'{name}' is not a valid configuration.") from e
+            except (OSError, ValueError) as e:
+                raise ConfigError(f"Could not read '{name}': {e}") from e
+
+        # Only swap state in after a fully successful load+validate.
+        self.config = new_config
+        self.config_path = None  # an upload has no path on this machine
+        self.config_name = Path(name).name or None
+        self.schedules = []
+        self.dirty = False
+
+    def dumps(self) -> str:
+        """The in-memory config as JSON text, through the library's own
+        Pydantic serialization (the same text save() writes to disk)."""
+        return self.require_config().model_dump_json(indent=2)
+
+    def mark_saved(self, name: Optional[str] = None) -> None:
+        """Record that the current config was handed to the user as a file
+        (the GUI's Save download): clears the unsaved-changes flag."""
+        self.dirty = False
+        if name:
+            self.config_name = name
 
     def require_config(self) -> CombinedConfig:
         """Every CRUD/schedule command should call this first instead of

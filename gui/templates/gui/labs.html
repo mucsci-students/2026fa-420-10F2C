@@ -1,0 +1,73 @@
+{% extends "gui/config_base.html" %}
+{% block title %}Scheduler — Labs{% endblock %}
+{% block config_content %}
+<p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; Labs</p>
+<div class="page-header">
+    <div>
+        <h1>Labs</h1>
+        <p class="page-intro">Labs are the computer or lab spaces used for lab meetings. Courses list the labs they may use, and faculty can have lab preferences.</p>
+    </div>
+</div>
+
+{% if not data.has_config %}
+<div class="empty-state" role="status">
+    <h2>No configuration is loaded</h2>
+    <p>Create or load a configuration in the <a href="{% url 'gui:config_editor' %}">Configuration Editor</a> before editing labs.</p>
+</div>
+{% else %}
+
+<details class="add-panel"{% if add_form.errors %} open{% endif %}>
+    <summary><span>Add a lab</span></summary>
+    <div class="add-panel__body">
+        <form method="post" action="{% url 'gui:lab_add' %}" class="edit-form">
+            {% csrf_token %}
+            {% include "gui/components/form_fields.html" with form=add_form %}
+            <button type="submit" class="btn btn-primary">Add lab</button>
+        </form>
+    </div>
+</details>
+
+<h2 class="section-title">Current labs <span class="count-chip">{{ data.labs|length }}</span></h2>
+<div class="list-toolbar" data-filter-box hidden>
+    <input type="search" id="lab-filter" placeholder="Search labs" aria-label="Search labs"
+           data-filter-input="#lab-list" data-filter-status="#lab-filter-status">
+    <p class="help" id="lab-filter-status" aria-live="polite"></p>
+</div>
+<div class="card">
+    <div class="table-wrap">
+        <table class="data-table" id="lab-list">
+            <thead>
+                <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col">Capacity</th>
+                    <th scope="col">Features</th>
+                    <th scope="col">Availability</th>
+                    <th scope="col">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for lab in data.labs %}
+                <tr data-filter-item>
+                    <td><strong>{{ lab.name }}</strong></td>
+                    <td>{{ lab.capacity }}</td>
+                    <td>{% if lab.features %}{{ lab.features|join:", " }}{% else %}&mdash;{% endif %}</td>
+                    <td>{% if lab.unrestricted %}Any time{% else %}{% for row in lab.availability %}{{ row.day }} {{ row.ranges }}{% if not forloop.last %}<br>{% endif %}{% endfor %}{% endif %}</td>
+                    <td class="actions">
+                        <a class="btn btn-small" href="{% url 'gui:lab_edit' lab.name %}">Edit</a>
+                        {% if lab.can_delete %}
+                        <a class="btn btn-small btn-danger" href="{% url 'gui:lab_delete' lab.name %}">Delete</a>
+                        {% else %}
+                        <span class="btn btn-small btn-disabled" aria-disabled="true">Delete</span>
+                        <span class="help">In use by {{ lab.referenced_by|join:", " }}.</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="5">No labs yet. Use &ldquo;Add a lab&rdquo; above.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

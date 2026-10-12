@@ -1,0 +1,44 @@
+{% comment %}
+    Faculty form fields shared by faculty_add.html and faculty_edit.html.
+    Each field uses the common component so invalid submissions retain their
+    values and show the same inline errors as the Course forms.
+{% endcomment %}
+{% include "gui/components/form_errors.html" %}
+
+<fieldset class="form-section">
+    <legend>Identity and workload</legend>
+    {% include "gui/components/field.html" with field=form.name %}
+    {% include "gui/components/field.html" with field=form.minimum_credits %}
+    {% include "gui/components/field.html" with field=form.maximum_credits %}
+    {% include "gui/components/field.html" with field=form.unique_course_limit %}
+    {% include "gui/components/field.html" with field=form.maximum_days %}
+</fieldset>
+
+<fieldset class="form-section">
+    <legend>Availability and mandatory days</legend>
+    {% include "gui/components/field.html" with field=form.times %}
+    <div class="faculty-mandatory-days">
+        {% include "gui/components/field.html" with field=form.mandatory_days %}
+    </div>
+</fieldset>
+
+<fieldset class="form-section">
+    <legend>Course preferences</legend>
+    {% for field in form %}
+        {% if field.field.preference_kind == "course" %}{% include "gui/components/field.html" with field=field %}{% endif %}
+    {% endfor %}
+</fieldset>
+
+<fieldset class="form-section">
+    <legend>Room preferences</legend>
+    {% for field in form %}
+        {% if field.field.preference_kind == "room" %}{% include "gui/components/field.html" with field=field %}{% endif %}
+    {% endfor %}
+</fieldset>
+
+<fieldset class="form-section">
+    <legend>Lab preferences</legend>
+    {% for field in form %}
+        {% if field.field.preference_kind == "lab" %}{% include "gui/components/field.html" with field=field %}{% endif %}
+    {% endfor %}
+</fieldset>

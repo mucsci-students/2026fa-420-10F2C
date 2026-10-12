@@ -1,0 +1,13 @@
+{% comment %}
+    One form field: label, required marker, input, help text, and errors.
+    Include it from a page template, passing the bound field, for example:
+        include "gui/components/field.html" with field=form.name
+    Errors start with the word "Error:" so status is not conveyed by color alone (Section 24).
+    Note: Django's short comment syntax cannot span lines, so multi-line notes use comment blocks.
+{% endcomment %}
+<div class="field{% if field.errors %} field--error{% endif %}">
+    <label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="required">(required)</span>{% endif %}</label>
+    {{ field }}
+    {% if field.help_text %}<p class="help">{{ field.help_text }}</p>{% endif %}
+    {% for error in field.errors %}<p class="field-error" role="alert"><strong>Error:</strong> {{ error }}</p>{% endfor %}
+</div>

@@ -1,0 +1,164 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Schedule Viewer{% endblock %}
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Schedule Viewer</h1>
+        <p class="page-intro">Present generated or imported schedules in a readable format.</p>
+    </div>
+</div>
+
+{% if schedule_count %}
+<div class="status-card schedule-status-card">
+    <p class="status-line" role="status"><strong>{{ schedule_count }}</strong> schedule{{ schedule_count|pluralize }} available.</p>
+    <nav class="schedule-pager" aria-label="Schedule navigation">
+        {% if has_previous %}
+        <a class="btn schedule-pager__previous" href="?schedule={{ previous_schedule }}{{ view_query }}">Previous</a>
+        {% else %}
+        <span class="btn btn-disabled schedule-pager__previous" aria-disabled="true">Previous</span>
+        {% endif %}
+
+        <p class="schedule-pager__current" role="status" aria-live="polite">
+            Schedule {{ current_schedule }} of {{ schedule_count }}
+        </p>
+
+        {% if has_next %}
+        <a class="btn schedule-pager__next" href="?schedule={{ next_schedule }}{{ view_query }}">Next</a>
+        {% else %}
+        <span class="btn btn-disabled schedule-pager__next" aria-disabled="true">Next</span>
+        {% endif %}
+    </nav>
+</div>
+{% else %}
+<div class="empty-state" role="status">
+    <h2>No schedules yet</h2>
+    <p>
+        Generate schedules in the <a href="{% url 'gui:schedule_generator' %}">Schedule Generator</a>,
+        or load a schedule file you exported earlier (below).
+    </p>
+</div>
+{% endif %}
+
+{% if schedule_count %}
+<h2 id="schedule-overview-heading" class="section-title">Schedule {{ current_schedule }} weekly overview</h2>
+<div class="view-filter">
+    <button type="button" class="btn view-filter__trigger" aria-label="Filter grid view" title="Filter grid view">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5L3 5z" fill="currentColor"/></svg>
+    </button>
+    <nav class="view-filter__menu" aria-label="Grid view">
+        <div class="view-filter__options">
+            {% for value, label in view_options.items %}
+            <a class="btn{% if view_mode == value %} btn-primary{% endif %}" href="?schedule={{ current_schedule }}&amp;view={{ value }}"{% if view_mode == value %} aria-current="true"{% endif %}>{{ label }}</a>
+            {% endfor %}
+        </div>
+    </nav>
+</div>
+<div class="card schedule-details" aria-labelledby="schedule-overview-heading">
+    <div class="scroll-x">
+        <div class="week-grid schedule-grid" style="--hour-pct: {{ schedule_grid.hour_pct }}%; min-width: {{ schedule_grid.min_width }};" role="img"
+             aria-label="Weekly grid for schedule {{ current_schedule }}.">
+            <div class="week-grid__col">
+                <div class="week-grid__day-name">&nbsp;</div>
+                <div class="week-grid__track week-grid__track--axis">
+                    {% for hour in schedule_grid.hours %}<span class="week-grid__hour" style="top: {{ hour.top }}%;">{{ hour.label }}</span>{% endfor %}
+                </div>
+            </div>
+            {% for day in schedule_grid.days %}
+            <div class="week-grid__col">
+                <div class="week-grid__day-name">{{ day.day }}</div>
+                <div class="week-grid__track">
+                    {% for meeting in day.meetings %}
+                    <div class="week-grid__block schedule-grid__meeting"
+                         style="top: {{ meeting.top }}%; min-height: calc({{ meeting.height }}% - 3px); left: calc(3px + {{ meeting.left }}%); width: calc({{ meeting.width }}% - 6px);"
+                         title="{{ day.name }} {{ meeting.start }}-{{ meeting.end }}: {{ meeting.label }}">
+                        <div class="schedule-grid__header">
+                            <span class="week-grid__label">{{ meeting.label }}</span>
+                            <span class="schedule-grid__time">{{ meeting.start }}&ndash;{{ meeting.end }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% for cluster in day.clusters %}
+                    <div class="week-grid__block schedule-grid__meeting schedule-grid__cluster"
+                         style="top: {{ cluster.top }}%; min-height: calc({{ cluster.height }}% - 3px);">
+                        {% for meeting in cluster.meetings %}
+                        <div class="schedule-grid__header">
+                            <span class="week-grid__label">{{ meeting.label }}</span>
+                            <span class="schedule-grid__time">{{ meeting.start }}&ndash;{{ meeting.end }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="split">
+<section class="card">
+<h2 id="export-schedules" class="card__title">Export</h2>
+{% if schedule_count %}
+<form method="get" action="{% url 'gui:schedule_export' %}" class="edit-form" data-loading="Loading…" data-loading-download>
+    {% include "gui/components/form_errors.html" with form=export_form %}
+    {% include "gui/components/field.html" with field=export_form.schedule %}
+    <div class="button-row">
+        <button type="submit" name="file_format" value="json" class="btn btn-primary">Export This Schedule (JSON)</button>
+        <button type="submit" name="file_format" value="csv" class="btn">Export This Schedule (CSV)</button>
+    </div>
+</form>
+<form method="get" action="{% url 'gui:schedule_export' %}" class="edit-form" data-loading="Loading…" data-loading-download>
+    <input type="hidden" name="schedule" value="all">
+    <p class="help">Every available schedule ({{ schedule_count }}) in one file.</p>
+    <div class="button-row">
+        <button type="submit" name="file_format" value="json" class="btn btn-primary">Export All Schedules (JSON)</button>
+        <button type="submit" name="file_format" value="csv" class="btn">Export All Schedules (CSV)</button>
+    </div>
+</form>
+{% else %}
+<p class="help" id="export-unavailable">Nothing to export yet. Export becomes available once schedules are generated or loaded.</p>
+<div class="button-row">
+    <button type="button" class="btn btn-disabled" disabled aria-describedby="export-unavailable">Export This Schedule (JSON)</button>
+    <button type="button" class="btn btn-disabled" disabled aria-describedby="export-unavailable">Export This Schedule (CSV)</button>
+    <button type="button" class="btn btn-disabled" disabled aria-describedby="export-unavailable">Export All Schedules (JSON)</button>
+    <button type="button" class="btn btn-disabled" disabled aria-describedby="export-unavailable">Export All Schedules (CSV)</button>
+</div>
+{% endif %}
+<p class="help">
+    JSON exports can be loaded back into this viewer later. CSV exports have one row per meeting
+    (course, faculty, room, lab, day, start, end) for spreadsheets.
+    Exports download through your browser, which chooses where the file goes and asks before replacing
+    an existing file (or renames the new one). This app never writes over files on your computer.
+</p>
+</section>
+
+<section class="card">
+<h2 id="load-schedules" class="card__title">Load schedules from a file</h2>
+<p class="help">
+    The whole file is checked before anything changes. If it has a problem, you'll see what is wrong
+    and the schedules already loaded stay as they are. You don't need a configuration to view loaded schedules.
+</p>
+<form method="post" action="{% url 'gui:schedule_import' %}" enctype="multipart/form-data" class="edit-form" data-loading="Loading…">
+    {% csrf_token %}
+    {% include "gui/components/form_fields.html" with form=import_form %}
+    <button type="submit" class="btn btn-primary">Load schedules</button>
+</form>
+</section>
+</div>
+
+<section class="card">
+<h2 id="clear-schedules" class="card__title">Clear schedules</h2>
+{% if schedule_count %}
+<p class="help">Removes every schedule from the viewer. You'll be asked to confirm first. Export them first if you want to keep them.</p>
+<div class="button-row">
+    <a class="btn btn-danger" href="{% url 'gui:schedule_clear' %}">Clear schedules</a>
+</div>
+{% else %}
+<p class="help" id="clear-unavailable">Nothing to clear yet.</p>
+<div class="button-row">
+    <button type="button" class="btn btn-disabled" disabled aria-describedby="clear-unavailable">Clear schedules</button>
+</div>
+{% endif %}
+</section>
+{% endblock %}
