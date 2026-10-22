@@ -13,6 +13,7 @@ from gui import session_store
 from gui.controllers import faculty as faculty_controller
 from gui.controllers.errors import ControllerError
 from gui.forms import FacultyForm
+from tests.canonical import canonical
 
 EXAMPLE = "app/examples/config_example.json"
 FACULTY_URL = "/configuration/faculty/"
@@ -133,13 +134,27 @@ class TestFacultyController:
         assert session.dumps() == before
         assert session.dirty is False
 
-    def test_referenced_faculty_cannot_be_deleted(self, session):
+    def test_a_referenced_faculty_member_needs_the_tick_box_before_the_delete_goes_through(self, session):
+        """Zoppetti is the only person who could teach two sections, so deleting them deletes those too."""
         with pytest.raises(ControllerError) as delete_error:
             faculty_controller.delete_faculty(None, "Zoppetti")
 
-        assert "CMSC 161" in delete_error.value.message
+        assert "Tick the box" in delete_error.value.message
         assert find_faculty(session, "Zoppetti") is not None
         assert session.dirty is False
+
+    def test_deleting_a_referenced_faculty_member_cleans_up_their_courses_in_one_undoable_step(self, session):
+        before = canonical(session.dumps())
+
+        notices = faculty_controller.delete_faculty(None, "Zoppetti", confirm_extra=True)
+
+        assert find_faculty(session, "Zoppetti") is None
+        assert all("Zoppetti" not in (course.faculty or []) for course in session.config.config.courses)
+        assert session.config.config.courses[3].faculty is None      # nobody is named in their place
+        assert any("Removed 'Zoppetti' from 1 course section" in note for note in notices)
+        assert session.history.undo_label == "Delete faculty 'Zoppetti'"
+        session.history.undo(session)
+        assert canonical(session.dumps()) == before
 
     def test_referenced_faculty_update_changes_explicit_course_assignments_atomically(self, session):
         """A direct update keeps the faculty name and course assignments in sync."""
@@ -305,9 +320,33 @@ class TestFacultyPages:
         """Faculty now exposes only its direct edit endpoint."""
         assert client.get(FACULTY_URL + "Zoppetti/rename/confirm/").status_code == 404
 
-    def test_referenced_faculty_has_no_delete_confirmation(self, client):
+    def test_referenced_faculty_delete_page_lists_the_sections_that_go_too_and_names_no_replacement(self, client):
         client.get(FACULTY_URL)
         response = client.get(FACULTY_URL + "Zoppetti/delete/")
+        text = page(response)
 
-        assert "Cannot delete" in page(response)
-        assert 'value="confirm"' not in page(response)
+        assert "CMSC 362.01" in text and "CMSC 476.01" in text
+        assert 'name="confirm_extra"' in text
+        assert "Who takes over?" not in text
+        assert 'name="choice_3"' not in text
+        assert 'value="confirm"' in text
+        assert "Cannot delete" not in text
+
+    def test_referenced_faculty_can_be_deleted_from_the_page_and_the_list_says_what_uses_them(self, client):
+        listing = page(client.get(FACULTY_URL))
+        assert "only candidate for 2 sections" in listing
+
+        response = client.post(
+            FACULTY_URL + "Zoppetti/delete/",
+            {"action": "confirm", "confirm_extra": "on"},
+            follow=True,
+        )
+        assert "deleted" in page(response)
+        assert find_faculty(browser_session(), "Zoppetti") is None
+
+    def test_a_missing_tick_keeps_the_page_and_changes_nothing(self, client):
+        client.get(FACULTY_URL)
+        response = client.post(FACULTY_URL + "Zoppetti/delete/", {"action": "confirm"})
+        assert response.status_code == 200
+        assert "nothing was changed" in page(response)
+        assert find_faculty(browser_session(), "Zoppetti") is not None

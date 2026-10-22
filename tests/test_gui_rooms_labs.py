@@ -217,14 +217,80 @@ def test_editing_something_that_no_longer_exists_redirects_with_an_error(client,
     assert "no longer exists" in page(response)
 
 
-def test_deleting_something_in_use_is_blocked_on_the_page_and_in_the_action(client, kind):
+ROOM_KIND = {"key": "room", **KINDS["room"]}
+LAB_KIND = {"key": "lab", **KINDS["lab"]}
+
+
+def test_list_page_summarises_usage_instead_of_listing_everything(client, kind):
+    text = page(client.get(kind["base"]))
+    assert "Used by" in text
+    assert '<details class="usage">' in text
+    assert "In use by" not in text
+
+
+def test_deleting_something_in_use_shows_what_will_change(client, kind):
     client.get(kind["base"])
     text = page(client.get(delete_url(kind, kind["existing"])))
-    assert "Cannot delete" in text
-    assert 'value="confirm"' not in text
-    response = client.post(delete_url(kind, kind["existing"]), {"action": "confirm"}, follow=True)
-    assert f"Remove this {kind['key']} from those records first" in page(response)
-    assert find(kind, kind["existing"]) is not None
+    assert "also changes other records" in text
+    assert 'value="confirm"' in text
+
+
+def test_room_cascade_needs_the_tick_when_a_course_would_lose_its_only_room(client):
+    client.get(ROOM_KIND["base"])
+    response = client.post(delete_url(ROOM_KIND, "Roddy 136"), {"action": "confirm"})
+    assert response.status_code == 200
+    assert "Tick the box" in page(response)
+    assert find(ROOM_KIND, "Roddy 136") is not None
+
+
+def test_room_cascade_removes_every_reference_in_one_step(client):
+    client.get(ROOM_KIND["base"])
+    response = client.post(
+        delete_url(ROOM_KIND, "Roddy 136"), {"action": "confirm", "confirm_extra": "on"}, follow=True
+    )
+    assert "deleted" in page(response) and "Removed" in page(response)
+    config = browser_session().config.config
+    assert find(ROOM_KIND, "Roddy 136") is None
+    assert all("Roddy 136" not in (course.room or []) for course in config.courses)
+    assert all("Roddy 136" not in (person.room_preferences or {}) for person in config.faculty)
+    assert all(course.room for course in config.courses)
+    assert browser_session().dirty is True
+
+
+def test_lab_cascade_leaves_the_section_without_one_and_names_no_other_lab(client):
+    client.get(LAB_KIND["base"])
+    client.post(delete_url(LAB_KIND, "Mac"), {"action": "confirm"}, follow=True)
+    config = browser_session().config.config
+    assert find(LAB_KIND, "Mac") is None
+    assert [list(course.lab) for course in config.courses if course.course_id == "CMSC 420"] == [[]]
+
+
+def test_a_cascade_that_fails_whole_config_validation_changes_nothing_and_explains(client, monkeypatch):
+    """If the library rejects the cascade, the page says why, the room is still
+    there, and no undo entry is recorded. (The rejection is simulated, as in the
+    other rollback tests; the library's edit mode provides the real atomicity.)"""
+    from app.crud import ValidationFailure
+    from gui.controllers import rooms as rooms_ctrl
+
+    def reject(session_, config, area, mutate, label=None):
+        raise ValidationFailure(area, "simulated whole-config rejection")
+
+    client.get(ROOM_KIND["base"])
+    before = browser_session().config.model_dump_json()
+    monkeypatch.setattr(rooms_ctrl, "apply_session_edit", reject)
+
+    response = client.post(
+        delete_url(ROOM_KIND, "Roddy 136"), {"action": "confirm", "confirm_extra": "on"}
+    )
+
+    assert response.status_code == 200
+    text = page(response)
+    assert "was not deleted and nothing was changed" in text
+    assert "simulated whole-config rejection" in text
+    assert find(ROOM_KIND, "Roddy 136") is not None
+    assert browser_session().config.model_dump_json() == before
+    assert browser_session().history.can_undo is False
+    assert browser_session().dirty is False
 
 
 def test_delete_asks_first_and_cancel_changes_nothing(client, kind):

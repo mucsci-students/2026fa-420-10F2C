@@ -90,8 +90,8 @@ def _check_overlap(blocks, new_block, ignore_index: int | None = None) -> None:
             )
 
 
-def _apply(session, config, mutate) -> None:
-    apply_config_edit(session, config, "timeslot", mutate, form_fields=TIME_FIELDS + OPTION_FIELDS)
+def _apply(session, config, mutate, label=None) -> None:
+    apply_config_edit(session, config, "timeslot", mutate, form_fields=TIME_FIELDS + OPTION_FIELDS, label=label)
 
 
 def _day_of(meeting) -> str:
@@ -278,7 +278,7 @@ def delete_timeslot(request, day, index) -> list[str]:
     def mutate(draft):
         del draft.time_slot_config.times[day][index]
 
-    _apply(session, config, mutate)
+    _apply(session, config, mutate, label=f"Delete a {day} time block")
     return _fit_warnings(config, day)
 
 

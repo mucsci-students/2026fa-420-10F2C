@@ -59,12 +59,8 @@
         </details>
         <footer class="item-card__foot">
             <a class="btn" href="{% url 'gui:faculty_edit' person.name %}">Edit</a>
-            {% if person.can_delete %}
             <a class="btn btn-danger" href="{% url 'gui:faculty_delete' person.name %}">Delete</a>
-            {% else %}
-            <span class="btn btn-disabled" aria-disabled="true">Delete</span>
-            <span class="chip chip--warn in-use">In use by {{ person.referenced_by|join:", " }}.</span>
-            {% endif %}
+            {% include "gui/components/usage_summary.html" with usage=person.usage quiet=True %}
         </footer>
     </article>
     {% empty %}

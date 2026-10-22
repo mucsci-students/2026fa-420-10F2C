@@ -1,0 +1,17 @@
+{% comment %}
+    One-line "who uses this?" summary for a row on a Configuration Editor list page (Sprint 2 Section 12).
+    Expects `usage` from gui/controllers/dependencies.usage(): {"in_use": bool, "groups": [{chip, tone, title, names}]}.
+    The full lists are folded into <details>, which works without JavaScript and is keyboard accessible.
+    Pass quiet=True to print nothing when the record is not in use.
+{% endcomment %}
+{% if usage.in_use %}
+<details class="usage">
+    <summary>
+        {% for group in usage.groups %}<span class="chip{% if group.tone %} chip--{{ group.tone }}{% endif %}">{{ group.chip }}</span>{% endfor %}
+        <span class="usage__toggle">details</span>
+    </summary>
+    {% for group in usage.groups %}<p class="usage__group"><strong>{{ group.title }}:</strong> {{ group.names|join:", " }}</p>{% endfor %}
+</details>
+{% elif not quiet %}
+<span class="help">Not in use</span>
+{% endif %}

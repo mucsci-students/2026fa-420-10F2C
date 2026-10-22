@@ -85,10 +85,10 @@ class TestReads:
         assert row["faculty"] is None
         assert row["derived_faculty"] == ["Hardy"]
 
-    def test_list_marks_which_sections_can_be_deleted(self, session):
+    def test_list_says_what_a_section_is_used_by(self, session):
         rows = ctrl.describe_courses(None)["courses"]
-        assert rows[0]["can_delete"] is True  # another CMSC 140 section remains
-        assert rows[6]["can_delete"] is False
+        assert rows[0]["usage"]["in_use"] is False  # another CMSC 140 section remains
+        assert rows[6]["usage"]["in_use"] is True
 
     def test_list_without_a_config_reports_the_empty_state(self, empty_session):
         assert ctrl.describe_courses(None) == {"has_config": False}
@@ -223,17 +223,20 @@ class TestDelete:
         assert ids(session)[0] == "CMSC 140"
         assert session.dirty is True
 
-    def test_last_referenced_section_is_blocked_with_the_reasons(self, session):
+    def test_last_referenced_section_is_deleted_and_removed_from_what_named_it(self, session):
         references = ctrl.get_course(None, 6)["referenced_by"]
         assert references == [
             "course CMSC 140.01 (conflicts)",
             "course CMSC 140.02 (conflicts)",
             "faculty Hogg (course preference)",
         ]
-        with pytest.raises(ControllerError, match="Cannot delete 'CMSC 162'"):
-            ctrl.delete_course(None, 6)
-        assert "CMSC 162" in ids(session)
-        assert session.dirty is False
+        notices = ctrl.delete_course(None, 6)
+        assert "CMSC 162" not in ids(session)
+        assert all("CMSC 162" not in course.conflicts for course in courses(session))
+        assert all("CMSC 162" not in person.course_preferences for person in session.config.config.faculty)
+        assert notices and notices[0].startswith("Removed CMSC 162 from")
+        assert session.history.undo_label == "Delete course 'CMSC 162'"
+        assert session.dirty is True
 
     def test_stale_index_is_refused(self, session):
         with pytest.raises(ControllerError, match="course list changed"):
@@ -373,13 +376,20 @@ class TestPages:
         assert "deleted" in page(response)
         assert len(browser_session().config.config.courses) == count - 1
 
-    def test_referenced_last_section_shows_why_instead_of_a_delete_button(self, client):
+    def test_referenced_last_section_says_what_else_changes_and_can_be_deleted(self, client):
         listing = page(client.get(COURSES_URL))
         text = page(client.get(COURSES_URL + "6/delete/"))
-        assert "In use by course CMSC 140.01 (conflicts)" in listing
-        assert "Cannot delete:" in text
-        assert "faculty Hogg (course preference)" in text
-        assert 'value="confirm"' not in text
+        assert "2 conflicts" in listing
+        assert "also changes other records" in text
+        assert "Hogg" in text
+        assert "Cannot delete" not in text
+        assert 'value="confirm"' in text
+
+        response = client.post(
+            COURSES_URL + "6/delete/", {"action": "confirm", "expected_course_id": "CMSC 162"}, follow=True
+        )
+        assert "deleted" in page(response)
+        assert all(c.course_id != "CMSC 162" for c in browser_session().config.config.courses)
 
     def test_unknown_row_redirects_with_a_message(self, client):
         response = client.get(COURSES_URL + "999/edit/", follow=True)

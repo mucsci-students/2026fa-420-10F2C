@@ -24,6 +24,21 @@
 </div>
 {% endif %}
 
+{% if previous_config %}
+<div class="status-card previous-config">
+    <p class="status-line" role="status">
+        Before this, you were working on <strong>{{ previous_config.name }}</strong>{% if previous_config.dirty %} (with unsaved changes){% endif %}.
+        It is kept for now: restoring it brings back its edits{% if previous_config.change_count %}, its {{ previous_config.change_count }} undoable change{{ previous_config.change_count|pluralize }}{% endif %}{% if previous_config.schedule_count %} and its {{ previous_config.schedule_count }} generated schedule{{ previous_config.schedule_count|pluralize }}{% endif %}.
+        The configuration you are using now is kept too, so you can switch back.
+    </p>
+    <form method="post" action="{% url 'gui:restore_previous' %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button type="submit" class="btn">Restore previous configuration</button>
+    </form>
+</div>
+{% endif %}
+
 {% if report %}
 <div class="alert alert-error" role="alert">
     <p><strong>Error:</strong> {{ report.heading }}</p>

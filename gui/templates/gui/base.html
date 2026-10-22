@@ -30,6 +30,15 @@
     {% for message in messages %}
     <div class="alert alert-{{ message.level_tag }}" role="{% if message.level_tag == 'error' %}alert{% else %}status{% endif %}">
         <strong>{{ message.level_tag|title }}:</strong> {{ message }}
+        {% if forloop.first and message.level_tag == 'success' and history_fresh %}
+        <form method="post" action="{% url 'gui:history_undo' %}" class="alert__undo">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <input type="hidden" name="token" value="{{ history_fresh.token }}">
+            <button type="submit" class="btn btn-small" title="Undo this change (Ctrl+Z)">Undo</button>
+            <a href="{% url 'gui:history' %}">View history</a>
+        </form>
+        {% endif %}
     </div>
     {% endfor %}
 </div>

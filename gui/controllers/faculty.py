@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from scheduler.config import FacultyConfig, ValidationError
 
 from app.commands.common import VALID_DAYS, field_value
-from app.crud import ReferenceError_, check_no_references
+from gui.controllers import dependencies as deps
 from gui.controllers.common import apply_config_edit, require_config
 from gui.controllers.errors import ControllerError, FieldError, translate_validation_error
 from gui.session_store import get_session
@@ -304,7 +304,7 @@ def _faculty_data(config, faculty) -> dict:
         "room_preferences": dict(faculty.room_preferences or {}),
         "lab_preferences": dict(faculty.lab_preferences or {}),
         "referenced_by": references,
-        "can_delete": not references,
+        "usage": deps.usage(config, "faculty", faculty.name),
     }
 
 
@@ -323,7 +323,9 @@ def get_faculty(request, faculty_name) -> dict:
     """Return one faculty record for its edit or delete page."""
     session = get_session(request)
     config = require_config(session, "editing faculty")
-    return _faculty_data(config, _find_faculty(config, faculty_name))
+    data = _faculty_data(config, _find_faculty(config, faculty_name))
+    data["plan"] = deps.plan(config, "faculty", faculty_name)
+    return data
 
 
 # ---------------------------------------------------------------------- #
@@ -383,18 +385,23 @@ def _rename_notices(config, old_name: str, new_name: str) -> list[str]:
     return [f"Renamed '{old_name}' to '{new_name}' in {assignments} course faculty {noun}."]
 
 
-def delete_faculty(request, faculty_name) -> None:
-    """Delete faculty only after confirming no course still assigns them."""
+def delete_faculty(request, faculty_name, confirm_extra: bool = False) -> list[str]:
+    """Delete a faculty member and clean up everything that pointed at them in
+    ONE validated edit (Section 12).
+
+    Nobody is named in their place. A section that assigned only them goes back
+    to "the scheduler chooses" when someone else prefers the course; a section
+    nobody else could teach is deleted too, but only when `confirm_extra` is
+    True (the page's tick-box).
+    Returns plain-language notices describing what changed."""
     session = get_session(request)
     config = require_config(session, "deleting faculty")
     _find_faculty(config, faculty_name)
-    try:
-        check_no_references(faculty_name, _references(config, faculty_name))
-    except ReferenceError_ as error:
-        raise ControllerError(f"{error}. Remove this faculty member from those courses first.") from error
-
-    def mutate(draft):
-        people = draft.config.faculty
-        del people[next(index for index, person in enumerate(people) if person.name == faculty_name)]
-
-    apply_config_edit(session, config, "faculty", mutate, form_fields=FACULTY_FIELDS)
+    the_plan = deps.plan(config, "faculty", faculty_name)
+    deps.resolve(the_plan, confirmed=confirm_extra)
+    mutate, notices = deps.build(config, "faculty", faculty_name, the_plan)
+    apply_config_edit(
+        session, config, "faculty", mutate, form_fields=FACULTY_FIELDS,
+        label=f"Delete faculty '{faculty_name}'",
+    )
+    return notices

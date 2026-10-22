@@ -1,0 +1,24 @@
+{% comment %}
+    Undo / Redo bar for the Configuration Editor pages (Sprint 2 Sections 11 and 12).
+    `history_state` comes from gui/context_processors.py. Both buttons are plain POST
+    forms, so they work without JavaScript, and each carries the history `token` it was
+    drawn from so a stale page cannot undo the wrong thing. With nothing to undo or redo
+    the bar is not shown at all. gui/static/gui/js/history.js adds Ctrl+Z / Ctrl+Y.
+{% endcomment %}
+{% if config_loaded %}{% if history_state.can_undo or history_state.can_redo %}
+<div class="history-bar" role="group" aria-label="Undo and redo">
+    <form method="post" action="{% url 'gui:history_undo' %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <input type="hidden" name="token" value="{{ history_state.token }}">
+        <button type="submit" class="btn btn-small" data-history-action="undo" title="Undo (Ctrl+Z)"{% if not history_state.can_undo %} disabled{% endif %}>Undo{% if history_state.can_undo %}: {{ history_state.undo_label }}{% endif %}</button>
+    </form>
+    <form method="post" action="{% url 'gui:history_redo' %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <input type="hidden" name="token" value="{{ history_state.token }}">
+        <button type="submit" class="btn btn-small" data-history-action="redo" title="Redo (Ctrl+Y)"{% if not history_state.can_redo %} disabled{% endif %}>Redo{% if history_state.can_redo %}: {{ history_state.redo_label }}{% endif %}</button>
+    </form>
+    <a class="btn btn-small" href="{% url 'gui:history' %}">History ({{ history_state.undo_count }})</a>
+</div>
+{% endif %}{% endif %}

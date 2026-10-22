@@ -47,7 +47,7 @@ import re
 from scheduler.config import CourseConfig, CourseModality, ValidationError
 
 from app.commands.courses import course_display_name, enabled_pattern_credits
-from app.crud import ReferenceError_, check_no_references
+from gui.controllers import dependencies as deps
 from gui.controllers.common import apply_config_edit, require_config
 from gui.controllers.errors import ControllerError, FieldError, translate_validation_error
 from gui.session_store import get_session
@@ -104,7 +104,7 @@ def describe_courses(request) -> dict:
                 "required_lab_features": sorted(course.required_lab_features),
                 "reserve_room_during_lab": course.reserve_room_during_lab,
                 "referenced_by": references,
-                "can_delete": not references,
+                "usage": deps.usage(config, "course", index),
             }
         )
     return {"has_config": True, "courses": rows}
@@ -137,7 +137,8 @@ def get_course(request, course_index: int) -> dict:
         "required_lab_features": ", ".join(sorted(course.required_lab_features)),
         "reserve_room_during_lab": course.reserve_room_during_lab,
         "referenced_by": references,
-        "can_delete": not references,
+        "usage": deps.usage(config, "course", course_index),
+        "plan": deps.plan(config, "course", course_index),
     }
 
 
@@ -199,21 +200,22 @@ def update_course(request, course_index: int, form_data, expected_course_id: str
 
 
 def delete_course(request, course_index: int, expected_course_id: str | None = None) -> list[str]:
-    """Delete one section. Blocked, with the reasons listed, when it is the
-    last section of its course_id and something still refers to that id."""
+    """Delete one section (Section 12).
+
+    When it is the last section of its course id, the id is also removed from
+    other courses' conflict lists and from faculty course preferences, in the
+    same validated edit. Returns plain-language notices describing that."""
     session = get_session(request)
     config = require_config(session, "deleting a course")
     course = _course_at(config, course_index, expected_course_id)
-    try:
-        check_no_references(course.course_id, _references(config, course_index))
-    except ReferenceError_ as error:
-        raise ControllerError(f"{error}. Remove those references first.") from error
-
-    def mutate(draft):
-        del draft.config.courses[course_index]
-
-    apply_config_edit(session, config, "course", mutate, form_fields=COURSE_FIELDS)
-    return []
+    the_plan = deps.plan(config, "course", course_index)
+    deps.resolve(the_plan)
+    mutate, notices = deps.build(config, "course", course_index, the_plan)
+    apply_config_edit(
+        session, config, "course", mutate, form_fields=COURSE_FIELDS,
+        label=f"Delete course '{course.course_id}'",
+    )
+    return notices
 
 
 # ---------------------------------------------------------------------- #

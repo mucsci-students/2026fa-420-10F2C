@@ -19,17 +19,20 @@ import pytest
 
 import app.session as session_module
 from app.session import ConfigError, Session
+from tests.fakes import FakeConfig
 
 
 class FakeValidationError(Exception):
     """Stand-in for scheduler.config.ValidationError."""
 
 
-class FakeCombinedConfig:
-    """Stand-in for scheduler.config.CombinedConfig."""
+class FakeCombinedConfig(FakeConfig):
+    """Stand-in for scheduler.config.CombinedConfig (it has the same shape, so
+    the undo history can save and restore it)."""
 
     def __init__(self, **kwargs):
         """Initialize the test double with the supplied values."""
+        super().__init__()
         self.__dict__.update(kwargs)
 
     def model_dump_json(self, indent=2):
@@ -215,3 +218,107 @@ def test_require_config_returns_config_when_present():
     session = Session()
     session.new_config()
     assert session.require_config() is session.config
+
+
+# ---------- restoring what New / Load replaced, and stale schedules ----------
+
+def _loaded_session(monkeypatch, tmp_path, name="first.json"):
+    monkeypatch.setattr(session_module, "load_config_from_file", fake_loader_success)
+    path = tmp_path / name
+    path.write_text("{}", encoding="utf-8")
+    session = Session()
+    session.load(str(path))
+    return session, path
+
+
+def test_nothing_is_kept_until_a_configuration_replaces_another(monkeypatch, tmp_path):
+    session, _ = _loaded_session(monkeypatch, tmp_path)
+    assert session.previous is None and session.previous_info() is None
+
+
+def test_new_config_keeps_the_replaced_one_and_restoring_swaps_back(monkeypatch, tmp_path):
+    session, _ = _loaded_session(monkeypatch, tmp_path)
+    first = session.config
+    session.dirty = True
+    session.schedules = ["s1"]
+    first_history = session.history
+
+    session.new_config()
+    second = session.config
+    assert second is not first and session.schedules == [] and session.dirty is False
+    info = session.previous_info()
+    assert info["name"] == "first.json" and info["dirty"] is True and info["schedule_count"] == 1
+
+    assert session.restore_previous() == "first.json"
+    assert session.config is first and session.dirty is True
+    assert session.schedules == ["s1"] and session.history is first_history
+    assert session.previous_info()["dirty"] is False       # the new one is now the "previous"
+
+    session.restore_previous()                              # and it can be reversed
+    assert session.config is second
+
+
+def test_loading_a_file_keeps_the_replaced_configuration_too(monkeypatch, tmp_path):
+    session, _ = _loaded_session(monkeypatch, tmp_path)
+    first = session.config
+    other = tmp_path / "second.json"
+    other.write_text("{}", encoding="utf-8")
+    session.load(str(other))
+    assert session.config is not first
+    session.restore_previous()
+    assert session.config is first and session.config_name == "first.json"
+
+
+def test_a_failed_load_keeps_nothing_and_changes_nothing(monkeypatch, tmp_path):
+    session, _ = _loaded_session(monkeypatch, tmp_path)
+    with pytest.raises(ConfigError):
+        session.load(str(tmp_path / "missing.json"))
+    assert session.previous is None
+
+
+def test_restoring_with_nothing_kept_explains():
+    session = Session()
+    with pytest.raises(ConfigError, match="no previous configuration"):
+        session.restore_previous()
+
+
+def test_the_replaced_configurations_undo_history_comes_back_with_it(monkeypatch, tmp_path):
+    session, _ = _loaded_session(monkeypatch, tmp_path)
+    session.history.record("an edit", session.history.capture(session.config), False)
+    session.new_config()
+    assert not session.history.can_undo
+    session.restore_previous()
+    assert session.history.can_undo and session.history.undo_label == "an edit"
+
+
+def test_schedules_are_stale_once_the_configuration_changes_and_fresh_again_after_undo(monkeypatch, tmp_path):
+    session, _ = _loaded_session(monkeypatch, tmp_path)
+    assert session.schedules_stale is False                   # no schedules at all
+    session.set_schedules(["s"])
+    assert session.schedules_stale is False
+
+    session.history.record("an edit", session.history.capture(session.config), False)
+    session.dirty = True
+    assert session.schedules_stale is True                    # configuration moved on
+
+    session.history.undo(session)
+    assert session.schedules_stale is False                   # same configuration they came from
+
+    session.history.redo(session)
+    session.set_schedules(["fresh"])                          # generated again from the new state
+    assert session.schedules_stale is False
+
+
+def test_schedules_set_directly_are_never_reported_stale(monkeypatch, tmp_path):
+    session, _ = _loaded_session(monkeypatch, tmp_path)
+    session.schedules = ["from an import or the CLI"]
+    session.history.record("an edit", session.history.capture(session.config), False)
+    assert session.schedules_stale is False
+
+
+def test_schedules_can_be_tied_to_the_version_a_run_started_from(monkeypatch, tmp_path):
+    session, _ = _loaded_session(monkeypatch, tmp_path)
+    started_from = session.history.version
+    session.history.record("edited while generating", session.history.capture(session.config), False)
+    session.set_schedules(["s"], started_from)
+    assert session.schedules_stale is True

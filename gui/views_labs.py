@@ -15,6 +15,7 @@ from gui.controllers import labs as lab_controller
 from gui.controllers.errors import ControllerError
 from gui.forms import LabForm, availability_to_text
 from gui.views import _attach_errors, _flash_warnings
+from gui.views_delete import delete_page
 
 
 def _render_labs(request, add_form=None):
@@ -78,27 +79,22 @@ def lab_edit(request, lab_name):
 
 
 def lab_delete(request, lab_name):
-    """Confirmation page (GET) and the confirm/cancel actions (POST).
+    """Review page (GET) and the confirm/cancel actions (POST).
 
-    A lab that a course or faculty member still uses cannot be deleted; the
-    page lists what uses it instead (Section 12).
+    Deleting a lab that is still in use is a deliberate cascade: the page lists every
+    record that will change (no other lab takes its place), and commits everything
+    or nothing (Section 12). The result can be undone.
     """
     try:
         lab = lab_controller.get_lab(request, lab_name)
     except ControllerError as error:
         messages.error(request, error.message)
         return redirect("gui:labs")
-
-    if request.method == "POST":
-        if request.POST.get("action") != "confirm":
-            messages.info(request, "Cancelled.")
-            return redirect("gui:labs")
-        try:
-            lab_controller.delete_lab(request, lab_name)
-        except ControllerError as error:
-            messages.error(request, error.message)
-        else:
-            messages.success(request, f"Lab '{lab_name}' deleted.")
-        return redirect("gui:labs")
-
-    return render(request, "gui/lab_delete.html", {"active": "config", "lab": lab})
+    return delete_page(
+        request,
+        template="gui/lab_delete.html",
+        context={"active": "config", "lab": lab, "plan": lab["plan"]},
+        list_url="gui:labs",
+        done_text=f"Lab '{lab_name}' deleted.",
+        delete=lambda confirmed: lab_controller.delete_lab(request, lab_name, confirm_extra=confirmed),
+    )

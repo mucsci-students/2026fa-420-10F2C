@@ -19,6 +19,7 @@ from gui.controllers import courses as course_controller
 from gui.controllers.errors import ControllerError
 from gui.forms import CourseForm
 from gui.views import _attach_errors, _flash_warnings
+from gui.views_delete import delete_page
 
 _FORM_FIELDS = [
     "course_id",
@@ -100,32 +101,25 @@ def course_edit(request, course_index):
 
 
 def course_delete(request, course_index):
-    """Confirmation page (GET) and the confirm/cancel actions (POST).
+    """Review page (GET) and the confirm/cancel actions (POST).
 
-    The last section of a course ID that another course or a faculty
-    preference still names cannot be deleted; the page lists those instead
-    (Section 12).
+    Deleting the last section of a course also removes that course from other
+    courses' conflict lists and from faculty preferences, in one step (Section 12).
     """
     try:
         course = course_controller.get_course(request, course_index)
     except ControllerError as error:
         messages.error(request, error.message)
         return redirect("gui:courses")
-
-    if request.method == "POST":
-        if request.POST.get("action") != "confirm":
-            messages.info(request, "Cancelled.")
-            return redirect("gui:courses")
-        try:
-            course_controller.delete_course(
-                request,
-                course_index,
-                expected_course_id=request.POST.get("expected_course_id") or None,
-            )
-        except ControllerError as error:
-            messages.error(request, error.message)
-        else:
-            messages.success(request, f"Course '{course['display']}' deleted.")
-        return redirect("gui:courses")
-
-    return render(request, "gui/course_delete.html", {"active": "config", "course": course})
+    return delete_page(
+        request,
+        template="gui/course_delete.html",
+        context={"active": "config", "course": course, "plan": course["plan"]},
+        list_url="gui:courses",
+        done_text=f"Course '{course['display']}' deleted.",
+        delete=lambda confirmed: course_controller.delete_course(
+            request,
+            course_index,
+            expected_course_id=request.POST.get("expected_course_id") or None,
+        ),
+    )
