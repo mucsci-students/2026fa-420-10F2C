@@ -416,10 +416,27 @@ main {
 }
 
 .week-grid__block.schedule-grid__meeting {
-    container-type: inline-size;
-    overflow: visible;
-    padding: 0.2rem 0.3rem;
-    color: #fff;
+    --block-bg: #1d4ed8;
+    background-color: var(--block-bg);
+    background-image: none;
+    border-color: rgba(0, 0, 0, 0.35);
+    cursor: pointer;
+}
+.week-grid__block.schedule-color-0  { --block-bg: #1d4ed8; }
+.week-grid__block.schedule-color-1  { --block-bg: #b45309; }
+.week-grid__block.schedule-color-2  { --block-bg: #047857; }
+.week-grid__block.schedule-color-3  { --block-bg: #7e22ce; }
+.week-grid__block.schedule-color-4  { --block-bg: #be123c; }
+.week-grid__block.schedule-color-5  { --block-bg: #0e7490; }
+.week-grid__block.schedule-color-6  { --block-bg: #4d7c0f; }
+.week-grid__block.schedule-color-7  { --block-bg: #c2410c; }
+.week-grid__block.schedule-color-8  { --block-bg: #4338ca; }
+.week-grid__block.schedule-color-9  { --block-bg: #a21caf; }
+.week-grid__block.schedule-color-10 { --block-bg: #0f766e; }
+.week-grid__block.schedule-color-11 { --block-bg: #854d0e; }
+
+.schedule-grid__meeting.is-compact .schedule-grid__header { 
+    flex-wrap: nowrap;
 }
 
 .schedule-grid__header {
@@ -460,31 +477,13 @@ main {
 }
 
 /* Schedule grid: one color per course/room/faculty, details inside the block */
-.schedule-grid__meeting {
-    --block-bg: #1d4ed8;
-    background-color: var(--block-bg);
-    background-image: none;
-    border-color: rgba(0, 0, 0, 0.35);
-    cursor: pointer;
-}
+
 .schedule-grid__meeting:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; z-index: 3; }
 .schedule-grid .schedule-grid__header .week-grid__label { background: none; padding: 0; margin: 0; font-weight: 700; }
 .schedule-grid__detail {
     font-size: 0.65rem; line-height: 1.25; opacity: 0.92;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.schedule-color-0  { --block-bg: #1d4ed8; }
-.schedule-color-1  { --block-bg: #b45309; }
-.schedule-color-2  { --block-bg: #047857; }
-.schedule-color-3  { --block-bg: #7e22ce; }
-.schedule-color-4  { --block-bg: #be123c; }
-.schedule-color-5  { --block-bg: #0e7490; }
-.schedule-color-6  { --block-bg: #4d7c0f; }
-.schedule-color-7  { --block-bg: #c2410c; }
-.schedule-color-8  { --block-bg: #4338ca; }
-.schedule-color-9  { --block-bg: #a21caf; }
-.schedule-color-10 { --block-bg: #0f766e; }
-.schedule-color-11 { --block-bg: #854d0e; }
 
 .schedule-grid.has-highlight .schedule-grid__meeting:not(.is-highlighted) { opacity: 0.3; }
 .schedule-grid .is-highlighted { box-shadow: 0 0 0 2px var(--text); z-index: 2; }

@@ -397,12 +397,14 @@ def _schedule_grid(assignments, view_mode=VIEW_COURSES):
     meetings_by_day = {day: [] for day in DAY_NAMES}
     for row in rows:
         start, end = _clock_minutes(row["start"]), _clock_minutes(row["end"])
+        height_pct = (end - start) / span * 100
         meetings_by_day[row["day"]].append(
             {
                 **row,
                 "color": color_of[row["label"]],
                 "top": f"{(start - axis_start) / span * 100:.2f}",
                 "height": f"{(end - start) / span * 100:.2f}",
+                "compact": height_pct / 100 * GRID_HEIGHT_REM < COMPACT_BELOW_REM, 
             }
         )
 
@@ -435,6 +437,8 @@ LANE_MIN_REM = 6.5      # minimum width of one lane
 TIME_AXIS_REM = 3.5
 COLUMN_GAP_REM = 0.4
 PALETTE_SIZE = 12       # matches .schedule-color-0..11 in style.css
+GRID_HEIGHT_REM = 40        # matches --grid-height in .week-grid.schedule-grid
+COMPACT_BELOW_REM = 3.4     # blocks shorter than this hide the detail line
 
 
 def _block_detail(view_mode, course, location, faculty):

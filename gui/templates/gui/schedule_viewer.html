@@ -70,7 +70,7 @@
                 <div class="week-grid__track">
                     {% for meeting in day.meetings %}
                     <div class="week-grid__block schedule-grid__meeting schedule-color-{{ meeting.color }}" role="group" tabindex="0"
-                         style="top: {{ meeting.top }}%; min-height: calc({{ meeting.height }}% - 3px); left: calc(3px + {{ meeting.left }}%); width: calc({{ meeting.width }}% - 6px);"
+                         style="top: {{ meeting.top }}%; height: calc({{ meeting.height }}% - 3px); left: calc(3px + {{ meeting.left }}%); width: calc({{ meeting.width }}% - 6px);"
                          title="{{ day.name }} {{ meeting.start }}-{{ meeting.end }}: {{ meeting.label }}"
                          aria-label="{{ meeting.course }}, {{ meeting.faculty|default:'no faculty assigned' }}, {{ meeting.location|default:'no room assigned' }}, {{ day.name }} {{ meeting.start }} to {{ meeting.end }}"
                          data-key="{{ meeting.label }}"
@@ -83,7 +83,7 @@
                             <span class="week-grid__label">{{ meeting.label }}</span>
                             <span class="schedule-grid__time">{{ meeting.start }}&ndash;{{ meeting.end }}</span>
                         </div>
-                        {% if meeting.detail %}<div class="schedule-grid__detail">{{ meeting.detail }}</div>{% endif %}
+                        {% if meeting.detail and not meeting.compact %}<div class="schedule-grid__detail">{{ meeting.detail }}</div>{% endif %}
                     </div>
                     {% endfor %}
                 </div>
