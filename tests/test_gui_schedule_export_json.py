@@ -487,9 +487,16 @@ def test_colors_wrap_around_the_palette():
 
 
 def test_every_block_carries_the_details_shown_in_the_tooltip(client):
-    load(client, [
-        Assignment("CMSC 161.01", "Hogg", "Roddy 136", None, (MeetingTime("MON", "09:00", "09:50", 50),)),
-    ])
+    schedules = [
+        [Assignment("CMSC 161.01", "Hogg", "Roddy 136", None, (MeetingTime("MON", "09:00", "09:50", 50),))],
+    ]
+    upload = SimpleUploadedFile(
+        "tooltip.json",
+        schedule_io.schedules_to_json(schedules).encode("utf-8"),
+        content_type="application/json",
+    )
+    client.post(IMPORT_URL, {"schedule_file": upload}, follow=True)
+
     html = client.get(VIEWER_URL).content.decode()
 
     assert 'data-course="CMSC 161.01"' in html
