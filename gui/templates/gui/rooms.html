@@ -53,7 +53,7 @@
                     <td>{{ room.capacity }}</td>
                     <td>{% if room.features %}{{ room.features|join:", " }}{% else %}None{% endif %}</td>
                     <td>{% if room.unrestricted %}Any time{% else %}{% for row in room.availability %}{{ row.day }} {{ row.ranges }}{% if not forloop.last %}<br>{% endif %}{% endfor %}{% endif %}</td>
-                    <td>{% include "gui/components/usage_summary.html" with usage=room.usage %}</td>
+                    <td>{% include "gui/components/usage_summary.html" with usage=room.usage icon=True %}</td>
                     <td class="actions">
                         <a class="btn btn-small" href="{% url 'gui:room_edit' room.name %}">Edit</a>
                         <a class="btn btn-small btn-danger" href="{% url 'gui:room_delete' room.name %}">Delete</a>

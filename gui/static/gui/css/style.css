@@ -1605,6 +1605,19 @@ html[data-theme="dark"] .list-toolbar input { background: #18181b; color: #f3f4f
     cursor: pointer;
 }
 .usage__toggle { font-size: 0.8rem; color: var(--muted); text-decoration: underline; }
+.usage__end {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    white-space: nowrap;
+}
+.usage__icon {
+    width: 0.6rem;
+    height: 0.6rem;
+    flex: none;
+    color: var(--muted);
+}
+.usage[open] .usage__icon { transform: rotate(180deg); }
 .usage__group { margin: 0.4rem 0 0; font-size: 0.9rem; max-width: 24rem; }
 .data-table .usage { min-width: 11rem; }
 

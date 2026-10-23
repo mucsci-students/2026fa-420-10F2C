@@ -9,9 +9,12 @@ every room and lab is used by a course: that is what makes "cannot delete" and
 unused room/lab first.
 """
 
+import re
+from pathlib import Path
 from urllib.parse import quote
 
 import pytest
+from django.template.loader import render_to_string
 
 from gui import session_store
 from gui.forms import availability_to_text, parse_availability
@@ -226,6 +229,96 @@ def test_list_page_summarises_usage_instead_of_listing_everything(client, kind):
     assert "Used by" in text
     assert '<details class="usage">' in text
     assert "In use by" not in text
+
+
+def usage_icons(text):
+    return re.findall(r'<svg class="usage__icon".*?</svg>', text, flags=re.S)
+
+
+def test_usage_toggle_is_a_small_dropdown_icon_not_a_details_link(client, kind):
+    text = page(client.get(kind["base"]))
+    assert "usage__toggle" not in text
+    assert ">details<" not in text
+
+
+def test_the_icon_sits_next_to_the_faculty_preference_chip_not_inside_it(client, kind):
+    text = page(client.get(kind["base"]))
+    assert re.search(r'faculty preferences?</span><svg class="usage__icon"', text)
+    assert not re.search(r'<span class="chip[^"]*">[^<]*<svg', text)  # never inside a chip
+
+
+def test_every_row_in_use_has_exactly_one_icon_after_its_last_chip(client, kind):
+    text = page(client.get(kind["base"]))
+    rows = text.count('<details class="usage">')
+    assert rows > 0 and len(usage_icons(text)) == rows
+    summaries = re.findall(r'<details class="usage">\s*<summary>(.*?)</summary>', text, flags=re.S)
+    assert len(summaries) == rows
+    for summary in summaries:
+        assert summary.count("<svg") == 1
+        assert re.search(r'<span class="chip[^"]*">[^<]*</span><svg class="usage__icon"', summary)
+        assert summary.strip().endswith("</span>")  # nothing after the icon's hidden label
+
+
+def test_the_icon_is_small_even_before_the_stylesheet_loads(client, kind):
+    icon = usage_icons(page(client.get(kind["base"])))[0]
+    width, height = (int(re.search(rf'{name}="(\d+)"', icon).group(1)) for name in ("width", "height"))
+    assert 6 <= width <= 12 and 6 <= height <= 12
+
+
+def test_the_icon_stylesheet_keeps_it_small(client):
+    css = Path("gui/static/gui/css/style.css").read_text()
+    size = re.search(r"\.usage__icon\s*\{[^}]*?width:\s*([\d.]+)rem", css)
+    assert size and float(size.group(1)) <= 0.7
+    assert re.search(r"\.usage__end\s*\{[^}]*white-space:\s*nowrap", css)  # icon never wraps away from its chip
+
+
+def test_the_icon_is_hidden_from_screen_readers_but_the_control_keeps_a_name(client, kind):
+    text = page(client.get(kind["base"]))
+    assert 'aria-hidden="true"' in usage_icons(text)[0]
+    assert '<span class="visually-hidden"> (show details)</span>' in text
+
+
+def test_rooms_and_labs_use_the_identical_icon(client):
+    room_icons = usage_icons(page(client.get(ROOM_KIND["base"])))
+    lab_icons = usage_icons(page(client.get(LAB_KIND["base"])))
+    assert room_icons and lab_icons
+    assert set(room_icons) == set(lab_icons) and len(set(room_icons)) == 1
+
+
+def test_the_other_pages_keep_the_text_toggle_by_default():
+    in_use = {"in_use": True, "groups": [{"chip": "2 courses", "tone": "", "title": "Used by", "names": ["A", "B"]}]}
+    plain = render_to_string("gui/components/usage_summary.html", {"usage": in_use})
+    assert 'class="usage__toggle">details<' in plain and "usage__icon" not in plain
+    icon = render_to_string("gui/components/usage_summary.html", {"usage": in_use, "icon": True})
+    assert "usage__icon" in icon and "usage__toggle" not in icon
+
+
+def test_the_icon_is_next_to_the_last_chip_whatever_the_number_of_chips():
+    def group(chip):
+        return {"chip": chip, "tone": "", "title": chip, "names": ["A"]}
+
+    for groups in ([group("1 course")], [group("1 course"), group("2 faculty preferences")]):
+        text = render_to_string(
+            "gui/components/usage_summary.html", {"usage": {"in_use": True, "groups": groups}, "icon": True}
+        )
+        assert text.count("usage__icon") == 1
+        assert re.search(rf'{re.escape(groups[-1]["chip"])}</span><svg class="usage__icon"', text)
+        assert not re.search(r'<span class="chip[^"]*">[^<]*<svg', text)
+
+
+def test_a_record_that_is_not_in_use_has_no_icon():
+    text = render_to_string("gui/components/usage_summary.html", {"usage": {"in_use": False, "groups": []}, "icon": True})
+    assert "usage__icon" not in text and "Not in use" in text
+
+
+def test_the_icon_styles_use_theme_colours_and_flip_when_open():
+    css = Path("gui/static/gui/css/style.css").read_text()
+    assert ".usage__icon" in css
+    assert re.search(r"\.usage\[open\]\s+\.usage__icon\s*\{[^}]*rotate\(180deg\)", css)
+    block = re.search(r"\.usage__icon\s*\{[^}]*\}", css).group(0)
+    assert not re.search(r"#[0-9a-fA-F]{3,8}\b", block) and "rgb" not in block
+    markup = Path("gui/templates/gui/components/usage_summary.html").read_text()
+    assert "style=" not in markup and 'stroke="currentColor"' in markup  # inherits the chip's themed colour
 
 
 def test_deleting_something_in_use_shows_what_will_change(client, kind):
