@@ -290,19 +290,18 @@ def _rename_notices(config, old_name: str, new_name: str) -> list[str]:
     return [f"Renamed '{old_name}' to '{new_name}' in {' and '.join(parts)}."] if parts else []
 
 
-def delete_room(request, room_name, confirm_extra: bool = False) -> list[str]:
+def delete_room(request, room_name) -> list[str]:
     """Delete a room and detach it from every course and faculty preference in
     ONE validated edit (Section 12). If any part fails, nothing changes.
 
     No other room takes its place. A course section that lists only this room
-    could not be scheduled any more, so it is deleted too -- but only when
-    `confirm_extra` is True (the page's tick-box).
+    could not be scheduled any more, so it is deleted too.
     Returns plain-language notices describing what changed (see gui/controllers/dependencies.py)."""
     session = get_session(request)
     config = _require_config(session)
     _find_room(config, room_name)
     the_plan = deps.plan(config, "room", room_name)
-    deps.resolve(the_plan, confirmed=confirm_extra)
+    deps.resolve(the_plan)
     mutate, notices = deps.build(config, "room", room_name, the_plan)
     _apply(session, config, mutate, label=f"Delete room '{room_name}'")
     return notices

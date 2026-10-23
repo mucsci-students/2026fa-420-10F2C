@@ -30,7 +30,7 @@
            data-filter-input="#course-list" data-filter-status="#course-filter-status">
     <p class="help" id="course-filter-status" aria-live="polite"></p>
 </div>
-<div class="card-grid" id="course-list">
+<div class="card-grid card-grid--start" id="course-list">
     {% for course in data.courses %}
     <article class="item-card" data-filter-item>
         <header class="item-card__head">

@@ -294,7 +294,7 @@ def _rename_notices(config, old_name: str, new_name: str) -> list[str]:
     return [f"Renamed '{old_name}' to '{new_name}' in {' and '.join(parts)}."] if parts else []
 
 
-def delete_lab(request, lab_name, confirm_extra: bool = False) -> list[str]:
+def delete_lab(request, lab_name) -> list[str]:
     """Delete a lab and detach it from every course and faculty preference in
     ONE validated edit (Section 12). If any part fails, nothing changes.
 
@@ -305,7 +305,7 @@ def delete_lab(request, lab_name, confirm_extra: bool = False) -> list[str]:
     config = _require_config(session)
     _find_lab(config, lab_name)
     the_plan = deps.plan(config, "lab", lab_name)
-    deps.resolve(the_plan, confirmed=confirm_extra)
+    deps.resolve(the_plan)
     mutate, notices = deps.build(config, "lab", lab_name, the_plan)
     _apply(session, config, mutate, label=f"Delete lab '{lab_name}'")
     return notices

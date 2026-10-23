@@ -100,8 +100,8 @@ def faculty_delete(request, faculty_name):
     """Review page (GET) and the confirm/cancel actions (POST).
 
     Courses that assign this person are updated in the same step. Nobody is named in
-    their place; a section nobody else could teach is deleted only after an explicit tick
-    (Section 12)."""
+    their place; a section nobody else could teach is deleted too, and the page lists
+    it first (Section 12)."""
     try:
         person = faculty_controller.get_faculty(request, faculty_name)
     except ControllerError as error:
@@ -113,7 +113,5 @@ def faculty_delete(request, faculty_name):
         context={"active": "config", "faculty": person, "plan": person["plan"]},
         list_url="gui:faculty",
         done_text=f"Faculty member '{faculty_name}' deleted.",
-        delete=lambda confirmed: faculty_controller.delete_faculty(
-            request, faculty_name, confirm_extra=confirmed
-        ),
+        delete=lambda: faculty_controller.delete_faculty(request, faculty_name),
     )

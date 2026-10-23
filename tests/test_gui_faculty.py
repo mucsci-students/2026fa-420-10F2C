@@ -5,6 +5,9 @@ The browser tests verify the same add/edit/delete shape already used by Rooms
 and Labs, including blocked deletes when a course explicitly assigns faculty.
 """
 
+import re
+from pathlib import Path
+
 import pytest
 from django.template.loader import render_to_string
 
@@ -134,19 +137,20 @@ class TestFacultyController:
         assert session.dumps() == before
         assert session.dirty is False
 
-    def test_a_referenced_faculty_member_needs_the_tick_box_before_the_delete_goes_through(self, session):
+    def test_a_referenced_faculty_member_is_deleted_in_one_step_with_the_sections_only_they_could_teach(self, session):
         """Zoppetti is the only person who could teach two sections, so deleting them deletes those too."""
-        with pytest.raises(ControllerError) as delete_error:
-            faculty_controller.delete_faculty(None, "Zoppetti")
+        sections = len(session.config.config.courses)
+        notices = faculty_controller.delete_faculty(None, "Zoppetti")
 
-        assert "Tick the box" in delete_error.value.message
-        assert find_faculty(session, "Zoppetti") is not None
-        assert session.dirty is False
+        assert find_faculty(session, "Zoppetti") is None
+        assert len(session.config.config.courses) == sections - 2
+        assert notices[-1].startswith("Also deleted 2 course sections")
+        assert session.dirty is True
 
     def test_deleting_a_referenced_faculty_member_cleans_up_their_courses_in_one_undoable_step(self, session):
         before = canonical(session.dumps())
 
-        notices = faculty_controller.delete_faculty(None, "Zoppetti", confirm_extra=True)
+        notices = faculty_controller.delete_faculty(None, "Zoppetti")
 
         assert find_faculty(session, "Zoppetti") is None
         assert all("Zoppetti" not in (course.faculty or []) for course in session.config.config.courses)
@@ -320,33 +324,75 @@ class TestFacultyPages:
         """Faculty now exposes only its direct edit endpoint."""
         assert client.get(FACULTY_URL + "Zoppetti/rename/confirm/").status_code == 404
 
+    def test_usage_toggle_is_a_small_dropdown_icon_not_a_details_link(self, client):
+        text = page(client.get(FACULTY_URL))
+        assert '<details class="usage">' in text
+        assert "usage__toggle" not in text
+        assert ">details<" not in text
+
+    def test_every_faculty_card_in_use_has_exactly_one_icon_after_its_last_chip(self, client):
+        text = page(client.get(FACULTY_URL))
+        icons = re.findall(r'<svg class="usage__icon".*?</svg>', text, flags=re.S)
+        summaries = re.findall(r'<details class="usage">\s*<summary>(.*?)</summary>', text, flags=re.S)
+        assert summaries and len(icons) == len(summaries)
+        for summary in summaries:
+            assert summary.count("<svg") == 1
+            assert re.search(r'<span class="chip[^"]*">[^<]*</span><svg class="usage__icon"', summary)
+            assert summary.strip().endswith("</span>")
+        assert not re.search(r'<span class="chip[^"]*">[^<]*<svg', text)  # never inside a chip
+
+    def test_faculty_uses_the_identical_icon_as_rooms_and_labs(self, client):
+        faculty = re.findall(r'<svg class="usage__icon".*?</svg>', page(client.get(FACULTY_URL)), flags=re.S)
+        others = set()
+        for base in ("/configuration/rooms/", "/configuration/labs/"):
+            others.update(re.findall(r'<svg class="usage__icon".*?</svg>', page(client.get(base)), flags=re.S))
+        assert faculty and len(set(faculty)) == 1
+        assert set(faculty) == others and len(others) == 1
+
+    def test_the_icon_is_hidden_from_screen_readers_but_keeps_an_accessible_name(self, client):
+        text = page(client.get(FACULTY_URL))
+        assert 'aria-hidden="true"' in re.search(r'<svg class="usage__icon".*?</svg>', text, flags=re.S).group(0)
+        assert '<span class="visually-hidden"> (show details)</span>' in text
+
+    def test_a_member_nobody_uses_shows_no_icon_and_no_note(self, client):
+        client.get(FACULTY_URL)
+        browser_session().config  # the example's 'sam' is used by no course
+        text = page(client.get(FACULTY_URL))
+        sam = text[text.index("<h3 class=\"item-card__title\">sam</h3>"):]
+        sam = sam[: sam.index("</article>")]
+        assert "usage__icon" not in sam and "Not in use" not in sam
+
+    def test_the_cards_do_not_need_their_own_icon_styles(self):
+        css = Path("gui/static/gui/css/style.css").read_text()
+        assert not re.search(r"item-card[^{]*usage__icon|usage__icon[^{]*item-card", css)
+        assert not re.search(r"faculty[^{]*usage__icon|usage__icon[^{]*faculty", css)
+
+    def test_the_icon_does_not_get_clipped_by_the_card_footer(self):
+        css = Path("gui/static/gui/css/style.css").read_text()
+        blocks = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        foot = " ".join(body for sel, body in re.findall(r"([^{}]+)\{([^}]*)\}", blocks) if ".item-card__foot" in sel)
+        card = " ".join(body for sel, body in re.findall(r"([^{}]+)\{([^}]*)\}", blocks) if sel.strip() == ".item-card")
+        assert "overflow" not in foot and not re.search(r"overflow:\s*(hidden|clip)", card)
+
     def test_referenced_faculty_delete_page_lists_the_sections_that_go_too_and_names_no_replacement(self, client):
         client.get(FACULTY_URL)
         response = client.get(FACULTY_URL + "Zoppetti/delete/")
         text = page(response)
 
         assert "CMSC 362.01" in text and "CMSC 476.01" in text
-        assert 'name="confirm_extra"' in text
+        assert 'name="confirm_extra"' not in text and 'type="checkbox"' not in text
         assert "Who takes over?" not in text
         assert 'name="choice_3"' not in text
         assert 'value="confirm"' in text
         assert "Cannot delete" not in text
 
-    def test_referenced_faculty_can_be_deleted_from_the_page_and_the_list_says_what_uses_them(self, client):
+    def test_referenced_faculty_can_be_deleted_in_one_click_and_the_list_says_what_uses_them(self, client):
         listing = page(client.get(FACULTY_URL))
         assert "only candidate for 2 sections" in listing
 
-        response = client.post(
-            FACULTY_URL + "Zoppetti/delete/",
-            {"action": "confirm", "confirm_extra": "on"},
-            follow=True,
-        )
-        assert "deleted" in page(response)
-        assert find_faculty(browser_session(), "Zoppetti") is None
-
-    def test_a_missing_tick_keeps_the_page_and_changes_nothing(self, client):
-        client.get(FACULTY_URL)
-        response = client.post(FACULTY_URL + "Zoppetti/delete/", {"action": "confirm"})
+        response = client.post(FACULTY_URL + "Zoppetti/delete/", {"action": "confirm"}, follow=True)
         assert response.status_code == 200
-        assert "nothing was changed" in page(response)
-        assert find_faculty(browser_session(), "Zoppetti") is not None
+        assert "deleted" in page(response)
+        assert "nothing was changed" not in page(response)
+        assert "Also deleted 2 course sections" in page(response)
+        assert find_faculty(browser_session(), "Zoppetti") is None

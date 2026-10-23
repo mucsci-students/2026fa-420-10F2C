@@ -385,20 +385,19 @@ def _rename_notices(config, old_name: str, new_name: str) -> list[str]:
     return [f"Renamed '{old_name}' to '{new_name}' in {assignments} course faculty {noun}."]
 
 
-def delete_faculty(request, faculty_name, confirm_extra: bool = False) -> list[str]:
+def delete_faculty(request, faculty_name) -> list[str]:
     """Delete a faculty member and clean up everything that pointed at them in
     ONE validated edit (Section 12).
 
     Nobody is named in their place. A section that assigned only them goes back
     to "the scheduler chooses" when someone else prefers the course; a section
-    nobody else could teach is deleted too, but only when `confirm_extra` is
-    True (the page's tick-box).
+    nobody else could teach is deleted too.
     Returns plain-language notices describing what changed."""
     session = get_session(request)
     config = require_config(session, "deleting faculty")
     _find_faculty(config, faculty_name)
     the_plan = deps.plan(config, "faculty", faculty_name)
-    deps.resolve(the_plan, confirmed=confirm_extra)
+    deps.resolve(the_plan)
     mutate, notices = deps.build(config, "faculty", faculty_name, the_plan)
     apply_config_edit(
         session, config, "faculty", mutate, form_fields=FACULTY_FIELDS,

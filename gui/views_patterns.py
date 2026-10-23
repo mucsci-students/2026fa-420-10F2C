@@ -82,8 +82,8 @@ def pattern_edit(request, pattern_index):
 def pattern_delete(request, pattern_index):
     """Review page (GET) and the confirm/cancel actions (POST).
 
-    If courses can only be scheduled through this pattern, the page says so and
-    asks for an explicit tick before deleting them too (Section 12)."""
+    If courses can only be scheduled through this pattern, the page lists them and
+    deletes them too (Section 12)."""
     try:
         pattern = pattern_controller.get_pattern(request, pattern_index)
     except ControllerError as error:
@@ -95,7 +95,5 @@ def pattern_delete(request, pattern_index):
         context={"active": "config", "pattern": pattern, "plan": pattern["plan"]},
         list_url="gui:patterns",
         done_text="Class pattern removed.",
-        delete=lambda confirmed: pattern_controller.delete_pattern(
-            request, pattern_index, confirm_extra=confirmed
-        ),
+        delete=lambda: pattern_controller.delete_pattern(request, pattern_index),
     )

@@ -227,24 +227,26 @@ def test_the_room_delete_page_lists_the_sections_that_go_too_and_names_no_replac
     client.get(ROOMS)
     text = page(client.get(f"{ROOMS}{quote('Roddy 136')}/delete/"))
     assert "Course sections that would be deleted" in text
-    assert "CMSC 362.01" in text and 'name="confirm_extra"' in text
+    assert "CMSC 362.01" in text
+    assert 'name="confirm_extra"' not in text and 'type="checkbox"' not in text
     assert "Who takes over?" not in text and 'name="choice_' not in text
     assert "(capacity" not in text                      # the page names the room, nothing more
 
 
-def test_deleting_without_the_tick_changes_nothing_and_explains(client):
+def test_deleting_with_a_single_click_deletes_the_room_and_offers_undo(client):
     client.get(ROOMS)
-    response = client.post(f"{ROOMS}{quote('Roddy 136')}/delete/", {"action": "confirm"})
+    response = client.post(f"{ROOMS}{quote('Roddy 136')}/delete/", {"action": "confirm"}, follow=True)
     text = page(response)
     assert response.status_code == 200
-    assert "nothing was changed" in text and "Tick the box" in text
-    assert not browser_session().history.can_undo
+    assert "nothing was changed" not in text and "Tick the box" not in text
+    assert 'class="alert__undo"' in text
+    assert browser_session().history.can_undo
 
 
-def test_ticking_the_box_deletes_the_room_and_the_sections_only_it_served(client):
+def test_the_room_and_the_sections_only_it_served_go_in_that_one_click(client):
     client.get(ROOMS)
     before = len(browser_session().config.config.courses)
-    response = delete_room(client, confirm_extra="on")
+    response = delete_room(client)
     assert "Also deleted 3 course sections" in page(response)
     assert len(browser_session().config.config.courses) == before - 3
     assert all("Roddy 136" not in (c.room or []) for c in browser_session().config.config.courses)
@@ -253,7 +255,7 @@ def test_ticking_the_box_deletes_the_room_and_the_sections_only_it_served(client
 def test_deleting_from_the_page_is_one_undoable_step(client):
     client.get(ROOMS)
     before = config_json()
-    response = delete_room(client, confirm_extra="on")
+    response = delete_room(client)
     assert 'class="alert__undo"' in page(response)
     assert browser_session().history.state()["undo_entries"][0]["summary"].startswith("Removed room Roddy 136")
     client.post(UNDO)

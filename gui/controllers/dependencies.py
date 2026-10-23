@@ -11,8 +11,8 @@ record is described here once and the delete pages share the same flow:
     plan(config, kind, ident)     -> everything the confirmation page shows:
                                      what will change, which course sections
                                      would go too, and anything that blocks it
-    resolve(plan, confirmed)      -> checks the user confirmed what must be
-                                     confirmed
+    resolve(plan)                 -> checks the delete is allowed: raises when
+                                     something blocks it
     build(config, kind, ident, plan)
                                   -> (mutate, notices): `mutate(draft)` does the
                                      whole cascade on an edit-mode draft, so the
@@ -24,9 +24,13 @@ THE RULES (what a delete does to the things that point at it)
     deleted one's place: deleting the lab "Mac" does not make the lab "Linux"
     take over its course sections.
 
+    The review page lists everything a delete will change, including any course
+    sections that are deleted too, and one click on its Delete button does it
+    all. The result can be undone.
+
     room      removed from course room lists and from faculty room preferences;
               a section whose ONLY room it was cannot be scheduled any more, so
-              it is deleted too, after explicit consent (a tick-box)
+              it is deleted too
     lab       removed from course lab lists and faculty lab preferences; a
               section whose only lab it was is simply left without a lab (the
               scheduler library still validates the result)
@@ -35,12 +39,12 @@ THE RULES (what a delete does to the things that point at it)
               scheduler chooses among those who prefer it" when someone else
               prefers the course, and otherwise (or when they were the only
               person who prefers a course with no explicit assignment) the
-              section is deleted too, after explicit consent
+              section is deleted too
     course    (the LAST section of a course id) removed from other courses'
               conflict lists and from faculty course preferences
     pattern   when it is the only enabled pattern for its credit value, the
               courses with that credit value cannot be scheduled any more, so
-              deleting it also deletes those sections (after explicit consent)
+              deleting it also deletes those sections
 
 Controller-layer code: no HTTP, no templates (Section 20). It works on a
 configuration object it is given, so it needs no session.
@@ -51,7 +55,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from app.commands.courses import course_display_name
-from gui.controllers.errors import ControllerError, FieldError
+from gui.controllers.errors import ControllerError
 
 KINDS = ("room", "lab", "faculty", "course", "pattern")
 
@@ -67,16 +71,11 @@ class Plan:
     effects: list = field(default_factory=list)   # one line per kind of change
     groups: list = field(default_factory=list)    # [{"title", "names"}] the affected records
     blockers: list = field(default_factory=list)
-    extra_confirm: str = ""                   # text of a tick-box that must be ticked
     removes_courses: list = field(default_factory=list)   # course positions that go too
 
     @property
     def in_use(self) -> bool:
         return bool(self.effects or self.removes_courses)
-
-    @property
-    def needs_decision(self) -> bool:
-        return bool(self.extra_confirm)
 
     @property
     def blocked(self) -> bool:
@@ -131,8 +130,8 @@ def _delete_sections(draft, positions) -> None:
         _drop_course_ids(draft, gone)
 
 
-def _also_deleted_effects(plan: Plan, dependents, why: str, confirm_subject: str) -> None:
-    """Describe the sections that go with the record, and require the tick-box."""
+def _also_deleted_effects(plan: Plan, dependents, why: str) -> None:
+    """Describe the sections that go with the record."""
     count = len(dependents)
     plan.effects.append(f"{_plural(count, 'course section')} {why}.")
     plan.effects.append(
@@ -141,7 +140,6 @@ def _also_deleted_effects(plan: Plan, dependents, why: str, confirm_subject: str
     )
     plan.groups.append({"title": "Course sections that would be deleted", "names": [d for _, d, _ in dependents]})
     plan.removes_courses = [i for i, _, _ in dependents]
-    plan.extra_confirm = f"I understand this also deletes {_plural(count, 'course section')} {confirm_subject}."
 
 
 def _also_deleted_notice(config, plan: Plan) -> list[str]:
@@ -254,7 +252,6 @@ def _plan_resource(config, res: _Resource, name: str) -> Plan:
             plan,
             sole,
             f"list only this {res.label}, so {'it' if len(sole) == 1 else 'they'} could not be scheduled without it",
-            f"that can only use this {res.label}",
         )
     elif sole:
         plan.effects.append(
@@ -407,7 +404,6 @@ def _plan_faculty(config, name: str) -> Plan:
             "could not be taught by anyone else, so "
             + ("it" if len(doomed) == 1 else "they")
             + " could not be scheduled without them",
-            "that only this person can teach",
         )
     return plan
 
@@ -575,7 +571,6 @@ def _plan_pattern(config, index: int) -> Plan:
         )
         plan.groups.append({"title": "Course sections that would be deleted", "names": [d for _, d, _ in dependents]})
         plan.removes_courses = [i for i, _, _ in dependents]
-        plan.extra_confirm = f"I understand this also deletes {_plural(count, 'course section')}."
     return plan
 
 
@@ -623,16 +618,11 @@ def plan(config, kind: str, ident) -> Plan:
     raise ValueError(f"unknown kind {kind!r}")
 
 
-def resolve(the_plan: Plan, confirmed: bool = True) -> None:
+def resolve(the_plan: Plan) -> None:
     """Check the delete may go ahead. Raises ControllerError when the plan is
-    blocked, or when it also deletes course sections and the user has not
-    ticked the box that says they understand."""
+    blocked (for example the only room); nothing else needs confirming."""
     if the_plan.blocked:
         raise ControllerError(the_plan.blockers[0])
-    if the_plan.extra_confirm and not confirmed:
-        raise ControllerError(
-            [FieldError("confirm_extra", "Tick the box to confirm that the course sections should be deleted too.")]
-        )
 
 
 def build(config, kind: str, ident, the_plan: Plan):

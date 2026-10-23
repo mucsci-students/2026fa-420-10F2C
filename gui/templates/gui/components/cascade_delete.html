@@ -2,8 +2,9 @@
     Review-and-confirm body shared by every Delete page (Sprint 2 Section 12): rooms, labs,
     faculty, courses and class patterns. It is driven by `plan`, built by gui/controllers/dependencies.py.
     Context: meetings (optional, class patterns), kind_label ("room", "faculty member", ...), plural_label, list_url, item_name,
-    plan, and after a failed attempt: errors, confirm_checked.
-    Deleting never puts a different record in the deleted one's place, so the only decision is the tick-box.
+    plan, and after a failed attempt: errors.
+    Deleting never puts a different record in the deleted one's place, and the page lists everything the Delete
+    button will change, so there is nothing to tick: one click does it all and it can be undone.
 {% endcomment %}
 <div class="card">
     {% if errors %}
@@ -44,14 +45,9 @@
     <form method="post">
         {% csrf_token %}
         {% if item.course_id %}<input type="hidden" name="expected_course_id" value="{{ item.course_id }}">{% endif %}
-        {% if plan.extra_confirm %}
-        <div class="field">
-            <label class="checkbox"><input type="checkbox" name="confirm_extra" value="on" required{% if confirm_checked %} checked{% endif %}> {{ plan.extra_confirm }}</label>
-        </div>
-        {% endif %}
         <div class="form-actions">
             <button type="submit" name="action" value="confirm" class="btn btn-danger">{% if plan.effects %}Delete {{ kind_label }} and update everything that uses it{% else %}Delete {{ kind_label }}{% endif %}</button>
-            <button type="submit" name="action" value="cancel" class="btn" formnovalidate>Cancel</button>
+            <button type="submit" name="action" value="cancel" class="btn">Cancel</button>
         </div>
     </form>
     {% endif %}

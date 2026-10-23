@@ -26,7 +26,7 @@
            data-filter-input="#faculty-list" data-filter-status="#faculty-filter-status">
     <p class="help" id="faculty-filter-status" aria-live="polite"></p>
 </div>
-<div class="card-grid" id="faculty-list">
+<div class="card-grid card-grid--start" id="faculty-list">
     {% for person in data.faculty %}
     <article class="item-card" data-filter-item>
         <header class="item-card__head">
@@ -60,7 +60,7 @@
         <footer class="item-card__foot">
             <a class="btn" href="{% url 'gui:faculty_edit' person.name %}">Edit</a>
             <a class="btn btn-danger" href="{% url 'gui:faculty_delete' person.name %}">Delete</a>
-            {% include "gui/components/usage_summary.html" with usage=person.usage quiet=True %}
+            {% include "gui/components/usage_summary.html" with usage=person.usage quiet=True icon=True %}
         </footer>
     </article>
     {% empty %}

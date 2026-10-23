@@ -117,7 +117,7 @@ def course_delete(request, course_index):
         context={"active": "config", "course": course, "plan": course["plan"]},
         list_url="gui:courses",
         done_text=f"Course '{course['display']}' deleted.",
-        delete=lambda confirmed: course_controller.delete_course(
+        delete=lambda: course_controller.delete_course(
             request,
             course_index,
             expected_course_id=request.POST.get("expected_course_id") or None,

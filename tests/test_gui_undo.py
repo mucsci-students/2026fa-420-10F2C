@@ -43,7 +43,7 @@ def delete_big_room(client):
     client.get(ROOMS)
     return client.post(
         f"{ROOMS}{quote('Roddy 136')}/delete/",
-        {"action": "confirm", "confirm_extra": "on"},
+        {"action": "confirm"},
         follow=True,
     )
 

@@ -194,19 +194,18 @@ def update_pattern(request, pattern_index: int, form_data) -> list[str]:
     return _fit_warnings_for(config, updated)
 
 
-def delete_pattern(request, pattern_index: int, confirm_extra: bool = False) -> list[str]:
+def delete_pattern(request, pattern_index: int) -> list[str]:
     """Remove the pattern at pattern_index (the page asks for confirmation first).
 
     If it is the only enabled pattern for its credit value, the course sections
     with that many credits could not be scheduled any more, so they are deleted
-    too -- but only when `confirm_extra` is True (the page's tick-box). All of
-    it is one validated edit; the library still rejects the result if the
-    configuration would be left invalid (for example with no courses at all)."""
+    too. All of it is one validated edit; the library still rejects the result
+    if the configuration would be left invalid (for example with no courses at all)."""
     session = get_session(request)
     config = _require_config(session)
     _check_index(config, pattern_index)
     the_plan = deps.plan(config, "pattern", pattern_index)
-    deps.resolve(the_plan, confirmed=confirm_extra)
+    deps.resolve(the_plan)
     mutate, notices = deps.build(config, "pattern", pattern_index, the_plan)
     _apply(session, config, mutate, label=f"Delete {the_plan.name}")
     return notices

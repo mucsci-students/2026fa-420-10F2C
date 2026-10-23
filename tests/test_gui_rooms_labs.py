@@ -321,6 +321,55 @@ def test_the_icon_styles_use_theme_colours_and_flip_when_open():
     assert "style=" not in markup and 'stroke="currentColor"' in markup  # inherits the chip's themed colour
 
 
+def css_block(css, selector):
+    """The declarations of the rule(s) whose selector list contains `selector`."""
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)  # a comment above a rule must not become part of its selector
+    blocks = re.findall(r"([^{}]+)\{([^}]*)\}", css)
+    return " ".join(body for selectors, body in blocks if selector in [s.strip() for s in selectors.split(",")])
+
+
+def test_the_tables_are_marked_for_centered_columns_and_other_tables_are_not(client, kind):
+    text = page(client.get(kind["base"]))
+    assert re.search(rf'<table class="data-table data-table--centered" id="{kind["key"]}-list">', text)
+    other = page(client.get("/configuration/timeslots/"))
+    assert "data-table--centered" not in other
+
+
+def test_headers_and_cells_share_one_center_line_in_both_tables(client, kind):
+    text = page(client.get(kind["base"]))
+    head = re.search(r"<thead>(.*?)</thead>", text, flags=re.S).group(1)
+    assert [h.strip() for h in re.findall(r"<th[^>]*>(.*?)</th>", head)] == [
+        "Name", "Capacity", "Features", "Availability", "Used by", "Actions",
+    ]
+    row = re.search(r"<tbody>\s*<tr data-filter-item>(.*?)</tr>", text, flags=re.S).group(1)
+    assert len(re.findall(r"<td[ >]", row)) == 6  # one cell under every heading
+
+
+def test_the_stylesheet_centers_the_headers_and_cells_of_those_tables_only(client):
+    css = Path("gui/static/gui/css/style.css").read_text()
+    for selector in (".data-table--centered th", ".data-table--centered td"):
+        assert re.search(r"text-align:\s*center", css_block(css, selector)), selector
+    # the "Used by" summary is a flex row, so it needs justify-content to centre its chips and arrow
+    assert re.search(r"justify-content:\s*center", css_block(css, ".data-table--centered .usage > summary"))
+    assert re.search(r"text-align:\s*left", css_block(css, ".data-table--centered .usage__group"))
+    assert re.search(r"text-align:\s*left", css_block(css, ".data-table th"))  # every other table is unchanged
+
+
+def test_centered_cells_keep_their_content_on_the_same_line_as_the_header(client):
+    css = Path("gui/static/gui/css/style.css").read_text()
+    cells = css_block(css, ".data-table--centered td")
+    assert re.search(r"vertical-align:\s*middle", cells)
+
+
+def test_the_arrow_hangs_beside_its_chip_so_the_chips_stay_centered_under_the_heading(client):
+    """An arrow that takes part in the centring would push its chip left of the "Used by" heading."""
+    css = Path("gui/static/gui/css/style.css").read_text()
+    assert re.search(r"position:\s*relative", css_block(css, ".usage__end"))
+    icon = css_block(css, ".usage__icon")
+    assert re.search(r"position:\s*absolute", icon)
+    assert re.search(r"left:\s*calc\(100%", icon)  # starts where the chip ends
+
+
 def test_deleting_something_in_use_shows_what_will_change(client, kind):
     client.get(kind["base"])
     text = page(client.get(delete_url(kind, kind["existing"])))
@@ -328,19 +377,19 @@ def test_deleting_something_in_use_shows_what_will_change(client, kind):
     assert 'value="confirm"' in text
 
 
-def test_room_cascade_needs_the_tick_when_a_course_would_lose_its_only_room(client):
+def test_room_cascade_needs_no_tick_even_when_a_course_would_lose_its_only_room(client):
     client.get(ROOM_KIND["base"])
-    response = client.post(delete_url(ROOM_KIND, "Roddy 136"), {"action": "confirm"})
-    assert response.status_code == 200
-    assert "Tick the box" in page(response)
-    assert find(ROOM_KIND, "Roddy 136") is not None
+    text = page(client.get(delete_url(ROOM_KIND, "Roddy 136")))
+    assert 'type="checkbox"' not in text and 'name="confirm_extra"' not in text
+    assert "Course sections that would be deleted" in text  # the page still says what the click will do
+    response = client.post(delete_url(ROOM_KIND, "Roddy 136"), {"action": "confirm"}, follow=True)
+    assert response.status_code == 200 and "Tick the box" not in page(response)
+    assert find(ROOM_KIND, "Roddy 136") is None
 
 
 def test_room_cascade_removes_every_reference_in_one_step(client):
     client.get(ROOM_KIND["base"])
-    response = client.post(
-        delete_url(ROOM_KIND, "Roddy 136"), {"action": "confirm", "confirm_extra": "on"}, follow=True
-    )
+    response = client.post(delete_url(ROOM_KIND, "Roddy 136"), {"action": "confirm"}, follow=True)
     assert "deleted" in page(response) and "Removed" in page(response)
     config = browser_session().config.config
     assert find(ROOM_KIND, "Roddy 136") is None
@@ -372,9 +421,7 @@ def test_a_cascade_that_fails_whole_config_validation_changes_nothing_and_explai
     before = browser_session().config.model_dump_json()
     monkeypatch.setattr(rooms_ctrl, "apply_session_edit", reject)
 
-    response = client.post(
-        delete_url(ROOM_KIND, "Roddy 136"), {"action": "confirm", "confirm_extra": "on"}
-    )
+    response = client.post(delete_url(ROOM_KIND, "Roddy 136"), {"action": "confirm"})
 
     assert response.status_code == 200
     text = page(response)

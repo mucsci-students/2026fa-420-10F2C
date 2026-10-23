@@ -25,11 +25,11 @@ def session():
     return loaded
 
 
-def run_delete(session, kind, ident, confirmed=True):
-    """Do what a delete page does: plan, check the confirmation, cascade in ONE edit."""
+def run_delete(session, kind, ident):
+    """Do what a delete page does: plan, check it is allowed, cascade in ONE edit."""
     config = session.config
     plan = deps.plan(config, kind, ident)
-    deps.resolve(plan, confirmed)
+    deps.resolve(plan)
     mutate, notices = deps.build(config, kind, ident, plan)
     apply_session_edit(session, config, kind, mutate, label=f"Delete {kind}")
     return notices
@@ -104,15 +104,19 @@ def test_the_plan_lists_the_sections_that_could_not_be_scheduled_without_the_roo
     assert deleted["names"] == SOLE_ROOM_SECTIONS
     assert len(plan.removes_courses) == 3
     assert "11 course sections" in plan.effects[0]          # the other sections just lose it from their list
-    assert plan.extra_confirm.startswith("I understand this also deletes 3 course sections")
-    assert plan.in_use and plan.needs_decision and not plan.blocked
+    assert plan.in_use and not plan.blocked
 
 
-def test_deleting_such_a_room_needs_the_tick_box(session):
+def test_deleting_such_a_room_needs_no_tick_box(session):
     plan = deps.plan(session.config, "room", "Roddy 136")
-    with pytest.raises(ControllerError, match="Tick the box"):
-        deps.resolve(plan, confirmed=False)
-    assert deps.resolve(plan, confirmed=True) is None
+    assert deps.resolve(plan) is None
+    assert not hasattr(plan, "extra_confirm") and not hasattr(plan, "needs_decision")
+
+
+def test_resolve_only_looks_at_whether_the_delete_is_allowed():
+    import inspect
+
+    assert list(inspect.signature(deps.resolve).parameters) == ["the_plan"]
 
 
 def test_no_other_room_takes_the_deleted_rooms_place(session):
@@ -150,16 +154,16 @@ def test_a_room_nothing_depends_on_is_removed_without_a_tick(session):
         spare.name = "Spare"
         draft.config.rooms.append(spare)
     plan = deps.plan(config, "room", "Spare")
-    assert not plan.in_use and not plan.needs_decision
-    assert run_delete(session, "room", "Spare", confirmed=False) == []
+    assert not plan.in_use
+    assert run_delete(session, "room", "Spare") == []
 
 
 def test_a_lab_is_removed_and_its_sections_are_left_without_one(session):
     before = lists_before(session, "lab")
     plan = deps.plan(session.config, "lab", "Mac")
-    assert plan.removes_courses == [] and not plan.needs_decision
+    assert plan.removes_courses == []
     assert any("left without" in line for line in plan.effects)
-    notices = run_delete(session, "lab", "Mac", confirmed=False)
+    notices = run_delete(session, "lab", "Mac")
     assert [lab.name for lab in session.config.config.labs] == ["Linux"]
     assert lists_before(session, "lab") == [labs - {"Mac"} for labs in before]    # Linux took nobody's place
     assert any("no lab" in note for note in notices)
@@ -185,13 +189,11 @@ def test_the_plan_separates_sections_the_scheduler_can_staff_from_ones_nobody_el
     assert deleted["names"] == ["CMSC 362.01", "CMSC 476.01"]
     assert handed["names"] == ["CMSC 161.01"]                # others prefer CMSC 161
     assert "nobody is named in their place" in " ".join(plan.effects)
-    assert plan.extra_confirm.endswith("that only this person can teach.")
+    assert plan.removes_courses and not plan.blocked
 
 
 def test_faculty_cascade_names_nobody_in_their_place(session):
     before = [set(course.faculty or []) for course in session.config.config.courses]
-    with pytest.raises(ControllerError, match="Tick the box"):
-        run_delete(session, "faculty", "Zoppetti", confirmed=False)
     notices = run_delete(session, "faculty", "Zoppetti")
     config = session.config.config
     assert "Zoppetti" not in [person.name for person in config.faculty]
@@ -207,8 +209,8 @@ def test_faculty_cascade_names_nobody_in_their_place(session):
 
 def test_a_member_nobody_depends_on_is_removed_without_a_tick(session):
     plan = deps.plan(session.config, "faculty", "sam")
-    assert not plan.needs_decision
-    run_delete(session, "faculty", "sam", confirmed=False)
+    assert not plan.removes_courses
+    run_delete(session, "faculty", "sam")
     assert "sam" not in [person.name for person in session.config.config.faculty]
 
 
@@ -256,13 +258,12 @@ def add_two_credit_world(session):
     return len(config.time_slot_config.classes) - 1
 
 
-def test_a_pattern_the_courses_depend_on_asks_before_deleting_them_too(session):
+def test_a_pattern_the_courses_depend_on_lists_them_and_needs_no_tick(session):
     index = add_two_credit_world(session)
     plan = deps.plan(session.config, "pattern", index)
-    assert len(plan.removes_courses) == 2 and plan.extra_confirm
-    assert plan.needs_decision
-    with pytest.raises(ControllerError, match="Tick the box"):
-        deps.resolve(plan, confirmed=False)
+    assert len(plan.removes_courses) == 2
+    assert any("Course sections that would be deleted" in group["title"] for group in plan.groups)
+    assert deps.resolve(plan) is None
 
 
 def test_confirming_deletes_the_pattern_and_the_courses_that_needed_it(session):

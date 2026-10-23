@@ -200,17 +200,17 @@ class TestRoomDelete:
         assert "Roddy 150" not in room_names(session)
         assert session.dirty is True
 
-    def test_a_sections_only_room_needs_the_tick_box_and_nothing_changes(self, session):
-        before = room_names(session)
-        with pytest.raises(ControllerError) as info:
-            rooms_ctrl.delete_room(None, "Roddy 136")
-        assert "Tick the box" in info.value.message
-        assert room_names(session) == before
-        assert session.dirty is False
+    def test_a_sections_only_room_goes_with_it_in_one_step_without_a_tick(self, session):
+        sections = len(session.config.config.courses)
+        notices = rooms_ctrl.delete_room(None, "Roddy 136")
+        assert "Roddy 136" not in room_names(session)
+        assert len(session.config.config.courses) == sections - 3
+        assert any(notice.startswith("Also deleted 3 course sections") for notice in notices)
+        assert session.dirty is True
 
     def test_referenced_room_is_detached_everywhere_and_no_other_room_takes_its_place(self, session):
         before = [set(course.room or []) for course in session.config.config.courses]
-        notices = rooms_ctrl.delete_room(None, "Roddy 136", confirm_extra=True)
+        notices = rooms_ctrl.delete_room(None, "Roddy 136")
         assert "Roddy 136" not in room_names(session)
         assert any(notice.startswith("Removed 'Roddy 136'") for notice in notices)
         assert session.dirty is True

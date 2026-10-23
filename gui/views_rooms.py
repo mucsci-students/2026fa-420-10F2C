@@ -82,9 +82,9 @@ def room_delete(request, room_name):
     """Review page (GET) and the confirm/cancel actions (POST).
 
     Deleting a room that is still in use is a deliberate cascade: the page lists every
-    record that will change, deletes a course section only after an explicit tick when
-    the room was its only room (no other room takes its place), and commits everything
-    or nothing (Section 12). The result can be undone.
+    record that will change, including any course section that listed only this room
+    (no other room takes its place), and commits everything or nothing (Section 12).
+    The result can be undone.
     """
     try:
         room = room_controller.get_room(request, room_name)
@@ -97,5 +97,5 @@ def room_delete(request, room_name):
         context={"active": "config", "room": room, "plan": room["plan"]},
         list_url="gui:rooms",
         done_text=f"Room '{room_name}' deleted.",
-        delete=lambda confirmed: room_controller.delete_room(request, room_name, confirm_extra=confirmed),
+        delete=lambda: room_controller.delete_room(request, room_name),
     )

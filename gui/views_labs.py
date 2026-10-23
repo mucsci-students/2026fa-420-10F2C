@@ -96,5 +96,5 @@ def lab_delete(request, lab_name):
         context={"active": "config", "lab": lab, "plan": lab["plan"]},
         list_url="gui:labs",
         done_text=f"Lab '{lab_name}' deleted.",
-        delete=lambda confirmed: lab_controller.delete_lab(request, lab_name, confirm_extra=confirmed),
+        delete=lambda: lab_controller.delete_lab(request, lab_name),
     )
