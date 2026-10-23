@@ -231,8 +231,10 @@ def test_viewer_shows_selected_schedule_meetings_in_chronological_order(client):
     assert "Schedule 1 weekly overview" in html
     assert 'class="week-grid schedule-grid"' in html
     assert "CMSC 161.01" in html and "CMSC 162.01" in html
-    assert "Hogg" not in html and "Roddy 136" not in html
-    assert html.index("Monday") < html.index("Tuesday") < html.index("Wednesday")
+    assert "Roddy 136 · Hogg" in html          # detail line: room · faculty
+    assert "Roddy 147 · Killen" in html        # lab meeting shows the lab
+    assert 'data-faculty="Hogg"' in html
+    assert 'data-location="Roddy 147"' in html
 
     selected_html = client.get(VIEWER_URL, {"schedule": "2"}).content.decode()
     assert "Schedule 2 weekly overview" in selected_html
@@ -256,7 +258,7 @@ def test_schedule_grid_places_overlapping_meetings_in_separate_lanes():
     ]
 
 
-def test_dense_overlaps_stack_into_one_cluster_block_listing_course_and_time():
+def test_dense_overlaps_stay_as_separate_blocks_in_side_by_side_lanes():
     assignments = [
         Assignment("CMSC 140.01", meetings=(MeetingTime("MON", "09:00", "10:00", 60),)),
         Assignment("CMSC 140.02", meetings=(MeetingTime("MON", "09:00", "10:00", 60),)),
@@ -264,16 +266,15 @@ def test_dense_overlaps_stack_into_one_cluster_block_listing_course_and_time():
     ]
 
     grid = _schedule_grid(assignments)
-    monday = grid["days"][0]
+    monday = grid["days"][0]["meetings"]
 
-    assert monday["meetings"] == []
-    [cluster] = monday["clusters"]
-    assert [meeting["course"] for meeting in cluster["meetings"]] == [
-        "CMSC 140.01",
-        "CMSC 140.02",
-        "CMSC 140.03",
-    ]
-    assert grid["min_width"] == "34rem"
+    assert [m["course"] for m in monday] == ["CMSC 140.01", "CMSC 140.02", "CMSC 140.03"]
+    assert [m["lane_count"] for m in monday] == [3, 3, 3]
+    assert [m["left"] for m in monday] == ["0.00", "33.33", "66.67"]
+    assert [m["width"] for m in monday] == ["33.33", "33.33", "33.33"]
+    assert "clusters" not in grid["days"][0]
+    # Monday needs 3 lanes, the other four days 1 each: 3.5 + 6.5*7 + 0.4*5
+    assert grid["min_width"] == "51rem"
 
 
 def test_grid_min_width_grows_with_two_lane_overlaps():
@@ -282,7 +283,7 @@ def test_grid_min_width_grows_with_two_lane_overlaps():
         Assignment("CMSC 140.02", meetings=(MeetingTime("MON", "09:30", "10:30", 60),)),
     ]
 
-    assert _schedule_grid(assignments)["min_width"] == "46rem"
+    assert _schedule_grid(assignments)["min_width"] == "44.5rem"
 
 
 def test_single_schedule_pager_identifies_the_selection_and_disables_boundaries(client):
@@ -446,3 +447,54 @@ def test_unknown_format_explains_the_choices(client):
     response = client.get(EXPORT_URL, {"schedule": "1", "file_format": "xml"}, follow=True)
     assert response.redirect_chain[-1][0].endswith(VIEWER_URL)
     assert "Choose JSON or CSV as the export format." in response.content.decode()
+
+def test_overlapping_courses_get_different_colors():
+    assignments = [
+        Assignment("CMSC 152.01", meetings=(MeetingTime("MON", "09:00", "10:00", 60),)),
+        Assignment("CMSC 162.01", meetings=(MeetingTime("MON", "09:00", "10:00", 60),)),
+    ]
+
+    monday = _schedule_grid(assignments)["days"][0]["meetings"]
+
+    assert monday[0]["color"] != monday[1]["color"]
+
+
+def test_meetings_of_the_same_course_share_a_color():
+    assignments = [
+        Assignment(
+            "CMSC 140.01",
+            meetings=(MeetingTime("MON", "09:00", "09:50", 50), MeetingTime("WED", "09:00", "09:50", 50)),
+        ),
+        Assignment("CMSC 152.01", meetings=(MeetingTime("MON", "11:00", "11:50", 50),)),
+    ]
+
+    days = {d["day"]: d["meetings"] for d in _schedule_grid(assignments)["days"]}
+    wed_color = days["WED"][0]["color"]
+
+    assert days["MON"][0]["color"] == wed_color
+    assert days["MON"][1]["color"] != wed_color
+
+
+def test_colors_wrap_around_the_palette():
+    assignments = [
+        Assignment(f"CMSC {100 + n}.01", meetings=(MeetingTime("MON", "09:00", "09:50", 50),))
+        for n in range(15)
+    ]
+
+    colors = {m["color"] for m in _schedule_grid(assignments)["days"][0]["meetings"]}
+
+    assert colors == set(range(12))  # PALETTE_SIZE; more labels than colors reuse them
+
+
+def test_every_block_carries_the_details_shown_in_the_tooltip(client):
+    load(client, [
+        Assignment("CMSC 161.01", "Hogg", "Roddy 136", None, (MeetingTime("MON", "09:00", "09:50", 50),)),
+    ])
+    html = client.get(VIEWER_URL).content.decode()
+
+    assert 'data-course="CMSC 161.01"' in html
+    assert 'data-faculty="Hogg"' in html
+    assert 'data-location="Roddy 136"' in html
+    assert 'data-when="Monday 09:00–09:50 (50 min)"' in html
+    assert 'tabindex="0"' in html
+    assert "schedule_viewer.js" in html
