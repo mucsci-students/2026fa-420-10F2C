@@ -1,4 +1,5 @@
 {% extends "gui/base.html" %}
+{% load static %}
 {% block title %}Scheduler — Schedule Viewer{% endblock %}
 {% block content %}
 <div class="page-header">
@@ -55,8 +56,8 @@
 </div>
 <div class="card schedule-details" aria-labelledby="schedule-overview-heading">
     <div class="scroll-x">
-        <div class="week-grid schedule-grid" style="--hour-pct: {{ schedule_grid.hour_pct }}%; min-width: {{ schedule_grid.min_width }};" role="img"
-             aria-label="Weekly grid for schedule {{ current_schedule }}.">
+        <div class="week-grid schedule-grid" role="group" aria-label="Weekly grid for schedule {{ current_schedule }}"
+             style="--hour-pct: {{ schedule_grid.hour_pct }}%; min-width: {{ schedule_grid.min_width }}; grid-template-columns: {{ schedule_grid.columns }};">
             <div class="week-grid__col">
                 <div class="week-grid__day-name">&nbsp;</div>
                 <div class="week-grid__track week-grid__track--axis">
@@ -68,24 +69,21 @@
                 <div class="week-grid__day-name">{{ day.day }}</div>
                 <div class="week-grid__track">
                     {% for meeting in day.meetings %}
-                    <div class="week-grid__block schedule-grid__meeting"
-                         style="top: {{ meeting.top }}%; min-height: calc({{ meeting.height }}% - 3px); left: calc(3px + {{ meeting.left }}%); width: calc({{ meeting.width }}% - 6px);"
-                         title="{{ day.name }} {{ meeting.start }}-{{ meeting.end }}: {{ meeting.label }}">
+                    <div class="week-grid__block schedule-grid__meeting schedule-color-{{ meeting.color }}" role="group" tabindex="0"
+                         style="top: {{ meeting.top }}%; height: calc({{ meeting.height }}% - 3px); left: calc(3px + {{ meeting.left }}%); width: calc({{ meeting.width }}% - 6px);"
+                         title="{{ day.name }} {{ meeting.start }}-{{ meeting.end }}: {{ meeting.label }}"
+                         aria-label="{{ meeting.course }}, {{ meeting.faculty|default:'no faculty assigned' }}, {{ meeting.location|default:'no room assigned' }}, {{ day.name }} {{ meeting.start }} to {{ meeting.end }}"
+                         data-key="{{ meeting.label }}"
+                         data-course="{{ meeting.course }}"
+                         data-faculty="{{ meeting.faculty|default:'No faculty assigned' }}"
+                         data-location="{{ meeting.location|default:'No room assigned' }}"
+                         data-type="{{ meeting.meeting_type }}"
+                         data-when="{{ day.name }} {{ meeting.start }}–{{ meeting.end }} ({{ meeting.duration }} min)">
                         <div class="schedule-grid__header">
                             <span class="week-grid__label">{{ meeting.label }}</span>
                             <span class="schedule-grid__time">{{ meeting.start }}&ndash;{{ meeting.end }}</span>
                         </div>
-                    </div>
-                    {% endfor %}
-                    {% for cluster in day.clusters %}
-                    <div class="week-grid__block schedule-grid__meeting schedule-grid__cluster"
-                         style="top: {{ cluster.top }}%; min-height: calc({{ cluster.height }}% - 3px);">
-                        {% for meeting in cluster.meetings %}
-                        <div class="schedule-grid__header">
-                            <span class="week-grid__label">{{ meeting.label }}</span>
-                            <span class="schedule-grid__time">{{ meeting.start }}&ndash;{{ meeting.end }}</span>
-                        </div>
-                        {% endfor %}
+                        {% if meeting.detail and not meeting.compact %}<div class="schedule-grid__detail">{{ meeting.detail }}</div>{% endif %}
                     </div>
                     {% endfor %}
                 </div>
@@ -93,6 +91,7 @@
             {% endfor %}
         </div>
     </div>
+    <p class="help">Hover over or focus a block for full details. Click it (or press Enter) to highlight every meeting with the same label; click again to clear.</p>
 </div>
 {% endif %}
 
@@ -162,3 +161,4 @@
 {% endif %}
 </section>
 {% endblock %}
+{% block scripts %}<script src="{% static 'gui/js/schedule_viewer.js' %}" defer></script>{% endblock %}

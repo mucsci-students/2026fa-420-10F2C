@@ -12,7 +12,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from app import schedule_io
 from app.schedule_io import Assignment, MeetingTime
 from gui.constants import NO_FACULTY_LABEL, NO_LOCATION_LABEL, VIEW_COURSES, VIEW_FACULTY, VIEW_ROOMS
-from gui.views import _schedule_grid
+from gui.views import _block_detail, _schedule_grid
 
 VIEWER_URL = "/schedules/"
 IMPORT_URL = "/schedules/import/"
@@ -76,14 +76,17 @@ def test_faculty_view_labels_meetings_without_a_faculty_member():
     assert monday[0]["label"] == NO_FACULTY_LABEL
 
 
-def test_rooms_view_stacks_dense_clusters_by_room():
+def test_rooms_view_keeps_dense_overlaps_as_separate_blocks_labelled_by_room():
     assignments = [
         Assignment("CMSC 140.01", room="Roddy 136", meetings=(MeetingTime("MON", "09:00", "10:00", 60),)),
         Assignment("CMSC 140.02", room="Roddy 140", meetings=(MeetingTime("MON", "09:00", "10:00", 60),)),
         Assignment("CMSC 140.03", room="Roddy 144", meetings=(MeetingTime("MON", "09:30", "10:30", 60),)),
     ]
-    [cluster] = _schedule_grid(assignments, VIEW_ROOMS)["days"][0]["clusters"]
-    assert [meeting["label"] for meeting in cluster["meetings"]] == ["Roddy 136", "Roddy 140", "Roddy 144"]
+
+    monday = _schedule_grid(assignments, VIEW_ROOMS)["days"][0]["meetings"]
+
+    assert [m["label"] for m in monday] == ["Roddy 136", "Roddy 140", "Roddy 144"]
+    assert len({m["color"] for m in monday}) == 3  # color follows the room here
 
 
 # ---------------------------------------------------------------------- #
@@ -151,3 +154,38 @@ def test_pager_links_stay_plain_in_the_courses_view(client):
     load(client, sample_schedule(), sample_schedule())
     html = client.get(VIEWER_URL, {"schedule": "2"}).content.decode()
     assert 'href="?schedule=1">Previous</a>' in html
+
+def test_block_detail_shows_the_facts_the_label_does_not():
+    assert _block_detail(VIEW_COURSES, "CMSC 140.01", "Roddy 136", "Hogg") == "Roddy 136 · Hogg"
+    assert _block_detail(VIEW_ROOMS, "CMSC 140.01", "Roddy 136", "Hogg") == "CMSC 140.01 · Hogg"
+    assert _block_detail(VIEW_FACULTY, "CMSC 140.01", "Roddy 136", "Hogg") == "CMSC 140.01 · Roddy 136"
+
+
+def test_block_detail_skips_missing_values():
+    assert _block_detail(VIEW_COURSES, "CMSC 390.01", None, "Hogg") == "Hogg"
+    assert _block_detail(VIEW_ROOMS, "CMSC 390.01", None, None) == "CMSC 390.01"
+    assert _block_detail(VIEW_FACULTY, "CMSC 390.01", None, None) == "CMSC 390.01"
+
+
+def test_rows_expose_duration_and_detail():
+    [row] = _schedule_grid(
+        [Assignment("CMSC 140.01", "Hogg", "Roddy 136", None, (MeetingTime("MON", "09:00", "09:50", 50),))],
+        VIEW_FACULTY,
+    )["days"][0]["meetings"]
+    assert row["duration"] == 50
+    assert row["detail"] == "CMSC 140.01 · Roddy 136"
+
+
+def test_color_follows_the_active_view_label():
+    # Same course, two rooms: one color per course, two colors per room.
+    assignments = [
+        Assignment("CMSC 140.01", room="Roddy 136", meetings=(MeetingTime("MON", "09:00", "09:50", 50),)),
+        Assignment("CMSC 140.01", room="Roddy 140", meetings=(MeetingTime("TUE", "09:00", "09:50", 50),)),
+    ]
+
+    def colors(view):
+        days = _schedule_grid(assignments, view)["days"]
+        return {m["color"] for d in days for m in d["meetings"]}
+
+    assert len(colors(VIEW_COURSES)) == 1
+    assert len(colors(VIEW_ROOMS)) == 2

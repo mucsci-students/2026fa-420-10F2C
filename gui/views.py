@@ -378,82 +378,76 @@ def _schedule_rows(assignments, view_mode=VIEW_COURSES):
                     "location": location,
                     "label": _block_label(view_mode, assignment.course, location, assignment.faculty),
                     "sort_key": (day_order.get(meeting.day, len(day_order)), meeting.start, assignment.course),
+                    "duration": meeting.duration,
+                    "detail": _block_detail(view_mode, assignment.course, location, assignment.faculty),
                 }
             )
     return sorted(rows, key=lambda row: row["sort_key"])
 
 
-DENSE_LANE_COUNT = 3
-LANE_MIN_WIDTH_REM = 34
-LANE_WIDTH_STEP_REM = 12
-
-
 def _schedule_grid(assignments, view_mode=VIEW_COURSES):
-    """Build the same day-by-time geometry used by the Time Slots overview.
-
-    Assignment records are already normalized by schedule_controller, so this
-    only organizes the selected schedule for display and never changes it.
-    """
     rows = _schedule_rows(assignments, view_mode)
-    minutes = [
-        value
-        for row in rows
-        for value in (_clock_minutes(row["start"]), _clock_minutes(row["end"]))
-    ]
+    minutes = [v for row in rows for v in (_clock_minutes(row["start"]), _clock_minutes(row["end"]))]
     axis_start, axis_end = _schedule_axis_bounds(minutes)
     span = axis_end - axis_start
-    meetings_by_day = {day: [] for day in DAY_NAMES}
 
+    # One color per distinct label, so overlapping blocks always differ.
+    color_of = {key: i % PALETTE_SIZE for i, key in enumerate(sorted({r["label"] for r in rows}))}
+
+    meetings_by_day = {day: [] for day in DAY_NAMES}
     for row in rows:
-        start = _clock_minutes(row["start"])
-        end = _clock_minutes(row["end"])
+        start, end = _clock_minutes(row["start"]), _clock_minutes(row["end"])
+        height_pct = (end - start) / span * 100
         meetings_by_day[row["day"]].append(
             {
                 **row,
+                "color": color_of[row["label"]],
                 "top": f"{(start - axis_start) / span * 100:.2f}",
                 "height": f"{(end - start) / span * 100:.2f}",
+                "compact": height_pct / 100 * GRID_HEIGHT_REM < COMPACT_BELOW_REM, 
             }
         )
 
-    days = []
-    max_lanes = 1
+    days, day_lanes = [], []
     for day in DAY_NAMES:
         meetings = meetings_by_day[day]
         _assign_meeting_lanes(meetings)
-        lanes = [meeting for meeting in meetings if meeting["lane_count"] < DENSE_LANE_COUNT]
-        dense = [meeting for meeting in meetings if meeting["lane_count"] >= DENSE_LANE_COUNT]
-        max_lanes = max([max_lanes, *(meeting["lane_count"] for meeting in lanes)])
-        days.append({"day": day, "name": DAY_NAMES[day], "meetings": lanes, "clusters": _stack_clusters(dense)})
+        day_lanes.append(max((m["lane_count"] for m in meetings), default=1))
+        days.append({"day": day, "name": DAY_NAMES[day], "meetings": meetings})
+
+    # Busy days get proportionally wider columns instead of being merged.
+    columns = f"{TIME_AXIS_REM:g}rem " + " ".join(
+        f"minmax({LANE_MIN_REM * n:g}rem, {n}fr)" for n in day_lanes
+    )
+    min_width = TIME_AXIS_REM + sum(LANE_MIN_REM * n for n in day_lanes) + COLUMN_GAP_REM * len(day_lanes)
 
     return {
         "days": days,
         "hours": [
-            {"label": f"{minute // MINUTES_PER_HOUR:02d}:00", "top": f"{(minute - axis_start) / span * 100:.2f}"}
-            for minute in range(axis_start, axis_end + 1, MINUTES_PER_HOUR)
+            {"label": f"{m // MINUTES_PER_HOUR:02d}:00", "top": f"{(m - axis_start) / span * 100:.2f}"}
+            for m in range(axis_start, axis_end + 1, MINUTES_PER_HOUR)
         ],
         "hour_pct": f"{MINUTES_PER_HOUR / span * 100:.3f}",
-        "min_width": f"{LANE_MIN_WIDTH_REM + LANE_WIDTH_STEP_REM * (max_lanes - 1)}rem",
+        "columns": columns,
+        "min_width": f"{round(min_width, 1):g}rem",
     }
 
 
-def _stack_clusters(meetings):
-    """Merge each dense overlap cluster into one block that lists its labels."""
-    clusters = {}
-    for meeting in meetings:
-        clusters.setdefault(meeting["cluster"], []).append(meeting)
+LANE_MIN_REM = 6.5      # minimum width of one lane
+TIME_AXIS_REM = 3.5
+COLUMN_GAP_REM = 0.4
+PALETTE_SIZE = 12       # matches .schedule-color-0..11 in style.css
+GRID_HEIGHT_REM = 40        # matches --grid-height in .week-grid.schedule-grid
+COMPACT_BELOW_REM = 3.4     # blocks shorter than this hide the detail line
 
-    stacked = []
-    for group in clusters.values():
-        top = min(float(meeting["top"]) for meeting in group)
-        bottom = max(float(meeting["top"]) + float(meeting["height"]) for meeting in group)
-        stacked.append(
-            {
-                "top": f"{top:.2f}",
-                "height": f"{bottom - top:.2f}",
-                "meetings": sorted(group, key=lambda meeting: (meeting["start"], meeting["course"])),
-            }
-        )
-    return stacked
+
+def _block_detail(view_mode, course, location, faculty):
+    """Second line of a block: the facts the label doesn't already show."""
+    parts = {
+        VIEW_ROOMS: (course, faculty),
+        VIEW_FACULTY: (course, location),
+    }.get(view_mode, (location, faculty))
+    return " · ".join(part for part in parts if part)
 
 
 def _assign_meeting_lanes(meetings):
