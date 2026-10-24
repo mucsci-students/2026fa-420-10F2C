@@ -30,7 +30,7 @@
            data-filter-input="#course-list" data-filter-status="#course-filter-status">
     <p class="help" id="course-filter-status" aria-live="polite"></p>
 </div>
-<div class="card-grid card-grid--start" id="course-list">
+<div class="card-grid" id="course-list">
     {% for course in data.courses %}
     <article class="item-card" data-filter-item>
         <header class="item-card__head">
@@ -61,7 +61,6 @@
                 <dt>Faculty</dt>
                 <dd>
                     {% if course.faculty is not None %}{{ course.faculty|join:", " }}
-                    {% elif course.derived_faculty %}From preferences: {{ course.derived_faculty|join:", " }}
                     {% else %}&mdash;{% endif %}
                 </dd>
             </div>
@@ -69,11 +68,14 @@
                 <dt>Conflicts</dt>
                 <dd>{% if course.conflicts %}{{ course.conflicts|join:", " }}{% else %}&mdash;{% endif %}</dd>
             </div>
+            <div>
+                <dt>Preferred by</dt>
+                <dd>{% if course.preferences %}{{ course.preferences|join:", " }}{% else %}&mdash;{% endif %}</dd>
+            </div>
         </dl>
         <footer class="item-card__foot">
             <a class="btn" href="{% url 'gui:course_edit' course.index %}">Edit</a>
             <a class="btn btn-danger" href="{% url 'gui:course_delete' course.index %}">Delete</a>
-            {% include "gui/components/usage_summary.html" with usage=course.usage quiet=True %}
         </footer>
     </article>
     {% empty %}

@@ -74,10 +74,18 @@ def test_a_member_nobody_depends_on_is_not_in_use(session):
     assert deps.usage(session.config, "faculty", "sam")["in_use"] is False
 
 
-def test_only_the_last_section_of_a_course_is_in_use(session):
-    assert deps.usage(session.config, "course", 0)["in_use"] is False      # a second CMSC 140 remains
+def test_every_section_of_a_course_shows_the_faculty_preferences_its_course_id_has(session):
+    first_of_two = deps.usage(session.config, "course", 0)               # CMSC 140 has a second section
+    assert first_of_two["in_use"] is True
+    assert [group["chip"] for group in first_of_two["groups"]] == ["1 preference"]
     last = deps.usage(session.config, "course", 6)                          # the only CMSC 162
-    assert [group["chip"] for group in last["groups"]] == ["2 conflicts", "1 faculty preference"]
+    assert [group["chip"] for group in last["groups"]] == ["1 preference"]
+
+
+def test_a_course_usage_has_no_conflicts_chip_and_no_conflict_list(session):
+    usage = deps.usage(session.config, "course", 6)                         # the only CMSC 162
+    assert all("conflict" not in group["chip"] for group in usage["groups"])
+    assert "lists" not in usage
 
 
 def test_a_pattern_is_only_needed_when_it_is_the_last_enabled_one_for_its_credits(session):

@@ -57,7 +57,7 @@
                 {% endfor %}
             </dl>
         </details>
-        <footer class="item-card__foot">
+        <footer class="item-card__foot item-card__foot--usage">
             <a class="btn" href="{% url 'gui:faculty_edit' person.name %}">Edit</a>
             <a class="btn btn-danger" href="{% url 'gui:faculty_delete' person.name %}">Delete</a>
             {% include "gui/components/usage_summary.html" with usage=person.usage quiet=True icon=True %}

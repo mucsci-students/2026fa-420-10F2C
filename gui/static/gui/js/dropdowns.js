@@ -85,6 +85,10 @@
         if (!canAnimate()) {
             return;
         }
+        // Footers laid out with display: contents animate through CSS (::details-content); there is no box to animate here.
+        if (window.getComputedStyle(summary.parentNode).display === "contents") {
+            return;
+        }
         event.preventDefault();
         toggle(summary.parentNode);
     });

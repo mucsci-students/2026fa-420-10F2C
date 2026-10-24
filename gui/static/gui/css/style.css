@@ -1645,6 +1645,34 @@ html[data-theme="dark"] .list-toolbar input { background: #18181b; color: #f3f4f
 .usage__group { margin: 0.4rem 0 0; font-size: 0.9rem; max-width: 24rem; }
 .data-table .usage { min-width: 11rem; }
 
+/* Card footers with a "Used by" dropdown (Courses, Faculty): the chips sit beside Edit / Delete on row 1 and the
+   expanded list sits beneath them on row 2, starting at Edit's left edge. The <details> box is removed
+   (display: contents) so its summary and its content become grid items of the footer itself and nothing moves
+   when it opens. Browsers without ::details-content keep the flex footer above. */
+@supports selector(details::details-content) {
+    .item-card__foot--usage {
+        display: grid;
+        grid-template-columns: auto auto minmax(0, 1fr);
+        align-items: center;
+        column-gap: 0.5rem;
+        row-gap: 0.4rem;
+        interpolate-size: allow-keywords;
+    }
+    .item-card__foot--usage > details.usage { display: contents; }
+    .item-card__foot--usage > details.usage > summary { grid-column: 3; grid-row: 1; }
+    .item-card__foot--usage > details.usage::details-content {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        block-size: 0;
+        overflow: clip;
+        transition: block-size 0.24s cubic-bezier(0.2, 0, 0, 1), content-visibility 0.24s allow-discrete;
+    }
+    .item-card__foot--usage > details.usage[open]::details-content { block-size: auto; }
+    @media (prefers-reduced-motion: reduce) {
+        .item-card__foot--usage > details.usage::details-content { transition: none; }
+    }
+}
+
 /* Undo / Redo bar (Sections 11 and 12). */
 .history-bar {
     display: flex;

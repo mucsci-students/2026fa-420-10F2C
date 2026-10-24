@@ -370,7 +370,12 @@ class TestFacultyPages:
     def test_the_icon_does_not_get_clipped_by_the_card_footer(self):
         css = Path("gui/static/gui/css/style.css").read_text()
         blocks = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
-        foot = " ".join(body for sel, body in re.findall(r"([^{}]+)\{([^}]*)\}", blocks) if ".item-card__foot" in sel)
+        # the footer ELEMENT itself (not its descendants or pseudo-elements, which may clip their own box)
+        footer = {".item-card__foot", ".item-card__foot--usage"}
+        foot = " ".join(
+            body for sel, body in re.findall(r"([^{}]+)\{([^}]*)\}", blocks)
+            if footer & {part.strip() for part in sel.split(",")}
+        )
         card = " ".join(body for sel, body in re.findall(r"([^{}]+)\{([^}]*)\}", blocks) if sel.strip() == ".item-card")
         assert "overflow" not in foot and not re.search(r"overflow:\s*(hidden|clip)", card)
 

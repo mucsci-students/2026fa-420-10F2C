@@ -85,6 +85,7 @@ def describe_courses(request) -> dict:
     rows = []
     for index, course in enumerate(config.config.courses):
         references = _references(config, index)
+        usage = deps.usage(config, "course", index)
         rows.append(
             {
                 "index": index,
@@ -104,7 +105,9 @@ def describe_courses(request) -> dict:
                 "required_lab_features": sorted(course.required_lab_features),
                 "reserve_room_during_lab": course.reserve_room_during_lab,
                 "referenced_by": references,
-                "usage": deps.usage(config, "course", index),
+                "usage": usage,
+                # "Name (weight)", highest weight first
+                "preferences": usage["groups"][0]["names"] if usage["groups"] else [],
             }
         )
     return {"has_config": True, "courses": rows}

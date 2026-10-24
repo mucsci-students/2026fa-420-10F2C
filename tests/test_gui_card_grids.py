@@ -14,7 +14,7 @@ import pytest
 from gui import session_store
 
 CSS = Path("gui/static/gui/css/style.css")
-OPTED_OUT = [("/configuration/faculty/", "faculty-list"), ("/configuration/courses/", "course-list")]
+OPTED_OUT = [("/configuration/faculty/", "faculty-list")]
 
 
 @pytest.fixture(autouse=True)
@@ -47,11 +47,15 @@ def test_faculty_and_course_grids_opt_out_of_stretching(client, url, grid_id):
     assert "card-grid" in classes and "card-grid--start" in classes
 
 
-@pytest.mark.parametrize("url, grid_id", OPTED_OUT)
+@pytest.mark.parametrize("url, grid_id", OPTED_OUT + [("/configuration/courses/", "course-list")])
 def test_the_grids_keep_the_ids_the_search_box_uses(client, url, grid_id):
     text = page(client.get(url))
     assert f'id="{grid_id}"' in text
     assert f'data-filter-input="#{grid_id}"' in text
+
+
+def test_course_cards_keep_the_equal_height_grid(client):
+    assert grid_classes(page(client.get("/configuration/courses/")), "course-list") == ["card-grid"]
 
 
 def test_class_patterns_keep_the_equal_height_grid(client):

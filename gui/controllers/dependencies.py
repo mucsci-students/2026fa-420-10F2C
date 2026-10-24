@@ -41,7 +41,12 @@ THE RULES (what a delete does to the things that point at it)
               person who prefers a course with no explicit assignment) the
               section is deleted too
     course    (the LAST section of a course id) removed from other courses'
-              conflict lists and from faculty course preferences
+              conflict lists and from faculty course preferences. Those
+              references belong to the course id, so the Courses list shows
+              them on EVERY section of it (one "N preferences" chip; the
+              dropdown lists the faculty with their weights, then the sections
+              that conflict with it), but deleting a section that is not the
+              last changes none of them
     pattern   when it is the only enabled pattern for its credit value, the
               courses with that credit value cannot be scheduled any more, so
               deleting it also deletes those sections
@@ -447,30 +452,54 @@ def _course_at(config, index):
     return courses[index]
 
 
-def _course_dependents(config, index: int):
-    """(sections listing it as a conflict, faculty preferring it) -- only when
-    this is the LAST section of its course id (otherwise the id lives on)."""
-    if not _is_last_section(config, index):
-        return [], []
-    course_id = config.config.courses[index].course_id
+def _course_preferences(config, course_id: str) -> list[tuple[str, object]]:
+    """(faculty name, weight) for everyone who prefers the course id."""
+    return [
+        (person.name, person.course_preferences[course_id])
+        for person in config.config.faculty
+        if course_id in (person.course_preferences or {})
+    ]
+
+
+def _course_references(config, course_id: str):
+    """(sections listing the course id as a conflict, faculty preferring it).
+
+    References belong to the course id, so every section of it shares them. The
+    sections of the SAME id are never counted as referring to each other."""
     conflicts = [
         display
-        for position, display, other in _sections(config)
-        if position != index and course_id in (other.conflicts or [])
+        for _, display, other in _sections(config)
+        if other.course_id != course_id and course_id in (other.conflicts or [])
     ]
-    faculty = [p.name for p in config.config.faculty if course_id in (p.course_preferences or {})]
-    return conflicts, faculty
+    return conflicts, [name for name, _ in _course_preferences(config, course_id)]
+
+
+def _course_dependents(config, index: int):
+    """What deleting this section changes: the references to its course id, but
+    only when it is the LAST section of that id (otherwise the id lives on)."""
+    if not _is_last_section(config, index):
+        return [], []
+    return _course_references(config, config.config.courses[index].course_id)
 
 
 def _usage_course(config, index: int) -> dict:
-    _course_at(config, index)
-    conflicts, faculty = _course_dependents(config, index)
-    groups = []
-    if conflicts:
-        groups.append({"chip": _plural(len(conflicts), "conflict"), "tone": "info", "title": "Listed as a conflict by", "names": conflicts})
-    if faculty:
-        groups.append({"chip": _plural(len(faculty), "faculty preference"), "tone": "", "title": "Preferred by", "names": faculty})
-    return {"in_use": bool(groups), "groups": groups}
+    """The Courses list shows ONE chip and a dropdown of the faculty who prefer the course, highest weight
+    first. A course nobody prefers shows nothing."""
+    course_id = _course_at(config, index).course_id
+    preferring = sorted(_course_preferences(config, course_id), key=lambda pair: pair[1], reverse=True)
+    if not preferring:
+        return {"in_use": False, "groups": []}
+    return {
+        "in_use": True,
+        "groups": [
+            {
+                "chip": _plural(len(preferring), "preference"),
+                "tone": "",
+                "title": "Preferred by",
+                "names": [f"{name} ({weight})" for name, weight in preferring],
+            }
+        ],
+    }
 
 
 def _plan_course(config, index: int) -> Plan:
