@@ -1659,7 +1659,8 @@ html[data-theme="dark"] .list-toolbar input { background: #18181b; color: #f3f4f
         interpolate-size: allow-keywords;
     }
     .item-card__foot--usage > details.usage { display: contents; }
-    .item-card__foot--usage > details.usage > summary { grid-column: 3; grid-row: 1; }
+    .item-card__foot--usage > details.usage > summary { grid-column: 3; grid-row: 1; flex-wrap: nowrap; padding-inline-end: 1rem; }
+    .item-card__foot--usage .chip { white-space: nowrap; }
     .item-card__foot--usage > details.usage::details-content {
         grid-column: 1 / -1;
         grid-row: 2;

@@ -37,11 +37,9 @@
                 <span class="chip">Up to {{ person.maximum_days }} day{{ person.maximum_days|pluralize }}</span>
             </div>
         </header>
-        {% if person.mandatory_days %}
         <dl class="item-card__facts">
-            <div><dt>Required days</dt><dd>{{ person.mandatory_days|join:", " }}</dd></div>
+            <div><dt>Required days</dt><dd>{% if person.mandatory_days %}{{ person.mandatory_days|join:", " }}{% else %}&mdash;{% endif %}</dd></div>
         </dl>
-        {% endif %}
         <details class="item-card__more">
             <summary>Availability and preferences</summary>
             <dl class="item-card__facts">

@@ -87,7 +87,7 @@ class TestReads:
 
     def test_list_says_what_a_section_is_used_by(self, session):
         rows = ctrl.describe_courses(None)["courses"]
-        assert rows[0]["usage"]["in_use"] is False  # another CMSC 140 section remains
+        assert rows[0]["usage"]["in_use"] is True  # CMSC 140 has two sections, and its id is referenced
         assert rows[6]["usage"]["in_use"] is True
 
     def test_list_without_a_config_reports_the_empty_state(self, empty_session):
@@ -297,7 +297,7 @@ class TestPages:
         assert f'href="{COURSES_URL}"' in editor
         assert response.status_code == 200
         assert "CMSC 140.02" in page(response)
-        assert "From preferences: Hardy" in page(response)
+        assert "From preferences" not in page(response)
 
     def test_list_shows_the_empty_state_without_a_configuration(self, client, monkeypatch):
         monkeypatch.setattr(session_store, "AUTO_LOAD_EXAMPLE", False)
@@ -379,7 +379,8 @@ class TestPages:
     def test_referenced_last_section_says_what_else_changes_and_can_be_deleted(self, client):
         listing = page(client.get(COURSES_URL))
         text = page(client.get(COURSES_URL + "6/delete/"))
-        assert "2 conflicts" in listing
+        assert "Listed as a conflict by" not in listing
+        assert "conflicts</span>" not in listing  # no separate conflicts chip on the Courses list
         assert "also changes other records" in text
         assert "Hogg" in text
         assert "Cannot delete" not in text

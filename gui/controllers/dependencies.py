@@ -374,7 +374,7 @@ def _usage_faculty(config, name: str) -> dict:
     if derived_only:
         groups.append(
             {
-                "chip": f"only candidate for {_plural(len(derived_only), 'section')}",
+                "chip": f"candidate: {len(derived_only)}",
                 "tone": "",
                 "title": "Only candidate for",
                 "names": [display for _, display, _ in derived_only],

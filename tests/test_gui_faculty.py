@@ -393,7 +393,7 @@ class TestFacultyPages:
 
     def test_referenced_faculty_can_be_deleted_in_one_click_and_the_list_says_what_uses_them(self, client):
         listing = page(client.get(FACULTY_URL))
-        assert "only candidate for 2 sections" in listing
+        assert "candidate: 2" in listing
 
         response = client.post(FACULTY_URL + "Zoppetti/delete/", {"action": "confirm"}, follow=True)
         assert response.status_code == 200

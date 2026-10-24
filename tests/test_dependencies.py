@@ -67,7 +67,7 @@ def test_a_labs_usage_works_the_same_way(session):
 
 def test_a_faculty_members_usage_counts_assignments_and_sole_candidacy(session):
     usage = deps.usage(session.config, "faculty", "Zoppetti")
-    assert [group["chip"] for group in usage["groups"]] == ["1 course", "only candidate for 2 sections"]
+    assert [group["chip"] for group in usage["groups"]] == ["1 course", "candidate: 2"]
 
 
 def test_a_member_nobody_depends_on_is_not_in_use(session):

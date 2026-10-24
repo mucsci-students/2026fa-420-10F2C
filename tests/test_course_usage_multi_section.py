@@ -332,7 +332,7 @@ def test_the_courses_list_carries_the_same_usage(monkeypatch, session):
 
 def test_other_kinds_of_record_are_unchanged(session):
     assert [g["chip"] for g in deps.usage(session.config, "room", "Roddy 136")["groups"]] == ["9 courses", "9 faculty preferences"]
-    assert [g["chip"] for g in deps.usage(session.config, "faculty", "Zoppetti")["groups"]] == ["1 course", "only candidate for 2 sections"]
+    assert [g["chip"] for g in deps.usage(session.config, "faculty", "Zoppetti")["groups"]] == ["1 course", "candidate: 2"]
     for kind, ident in (("room", "Roddy 136"), ("lab", "Mac"), ("faculty", "Zoppetti"), ("pattern", 2)):
         assert not deps.usage(session.config, kind, ident).get("lists")
 
