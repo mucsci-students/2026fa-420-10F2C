@@ -292,7 +292,9 @@ def test_the_delete_helper_is_the_references_function_behind_the_last_section_gu
 # ====================================================================== #
 def test_deleting_a_section_that_is_not_the_last_still_changes_no_references(session):
     plan = deps.plan(session.config, "course", 3)
-    assert plan.effects == [] and plan.groups == [] and not plan.blocked
+    assert plan.effects == [] and not plan.blocked and not plan.in_use
+    assert [g["title"] for g in plan.groups] == ["Conflict lists", "Faculty preferences"]
+    assert plan.notes == ["Other sections of CMSC 161 remain, so these references stay as they are."]
     conflicts = [list(c.conflicts or []) for c in session.config.config.courses]
     prefs = [dict(p.course_preferences or {}) for p in session.config.config.faculty]
     assert delete_section(session, 3) == []

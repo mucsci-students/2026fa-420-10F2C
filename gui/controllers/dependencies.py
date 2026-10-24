@@ -75,6 +75,7 @@ class Plan:
     name: str                                 # shown to the user
     effects: list = field(default_factory=list)   # one line per kind of change
     groups: list = field(default_factory=list)    # [{"title", "names"}] the affected records
+    notes: list = field(default_factory=list)     # information only: records that refer to it but do not change
     blockers: list = field(default_factory=list)
     removes_courses: list = field(default_factory=list)   # course positions that go too
 
@@ -511,17 +512,22 @@ def _plan_course(config, index: int) -> Plan:
             f"'{display}' is the only course. Add another course first -- a configuration needs at least one."
         )
         return plan
-    conflicts, faculty = _course_dependents(config, index)
+    conflicts, faculty = _course_references(config, course.course_id)
+    removing = _is_last_section(config, index)
     if conflicts:
-        plan.effects.append(
-            f"{course.course_id} is removed from the conflict list of {_plural(len(conflicts), 'course section')}."
-        )
+        if removing:
+            plan.effects.append(
+                f"{course.course_id} is removed from the conflict list of {_plural(len(conflicts), 'course section')}."
+            )
         plan.groups.append({"title": "Conflict lists", "names": conflicts})
     if faculty:
-        plan.effects.append(
-            f"{course.course_id} is removed from the course preferences of {_plural(len(faculty), 'faculty member')}."
-        )
+        if removing:
+            plan.effects.append(
+                f"{course.course_id} is removed from the course preferences of {_plural(len(faculty), 'faculty member')}."
+            )
         plan.groups.append({"title": "Faculty preferences", "names": faculty})
+    if plan.groups and not removing:
+        plan.notes.append(f"Other sections of {course.course_id} remain, so these references stay as they are.")
     return plan
 
 

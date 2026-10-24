@@ -317,7 +317,7 @@ def test_the_icon_styles_use_theme_colours_and_flip_when_open():
     assert re.search(r"\.usage\[open\]\s+\.usage__icon\s*\{[^}]*rotate\(180deg\)", css)
     block = re.search(r"\.usage__icon\s*\{[^}]*\}", css).group(0)
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b", block) and "rgb" not in block
-    markup = Path("gui/templates/gui/components/usage_summary.html").read_text()
+    markup = Path("gui/templates/gui/components/usage_icon.html").read_text()
     assert "style=" not in markup and 'stroke="currentColor"' in markup  # inherits the chip's themed colour
 
 

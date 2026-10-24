@@ -33,8 +33,14 @@
         <ul>{% for line in plan.effects %}<li>{{ line }}</li>{% endfor %}</ul>
         <p>All changes are validated together. If any of them fails, nothing is changed.</p>
     </div>
+    {% elif plan.notes %}
+    <div class="alert alert-info" role="status">
+        {% for note in plan.notes %}<p>{{ note }}</p>{% endfor %}
+    </div>
+    {% endif %}
+    {% if plan.groups %}
     <details class="usage">
-        <summary>Show every affected record</summary>
+        <summary><span class="usage__end">Show every affected record{% include "gui/components/usage_icon.html" %}</span></summary>
         {% for group in plan.groups %}
         <p class="usage__group"><strong>{{ group.title }}</strong></p>
         <ul>{% for name in group.names %}<li>{{ name }}</li>{% endfor %}</ul>
