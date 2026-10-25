@@ -16,6 +16,7 @@ from gui.controllers import patterns as pattern_controller
 from gui.controllers.errors import ControllerError
 from gui.forms import AddClassPatternForm, ClassPatternFieldsForm
 from gui.views import _attach_errors, _flash_warnings
+from gui.views_delete import delete_page
 
 
 def _render_patterns(request, add_form=None):
@@ -79,24 +80,20 @@ def pattern_edit(request, pattern_index):
 
 
 def pattern_delete(request, pattern_index):
-    """Confirmation page (GET) and the confirm/cancel actions (POST)."""
+    """Review page (GET) and the confirm/cancel actions (POST).
+
+    If courses can only be scheduled through this pattern, the page lists them and
+    deletes them too (Section 12)."""
     try:
         pattern = pattern_controller.get_pattern(request, pattern_index)
     except ControllerError as error:
         messages.error(request, error.message)
         return redirect("gui:patterns")
-
-    if request.method == "POST":
-        if request.POST.get("action") != "confirm":
-            messages.info(request, "Cancelled.")
-            return redirect("gui:patterns")
-        try:
-            warnings = pattern_controller.delete_pattern(request, pattern_index)
-        except ControllerError as error:
-            messages.error(request, error.message)
-        else:
-            messages.success(request, "Class pattern removed.")
-            _flash_warnings(request, warnings)
-        return redirect("gui:patterns")
-
-    return render(request, "gui/pattern_delete.html", {"active": "config", "pattern": pattern})
+    return delete_page(
+        request,
+        template="gui/pattern_delete.html",
+        context={"active": "config", "pattern": pattern, "plan": pattern["plan"]},
+        list_url="gui:patterns",
+        done_text="Class pattern removed.",
+        delete=lambda: pattern_controller.delete_pattern(request, pattern_index),
+    )

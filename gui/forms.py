@@ -274,7 +274,10 @@ class ConfigNewForm(ConfirmReplaceMixin, forms.Form):
         self.require_confirmation(
             bool(discard_note),
             label=f"Discard {discard_note}",
-            help_text="Starting a new configuration replaces the one you have now. Save it first to keep it.",
+            help_text=(
+                "Starting a new configuration replaces the one you have now. Save it first to keep it for good; "
+                "until then it is kept for this session and can be brought back with Restore previous configuration."
+            ),
             error=f"Tick this box to confirm discarding {discard_note}.",
         )
 
@@ -299,7 +302,10 @@ class ConfigLoadForm(ConfirmReplaceMixin, forms.Form):
         self.require_confirmation(
             bool(discard_note),
             label=f"Discard {discard_note}",
-            help_text="Loading a file replaces the configuration you have now. Save it first to keep it.",
+            help_text=(
+                "Loading a file replaces the configuration you have now. Save it first to keep it for good; "
+                "until then it is kept for this session and can be brought back with Restore previous configuration."
+            ),
             error=f"Tick this box to confirm discarding {discard_note}.",
         )
 

@@ -200,14 +200,25 @@ class TestRoomDelete:
         assert "Roddy 150" not in room_names(session)
         assert session.dirty is True
 
-    def test_referenced_room_is_blocked_and_nothing_changes(self, session):
-        before = room_names(session)
-        with pytest.raises(ControllerError) as info:
-            rooms_ctrl.delete_room(None, "Roddy 136")
-        assert "Cannot delete 'Roddy 136'" in info.value.message
-        assert "CMSC 140" in info.value.message
-        assert room_names(session) == before
-        assert session.dirty is False
+    def test_a_sections_only_room_goes_with_it_in_one_step_without_a_tick(self, session):
+        sections = len(session.config.config.courses)
+        notices = rooms_ctrl.delete_room(None, "Roddy 136")
+        assert "Roddy 136" not in room_names(session)
+        assert len(session.config.config.courses) == sections - 3
+        assert any(notice.startswith("Also deleted 3 course sections") for notice in notices)
+        assert session.dirty is True
+
+    def test_referenced_room_is_detached_everywhere_and_no_other_room_takes_its_place(self, session):
+        before = [set(course.room or []) for course in session.config.config.courses]
+        notices = rooms_ctrl.delete_room(None, "Roddy 136")
+        assert "Roddy 136" not in room_names(session)
+        assert any(notice.startswith("Removed 'Roddy 136'") for notice in notices)
+        assert session.dirty is True
+        assert all("Roddy 136" not in (course.room or []) for course in session.config.config.courses)
+        assert all("Roddy 136" not in (person.room_preferences or {}) for person in session.config.config.faculty)
+        # the three sections that listed only this room are gone; the rest gained nothing
+        after = [set(course.room or []) for course in session.config.config.courses]
+        assert after == [rooms - {"Roddy 136"} for i, rooms in enumerate(before) if i not in (3, 10, 16)]
 
     def test_faculty_room_preferences_count_as_references(self, session):
         blockers = rooms_ctrl._references(session.config, "Roddy 147")
@@ -220,7 +231,7 @@ class TestRoomDelete:
 
 class TestRoomRollback:
     def test_failed_whole_config_validation_is_reported_and_config_is_unchanged(self, session, monkeypatch):
-        def reject(session_, config, area, mutate):
+        def reject(session_, config, area, mutate, label=None):
             raise ValidationFailure(area, "simulated whole-config rejection")
 
         monkeypatch.setattr(rooms_ctrl, "apply_session_edit", reject)
@@ -382,14 +393,16 @@ class TestLabDelete:
         assert "Windows" not in lab_names(session)
         assert session.dirty is True
 
-    def test_referenced_lab_is_blocked_and_nothing_changes(self, session):
-        before = lab_names(session)
-        with pytest.raises(ControllerError) as info:
-            labs_ctrl.delete_lab(None, "Linux")
-        assert "Cannot delete 'Linux'" in info.value.message
-        assert "CMSC" in info.value.message
-        assert lab_names(session) == before
-        assert session.dirty is False
+    def test_referenced_lab_is_detached_everywhere_and_no_other_lab_takes_its_place(self, session):
+        before = [set(course.lab or []) for course in session.config.config.courses]
+        notices = labs_ctrl.delete_lab(None, "Mac")
+        assert "Mac" not in lab_names(session)
+        assert any(notice.startswith("Removed 'Mac'") for notice in notices)
+        assert session.dirty is True
+        assert all("Mac" not in (course.lab or []) for course in session.config.config.courses)
+        assert all("Mac" not in (person.lab_preferences or {}) for person in session.config.config.faculty)
+        after = [set(course.lab or []) for course in session.config.config.courses]
+        assert after == [labs - {"Mac"} for labs in before]            # Linux took nobody's place
 
     def test_faculty_lab_preferences_count_as_references(self, session):
         blockers = labs_ctrl._references(session.config, "Mac")
@@ -402,7 +415,7 @@ class TestLabDelete:
 
 class TestLabRollback:
     def test_failed_whole_config_validation_is_reported_and_config_is_unchanged(self, session, monkeypatch):
-        def reject(session_, config, area, mutate):
+        def reject(session_, config, area, mutate, label=None):
             raise ValidationFailure(area, "simulated whole-config rejection")
 
         monkeypatch.setattr(labs_ctrl, "apply_session_edit", reject)

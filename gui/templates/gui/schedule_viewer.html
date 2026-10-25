@@ -9,6 +9,7 @@
     </div>
 </div>
 
+{% include "gui/components/stale_schedules.html" with where="viewer" %}
 {% if schedule_count %}
 <div class="status-card schedule-status-card">
     <p class="status-line" role="status"><strong>{{ schedule_count }}</strong> schedule{{ schedule_count|pluralize }} available.</p>

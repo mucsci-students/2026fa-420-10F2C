@@ -98,10 +98,80 @@ Every add, edit and delete runs through the library's edit mode, which re-valida
 
 ### Deleting and renaming referenced items
 
-- **Blocked deletes.** A room, lab, faculty member or course that something else still refers to (a course's candidate list, a conflict, a faculty preference) cannot be deleted. Its **Delete** button is disabled and the page lists what refers to it, so you can see the references before trying.
-- **Other guards.** The last time block on a weekday and the only meeting in a pattern cannot be deleted. Deleting a pattern lists the meetings it removes; if a course would be left with no usable pattern, the change is rejected and nothing is removed.
-- **Confirmation.** Every delete asks for confirmation first.
-- **Renames propagate.** Renaming a room, lab, faculty member or course shows a confirmation page listing every reference that will be updated. Confirming renames the item and all of its references in one validated step.
+Rooms, labs, faculty, courses and class patterns are linked to each other by name, so deleting one can leave other
+records pointing at nothing. Instead of blocking the delete, every one of them works the same way: **Delete** is
+always available and opens a review page that says what else will change, asks you to confirm anything that
+removes more than the item itself, and then does everything as ONE validated change. If any part is rejected,
+nothing is removed and the page tells you why. The page lists the affected records and notes that the whole thing
+can be undone (see [Undo, redo and history](#undo-redo-and-history)).
+
+**A delete never puts a different record in the deleted one's place.** If you delete the lab "Mac", the lab
+"Linux" does not take over its course sections; the references to "Mac" are simply removed. A section that would
+be left with nothing it can use is deleted too, but only after you tick a box that says so.
+
+| Deleting a... | ...is removed from | Also deletes course sections when |
+| --- | --- | --- |
+| **Room** | course room lists, faculty room preferences | a section lists only this room (it could not be scheduled without one) |
+| **Lab** | course lab lists, faculty lab preferences | never: a section that listed only this lab is left without one, and the page says so |
+| **Faculty member** | course faculty assignments, their own preferences | nobody else could teach the section: they were its only assignee and nobody else prefers the course, or they are the only one who prefers a course with no assigned person. A section that assigned only them, where someone else prefers the course, goes back to "the scheduler chooses" |
+| **Course** (its last section) | other courses' conflict lists, faculty course preferences | never |
+| **Class pattern** | nothing | it is the only enabled pattern for its credit value (the sections with that many credits could not be scheduled any more) |
+
+- **One tick-box.** When course sections would be deleted too, the page lists them and shows a box ("I understand
+  this also deletes 3 course sections ..."). Without the tick nothing is deleted and the page explains why.
+- **Label only.** The page names the item being deleted and nothing more (no extra capacity or credit details).
+- **Used by.** The Rooms, Labs, Faculty, Courses and Class Patterns lists show, for each row, what depends on it
+  (for example "9 courses", "only candidate for 2 sections"), folded into a details control.
+- **Other guards.** A configuration always keeps at least one room, course and faculty member, so the last of
+  each cannot be deleted. The last time block on a weekday and the only meeting in a pattern cannot be deleted.
+  If the library still rejects the combined result (for example a lab-less section it does not accept), nothing
+  changes and the page shows the library's reason.
+- **Confirmation.** Every delete asks for confirmation first, and Cancel changes nothing.
+- **Renames propagate.** Renaming a room, lab, faculty member or course updates every reference to it in the same
+  validated step, and says how many it updated.
+
+### Undo, redo and history
+
+Every successful change in the Configuration Editor can be undone, including a delete that cascaded through many
+courses and faculty preferences.
+
+- **Where to find it.** After a change, the "saved" message carries an **Undo** button right where you are
+  looking. The **Undo** and **Redo** buttons at the top of every Configuration Editor page name the change they
+  will reverse (for example "Undo: Delete room 'Roddy 136'"); the bar only appears once there is something to undo
+  or redo. **Ctrl+Z** presses Undo and **Ctrl+Y** (or Ctrl+Shift+Z) presses Redo (Cmd on a Mac), except while you
+  are typing in a field.
+- **History page.** **History** lists every remembered change, newest first, with when it happened and what it
+  changed ("Removed room Roddy 136; Changed 14 courses; Changed 9 faculty members"). **Go back to before this**
+  returns to how things were just before any entry in one step; the later changes are kept so they can be redone.
+- **How it works.** Undo and redo use the Memento design pattern (see [Design patterns](#design-patterns)). Just
+  before each edit the configuration saves a memento of each part of itself (rooms, labs, courses, faculty, class
+  patterns, time slots, global settings); after the edit only the parts that really changed are kept. Undo puts
+  those parts back as one step, so a cascade is reversed completely, never partly. Redo re-applies it. Making a
+  new change after an undo clears redo.
+- **Safe with several tabs.** Every Undo, Redo and "go back" button carries a version number of the configuration
+  it was drawn from. If the configuration has changed since (another tab, a double click), the request is refused
+  with an explanation instead of undoing something you did not see.
+- **Unsaved changes.** Undoing back to the state you loaded or saved clears the "Unsaved changes" indicator. After
+  you save, undoing an older change marks the configuration as unsaved again, because the saved file still contains it.
+- **Restore previous configuration.** Starting a new configuration, loading a file or switching to a saved one
+  still asks before discarding unsaved work, but the replaced configuration (with its edits, undo history and
+  schedules) is kept for the rest of the session. The Configuration Editor shows **Restore previous
+  configuration**; restoring swaps the two, so it can be reversed too. Only the one before is kept, and it is lost
+  when the server restarts.
+- **Schedules and changes.** Generated schedules are not changed by undo or redo, and editing the configuration
+  does not delete them. Instead the Schedule Viewer and Generator say "These schedules are out of date. They were
+  generated from an earlier version of the configuration" for as long as that is true; undoing back to the
+  configuration they came from makes the notice go away. Schedules imported from a file are never flagged, because
+  their origin is unknown.
+- **Limits.** The newest 25 changes are remembered. History is kept in memory only, so it is lost when the server
+  restarts.
+- **Where the code is (MVC).** Model: `app/memento.py` (the mementos), `app/history.py` (the undo and redo stacks,
+  versions), the hooks in
+  `app/commands/common.py` (`apply_session_edit`) and `app/session.py` (restore previous, schedule versions).
+  Controller: `gui/controllers/dependencies.py` (how the records depend on each other, shared by every delete),
+  `gui/controllers/history_controller.py`. View: `gui/views_delete.py` (the one delete flow),
+  `gui/views_history.py`, `gui/templates/gui/components/cascade_delete.html`, `history_bar.html`,
+  `gui/templates/gui/history.html` and `gui/static/gui/js/history.js`.
 
 ## Schedule Generator
 
@@ -231,6 +301,7 @@ The GUI follows Model–View–Controller. User actions go through a controller;
 | Layer | Where | Responsibility |
 |---|---|---|
 | **Model** | `app/session.py` | `Session`: the current `CombinedConfig`, available schedules, unsaved-changes flag, saved configuration snapshots. Load/save through the library's Pydantic models. |
+| | `app/memento.py`, `app/history.py` | Undo and redo with the Memento pattern: one memento class per kind of configuration item, and the history that keeps them (see [Design patterns](#design-patterns)). |
 | | `app/crud.py` | `apply_edit()`: every configuration change runs inside the library's `edit_mode()`, so only a fully valid configuration is ever stored. |
 | | `app/schedule_ops.py` | Schedule generation through `Scheduler`, reported as a `GenerationOutcome`. |
 | | `app/schedule_io.py` | Neutral schedule records (`Assignment`, `MeetingTime`) used by both generated and loaded schedules; JSON/CSV reading, writing and validation. |
@@ -245,6 +316,32 @@ The GUI follows Model–View–Controller. User actions go through a controller;
 | | `config/` | Django settings and root URL configuration; `gui/urls.py` maps each URL to a view. |
 
 The Sprint 1 shell (`app/shell.py`, `app/commands/`) uses the same Model layer, which is why both interfaces validate and save configurations identically.
+
+### Design patterns
+
+MVC (above) is one of the patterns used. The others are described here as they are added.
+
+#### Memento (undo and redo)
+
+- **Problem.** Every configuration edit must be undoable and redoable, including a delete that changes rooms, courses
+  and faculty at once, without the history having to know how each kind of item is stored.
+- **Where.** `app/memento.py` (the pattern), `app/history.py` (the caretaker), `app/commands/common.py`
+  (`apply_session_edit`, where an edit is wrapped), `gui/controllers/history_controller.py` (what the buttons call).
+- **Participants.**
+  - *Originator*: `ConfigOriginator` creates mementos from the loaded configuration and restores it from them.
+  - *Memento*: the abstract `Memento` and one concrete class per kind of item, `RoomsMemento`, `LabsMemento`,
+    `CoursesMemento`, `FacultyMemento`, `PatternsMemento` (which carries each pattern's meetings), `TimeSlotsMemento`
+    and `SettingsMemento`. Each knows how to read and write only its own part of the configuration, and how to
+    describe a change to it in words.
+  - *Composite*: `CompositeMemento` holds the mementos of several parts, so a cascading delete is still one step.
+  - *Caretaker*: `ConfigHistory` keeps the undo and redo stacks of composite mementos. It never looks inside them.
+- **How they interact.** `apply_session_edit` asks the history to `capture()` (the originator saves a memento of every
+  part) and runs the edit. If the library accepts it, `record()` keeps only the mementos whose part changed. On Undo
+  the caretaker has the originator save the parts it is about to replace (for Redo), then `restore()` puts the old
+  parts back through the library's edit mode, which validates the whole result and changes nothing if it is refused.
+- **Why it fits.** The state is saved and restored without the caretaker (or any page) knowing how it is stored, so
+  encapsulation is kept; and because each kind of item has its own memento, an edit to one room saves one slice of
+  the configuration rather than a copy of everything.
 
 ## Running the tests
 

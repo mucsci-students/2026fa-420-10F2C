@@ -17,10 +17,27 @@ TIME_RANGE_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$")
 DAY_LABELS = {"MON": "Mon", "TUE": "Tue", "WED": "Wed", "THU": "Thu", "FRI": "Fri"}
 
 
-def apply_session_edit(session, config, area, mutate_fn: Callable[[object], None]):
-    """Apply an atomic config edit and mark the active session dirty."""
+def apply_session_edit(session, config, area, mutate_fn: Callable[[object], None], label=None):
+    """Apply an atomic config edit, mark the active session dirty, and remember how to undo it.
+
+    Memento pattern (app/memento.py): the history, as caretaker, has the configuration save
+    mementos BEFORE the edit; they are only kept if the edit succeeds, and only for the parts
+    of the configuration that really changed, so a rejected edit leaves nothing to undo.
+    `label` names the change for the Undo button; without one the change is described in
+    words (or a generic "Edit <area>").
+
+    An edit that changed nothing (a form submitted with no change) adds nothing to the history
+    and does not mark the configuration as having unsaved changes.
+    """
+    history = getattr(session, "history", None)
+    before = history.capture(config) if history is not None else None
+    dirty_before = session.dirty
     apply_edit(config, area, mutate_fn)
-    session.dirty = True
+    changed = True
+    if history is not None:
+        changed = history.record(label, before, dirty_before, after=config, area=area) is not None
+    if changed:
+        session.dirty = True
 
 
 def field_value(obj, key):

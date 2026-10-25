@@ -20,7 +20,7 @@
     <p>
         Are you sure you want to delete <strong>{{ slot.day }} {{ slot.start }}-{{ slot.end }}</strong>
         (start times every {{ slot.spacing }} minutes)? This removes that time from the available
-        slots and cannot be undone.
+        slots. You can undo this afterwards with the Undo button.
     </p>
     <form method="post">
         {% csrf_token %}

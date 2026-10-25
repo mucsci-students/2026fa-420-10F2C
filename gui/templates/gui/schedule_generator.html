@@ -4,6 +4,7 @@
 {% block content %}
 <h1>Schedule Generator</h1>
 <p>Generate schedules from the selected saved configuration. Overrides below apply to this run only.</p>
+{% include "gui/components/stale_schedules.html" with where="generator" %}
 
 {% if config_form %}
 <form method="post" action="{% url 'gui:schedule_select_config' %}" class="edit-form">

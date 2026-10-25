@@ -82,8 +82,8 @@ def _check_meeting_index(pattern, meeting_index: int) -> None:
         raise ControllerError("That meeting no longer exists. Refresh the page and try again.")
 
 
-def _apply(session, config, mutate) -> None:
-    apply_config_edit(session, config, "meeting", mutate, form_fields=MEETING_FIELDS)
+def _apply(session, config, mutate, label=None) -> None:
+    apply_config_edit(session, config, "meeting", mutate, form_fields=MEETING_FIELDS, label=label)
 
 
 def meeting_summary(meeting) -> str:
@@ -253,7 +253,7 @@ def delete_meeting(request, pattern_index: int, meeting_index: int) -> list[str]
     def mutate(draft):
         del _patterns(draft)[pattern_index].meetings[meeting_index]
 
-    _apply(session, config, mutate)
+    _apply(session, config, mutate, label="Delete a meeting")
     return []
 
 

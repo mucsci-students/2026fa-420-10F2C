@@ -509,6 +509,11 @@ main {
     grid-column: 1 / -1;
 }
 
+/* Each card keeps its own height, so opening a dropdown never stretches the card beside it. */
+.card-grid--start {
+    align-items: start;
+}
+
 .item-card {
     display: flex;
     flex-direction: column;
@@ -1146,6 +1151,15 @@ a.area-card:focus-visible {
     margin-top: 0.3rem;
 }
 
+/* Rooms and Labs: every heading sits centred over its column's contents (the expanded "Used by" lists stay left-aligned). */
+.data-table--centered th,
+.data-table--centered td {
+    text-align: center;
+    vertical-align: middle;
+}
+.data-table--centered .usage > summary { justify-content: center; }
+.data-table--centered .usage__group { text-align: left; }
+
 .day-section h3 {
     margin: 0 0 0.5rem;
 }
@@ -1633,3 +1647,123 @@ html[data-theme="dark"] .list-toolbar input { background: #18181b; color: #f3f4f
     margin: 0.6rem 0;
     font-variant-numeric: tabular-nums;
 }
+
+/* "Used by" summaries and cascade-delete detail lists (Section 12). */
+.usage > summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    cursor: pointer;
+}
+.usage__toggle { font-size: 0.8rem; color: var(--muted); text-decoration: underline; }
+.usage__end {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+}
+/* Hangs just past the chip so it never takes part in centring: the chips stay under their column heading. */
+.usage__icon {
+    position: absolute;
+    left: calc(100% + 0.3rem);
+    top: 50%;
+    width: 0.6rem;
+    height: 0.6rem;
+    margin-top: -0.3rem;
+    color: var(--muted);
+    transition: transform 0.24s cubic-bezier(0.2, 0, 0, 1);
+}
+.usage[open] .usage__icon { transform: rotate(180deg); }
+/* dropdowns.js keeps `open` set while it plays the closing motion, so the arrow is told to turn back now. */
+.usage.is-closing .usage__icon { transform: none; }
+@media (prefers-reduced-motion: reduce) {
+    .usage__icon { transition: none; }
+}
+.usage__group { margin: 0.4rem 0 0; font-size: 0.9rem; max-width: 24rem; }
+.data-table .usage { min-width: 11rem; }
+
+/* Card footers with a "Used by" dropdown (Courses, Faculty): the chips sit beside Edit / Delete on row 1 and the
+   expanded list sits beneath them on row 2, starting at Edit's left edge. The <details> box is removed
+   (display: contents) so its summary and its content become grid items of the footer itself and nothing moves
+   when it opens. Browsers without ::details-content keep the flex footer above. */
+@supports selector(details::details-content) {
+    .item-card__foot--usage {
+        display: grid;
+        grid-template-columns: auto auto minmax(0, 1fr);
+        align-items: center;
+        column-gap: 0.5rem;
+        row-gap: 0.4rem;
+        interpolate-size: allow-keywords;
+    }
+    .item-card__foot--usage > details.usage { display: contents; }
+    .item-card__foot--usage > details.usage > summary { grid-column: 3; grid-row: 1; flex-wrap: nowrap; padding-inline-end: 1rem; }
+    .item-card__foot--usage .chip { white-space: nowrap; }
+    .item-card__foot--usage > details.usage::details-content {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        block-size: 0;
+        overflow: clip;
+        transition: block-size 0.24s cubic-bezier(0.2, 0, 0, 1), content-visibility 0.24s allow-discrete;
+    }
+    .item-card__foot--usage > details.usage[open]::details-content { block-size: auto; }
+    @media (prefers-reduced-motion: reduce) {
+        .item-card__foot--usage > details.usage::details-content { transition: none; }
+    }
+}
+
+/* Undo / Redo bar (Sections 11 and 12). */
+.history-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 1rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-strong);
+    border-radius: 0.5rem;
+    background: var(--surface-alt);
+}
+.history-bar form { margin: 0; }
+.history-bar .btn { max-width: 100%; overflow-wrap: anywhere; }
+.history-bar .help { margin: 0; }
+
+/* Inline Undo inside the "saved" message (Sections 11 and 12). */
+.alert__undo {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0.5rem 0 0;
+}
+
+/* Change history page. */
+.history-list {
+    list-style: none;
+    margin: 0 0 1.5rem;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+}
+.history-list li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    padding: 0.6rem 0.85rem;
+    border-top: 1px solid var(--border);
+}
+.history-list li:first-child { border-top: 0; }
+.history-list form { margin: 0; }
+.history-list__text { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; min-width: 0; }
+.history-list__text .help { margin: 0; }
+.history-list__current { background: var(--accent-soft); }
+.history-list--undone li { background: var(--surface-alt); }
+.history-list__start { color: var(--muted); }
+
+/* "Restore previous configuration" card and the out-of-date schedules notice. */
+.previous-config { margin: 1rem 0; }
+.previous-config form { margin: 0.5rem 0 0; }
+.stale-schedules p { margin: 0; }

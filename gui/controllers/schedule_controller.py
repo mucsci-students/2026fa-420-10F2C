@@ -85,13 +85,13 @@ def get_schedule(request, index: int) -> list[Assignment]:
     return _as_records(schedules[index], index + 1)
 
 
-def replace_schedules(request, schedules: list) -> None:
+def replace_schedules(request, schedules: list, version=None, tracked: bool = True) -> None:
     """Store a new set of results (generated, loaded, or [] to clear).
 
     The one place session.schedules is written, so anything that should
     happen whenever results change can be added here.
     """
-    _set_schedules(get_session(request), schedules)
+    _set_schedules(get_session(request), schedules, version, tracked)
 
 
 def _as_records(schedule, number: int) -> list[Assignment]:
@@ -120,11 +120,14 @@ def generate(request, limit_override=None, optimizer_overrides=None):
 
     optimizer_overrides = _validated_overrides(limit_override, optimizer_overrides)
 
+    # Remember which version of the configuration these schedules come from, so
+    # the pages can say when the configuration has changed since (stale notice).
+    started_from = session.history.version
     with generation_in_progress(request):
         result = schedule_ops.generate_schedules(config, limit_override, optimizer_overrides)
 
     if result.outcome == schedule_ops.GenerationOutcome.SUCCESS:
-        replace_schedules(request, result.schedules)
+        replace_schedules(request, result.schedules, started_from)
     elif result.outcome == schedule_ops.GenerationOutcome.NO_FEASIBLE_SCHEDULE:
         replace_schedules(request, [])             # same as the CLI: don't leave stale results
     return result
@@ -167,7 +170,7 @@ def load_schedule_json(request, uploaded_file) -> int:
         items += [FieldError(IMPORT_FIELD, problem) for problem in error.problems]
         raise ControllerError(items) from error
 
-    replace_schedules(request, schedules)
+    replace_schedules(request, schedules, tracked=False)  # an imported file: origin unknown
     return len(schedules)
 
 
@@ -285,17 +288,20 @@ def _validated_overrides(limit_override, optimizer_overrides):
     return optimizer_overrides
 
 
-def _set_schedules(session, schedules) -> None:
-    """The one place session.schedules is written (see replace_schedules)."""
-    session.schedules = list(schedules)
+def _set_schedules(session, schedules, version=None, tracked=True) -> None:
+    """The one place session.schedules is written (see replace_schedules).
+    `version` is the configuration version they were generated from (default:
+    the configuration as it is now); `tracked=False` is for schedules of unknown
+    origin (an imported file), which are never flagged as out of date."""
+    session.set_schedules(list(schedules), version, tracked)
 
 
-def _finish_generation(session, job, result) -> None:
+def _finish_generation(session, job, result, started_from=None) -> None:
     """Runs on the worker thread when a background run ends: store the
     results exactly as generate() does, then release the session."""
     try:
         if result.outcome == schedule_ops.GenerationOutcome.SUCCESS:
-            _set_schedules(session, result.schedules)
+            _set_schedules(session, result.schedules, started_from)
         elif result.outcome == schedule_ops.GenerationOutcome.NO_FEASIBLE_SCHEDULE:
             _set_schedules(session, [])  # don't leave stale results, same as generate()
         # invalid configuration, runtime error and cancel keep the previous results
@@ -313,6 +319,7 @@ def start_generation(request, limit_override=None, optimizer_overrides=None) -> 
     session = get_session(request)
     config = require_config(session, "generating schedules")
     optimizer_overrides = _validated_overrides(limit_override, optimizer_overrides)
+    started_from = session.history.version
 
     with _GENERATION_LOCK:
         if session.generating:
@@ -322,7 +329,9 @@ def start_generation(request, limit_override=None, optimizer_overrides=None) -> 
             config,
             limit_override,
             optimizer_overrides,
-            on_finish=lambda finished_job, result: _finish_generation(session, finished_job, result),
+            on_finish=lambda finished_job, result: _finish_generation(
+                session, finished_job, result, started_from
+            ),
         )
         session.generation_job = job
     try:

@@ -34,7 +34,7 @@ from __future__ import annotations
 from scheduler.config import RoomConfig, ValidationError
 
 from app.commands.common import VALID_DAYS, apply_session_edit, field_value
-from app.crud import ReferenceError_, ValidationFailure, check_no_references
+from app.crud import ValidationFailure
 from app.session import ConfigError
 from gui.constants import DAY_NAMES
 from gui.controllers.errors import (
@@ -43,6 +43,7 @@ from gui.controllers.errors import (
     to_controller_error,
     translate_validation_error,
 )
+from gui.controllers import dependencies as deps
 from gui.session_store import get_session
 
 ROOM_FIELDS = ("name", "capacity", "features", "times")
@@ -153,9 +154,9 @@ def _prepared_update(config, room_name, form_data) -> tuple[dict, RoomConfig]:
     return fields, _build_room(fields)
 
 
-def _apply(session, config, mutate) -> None:
+def _apply(session, config, mutate, label=None) -> None:
     try:
-        apply_session_edit(session, config, "room", mutate)
+        apply_session_edit(session, config, "room", mutate, label=label)
     except ValidationFailure as error:
         raise to_controller_error(error, form_fields=ROOM_FIELDS) from error
 
@@ -199,6 +200,7 @@ def describe_rooms(request) -> dict:
                 "unrestricted": not room.times,
                 "referenced_by": references,
                 "can_delete": not references,
+                "usage": deps.usage(config, "room", room.name),
             }
         )
     return {"has_config": True, "rooms": rooms}
@@ -223,6 +225,8 @@ def get_room(request, room_name) -> dict:
         "availability": _availability(room.times),
         "referenced_by": references,
         "can_delete": not references,
+        "usage": deps.usage(config, "room", room_name),
+        "plan": deps.plan(config, "room", room_name),
     }
 
 
@@ -241,7 +245,7 @@ def add_room(request, form_data) -> None:
     def mutate(draft):
         draft.config.rooms.append(new_room)
 
-    _apply(session, config, mutate)
+    _apply(session, config, mutate, label=f"Add room '{fields['name']}'")
 
 
 def update_room(request, room_name, form_data) -> list[str]:
@@ -268,7 +272,7 @@ def update_room(request, room_name, form_data) -> list[str]:
                     preferences[new_name] = preferences.pop(room_name)
                     person.room_preferences = preferences
 
-    _apply(session, config, mutate)
+    _apply(session, config, mutate, label=f"Edit room '{room_name}'")
     return notices
 
 
@@ -286,20 +290,18 @@ def _rename_notices(config, old_name: str, new_name: str) -> list[str]:
     return [f"Renamed '{old_name}' to '{new_name}' in {' and '.join(parts)}."] if parts else []
 
 
-def delete_room(request, room_name) -> None:
-    """Delete a room unless a course or faculty member still references it."""
+def delete_room(request, room_name) -> list[str]:
+    """Delete a room and detach it from every course and faculty preference in
+    ONE validated edit (Section 12). If any part fails, nothing changes.
+
+    No other room takes its place. A course section that lists only this room
+    could not be scheduled any more, so it is deleted too.
+    Returns plain-language notices describing what changed (see gui/controllers/dependencies.py)."""
     session = get_session(request)
     config = _require_config(session)
     _find_room(config, room_name)
-    try:
-        check_no_references(room_name, _references(config, room_name))
-    except ReferenceError_ as error:
-        raise ControllerError(
-            f"{error}. Remove this room from those records first."
-        ) from error
-
-    def mutate(draft):
-        rooms = draft.config.rooms
-        del rooms[next(i for i, room in enumerate(rooms) if room.name == room_name)]
-
-    _apply(session, config, mutate)
+    the_plan = deps.plan(config, "room", room_name)
+    deps.resolve(the_plan)
+    mutate, notices = deps.build(config, "room", room_name, the_plan)
+    _apply(session, config, mutate, label=f"Delete room '{room_name}'")
+    return notices

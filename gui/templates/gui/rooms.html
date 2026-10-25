@@ -35,13 +35,14 @@
 </div>
 <div class="card">
     <div class="table-wrap">
-        <table class="data-table" id="room-list">
+        <table class="data-table data-table--centered" id="room-list">
             <thead>
                 <tr>
                     <th scope="col">Name</th>
                     <th scope="col">Capacity</th>
                     <th scope="col">Features</th>
                     <th scope="col">Availability</th>
+                    <th scope="col">Used by</th>
                     <th scope="col">Actions</th>
                 </tr>
             </thead>
@@ -50,20 +51,16 @@
                 <tr data-filter-item>
                     <td><strong>{{ room.name }}</strong></td>
                     <td>{{ room.capacity }}</td>
-                    <td>{% if room.features %}{{ room.features|join:", " }}{% else %}&mdash;{% endif %}</td>
+                    <td>{% if room.features %}{{ room.features|join:", " }}{% else %}None{% endif %}</td>
                     <td>{% if room.unrestricted %}Any time{% else %}{% for row in room.availability %}{{ row.day }} {{ row.ranges }}{% if not forloop.last %}<br>{% endif %}{% endfor %}{% endif %}</td>
+                    <td>{% include "gui/components/usage_summary.html" with usage=room.usage icon=True %}</td>
                     <td class="actions">
                         <a class="btn btn-small" href="{% url 'gui:room_edit' room.name %}">Edit</a>
-                        {% if room.can_delete %}
                         <a class="btn btn-small btn-danger" href="{% url 'gui:room_delete' room.name %}">Delete</a>
-                        {% else %}
-                        <span class="btn btn-small btn-disabled" aria-disabled="true">Delete</span>
-                        <span class="help">In use by {{ room.referenced_by|join:", " }}.</span>
-                        {% endif %}
                     </td>
                 </tr>
             {% empty %}
-                <tr><td colspan="5">No rooms yet. Use &ldquo;Add a room&rdquo; above.</td></tr>
+                <tr><td colspan="6">No rooms yet. Use &ldquo;Add a room&rdquo; above.</td></tr>
             {% endfor %}
             </tbody>
         </table>

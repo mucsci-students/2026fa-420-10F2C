@@ -36,7 +36,7 @@ from __future__ import annotations
 from scheduler.config import LabConfig, ValidationError
 
 from app.commands.common import VALID_DAYS, apply_session_edit, field_value
-from app.crud import ReferenceError_, ValidationFailure, check_no_references
+from app.crud import ValidationFailure
 from app.session import ConfigError
 from gui.constants import DAY_NAMES
 from gui.controllers.errors import (
@@ -45,6 +45,7 @@ from gui.controllers.errors import (
     to_controller_error,
     translate_validation_error,
 )
+from gui.controllers import dependencies as deps
 from gui.session_store import get_session
 
 LAB_FIELDS = ("name", "capacity", "features", "times")
@@ -155,9 +156,9 @@ def _prepared_update(config, lab_name, form_data) -> tuple[dict, LabConfig]:
     return fields, _build_lab(fields)
 
 
-def _apply(session, config, mutate) -> None:
+def _apply(session, config, mutate, label=None) -> None:
     try:
-        apply_session_edit(session, config, "lab", mutate)
+        apply_session_edit(session, config, "lab", mutate, label=label)
     except ValidationFailure as error:
         raise to_controller_error(error, form_fields=LAB_FIELDS) from error
 
@@ -201,6 +202,7 @@ def describe_labs(request) -> dict:
                 "unrestricted": not lab.times,
                 "referenced_by": references,
                 "can_delete": not references,
+                "usage": deps.usage(config, "lab", lab.name),
             }
         )
     return {"has_config": True, "labs": labs}
@@ -227,6 +229,8 @@ def get_lab(request, lab_name) -> dict:
         "availability": _availability(lab.times),
         "referenced_by": references,
         "can_delete": not references,
+        "usage": deps.usage(config, "lab", lab_name),
+        "plan": deps.plan(config, "lab", lab_name),
     }
 
 
@@ -245,7 +249,7 @@ def add_lab(request, form_data) -> None:
     def mutate(draft):
         draft.config.labs.append(new_lab)
 
-    _apply(session, config, mutate)
+    _apply(session, config, mutate, label=f"Add lab '{fields['name']}'")
 
 
 def update_lab(request, lab_name, form_data) -> list[str]:
@@ -272,7 +276,7 @@ def update_lab(request, lab_name, form_data) -> list[str]:
                     preferences[new_name] = preferences.pop(lab_name)
                     person.lab_preferences = preferences
 
-    _apply(session, config, mutate)
+    _apply(session, config, mutate, label=f"Edit lab '{lab_name}'")
     return notices
 
 
@@ -290,18 +294,18 @@ def _rename_notices(config, old_name: str, new_name: str) -> list[str]:
     return [f"Renamed '{old_name}' to '{new_name}' in {' and '.join(parts)}."] if parts else []
 
 
-def delete_lab(request, lab_name) -> None:
-    """Delete a lab unless a course or faculty member still references it."""
+def delete_lab(request, lab_name) -> list[str]:
+    """Delete a lab and detach it from every course and faculty preference in
+    ONE validated edit (Section 12). If any part fails, nothing changes.
+
+    No other lab takes its place: a course section that lists only this lab is
+    left without one (the scheduler library still validates the result).
+    Returns plain-language notices describing what changed (see gui/controllers/dependencies.py)."""
     session = get_session(request)
     config = _require_config(session)
     _find_lab(config, lab_name)
-    try:
-        check_no_references(lab_name, _references(config, lab_name))
-    except ReferenceError_ as error:
-        raise ControllerError(f"{error}. Remove this lab from those records first.") from error
-
-    def mutate(draft):
-        labs = draft.config.labs
-        del labs[next(i for i, lab in enumerate(labs) if lab.name == lab_name)]
-
-    _apply(session, config, mutate)
+    the_plan = deps.plan(config, "lab", lab_name)
+    deps.resolve(the_plan)
+    mutate, notices = deps.build(config, "lab", lab_name, the_plan)
+    _apply(session, config, mutate, label=f"Delete lab '{lab_name}'")
+    return notices

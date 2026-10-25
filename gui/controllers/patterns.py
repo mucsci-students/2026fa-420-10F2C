@@ -42,6 +42,7 @@ from __future__ import annotations
 
 from scheduler.config import ClassPattern, ValidationError
 
+from gui.controllers import dependencies as deps
 from gui.controllers.common import apply_config_edit, require_config
 from gui.controllers.errors import ControllerError, FieldError, translate_validation_error
 from gui.controllers.meetings import (
@@ -76,8 +77,8 @@ def _check_index(config, index: int):
     return patterns[index]
 
 
-def _apply(session, config, mutate) -> None:
-    apply_config_edit(session, config, "pattern", mutate, form_fields=PATTERN_FIELDS)
+def _apply(session, config, mutate, label=None) -> None:
+    apply_config_edit(session, config, "pattern", mutate, form_fields=PATTERN_FIELDS, label=label)
 
 
 def _check_credits(form_data) -> int | None:
@@ -105,7 +106,7 @@ def _day_set(meetings) -> set[str]:
     return {str(getattr(m.day, "value", m.day)) for m in meetings}
 
 
-def _pattern_row(index: int, pattern) -> dict:
+def _pattern_row(index: int, pattern, usage=None) -> dict:
     meetings = [meeting_row(index, i, m) for i, m in enumerate(pattern.meetings)]
     return {
         "index": index,
@@ -114,6 +115,7 @@ def _pattern_row(index: int, pattern) -> dict:
         "start_time": getattr(pattern, "start_time", None) or "",
         "meetings": meetings,
         "summary": ", ".join(meeting_summary(m) for m in pattern.meetings),
+        "usage": usage if usage is not None else {"in_use": False, "groups": []},
     }
 
 
@@ -131,7 +133,9 @@ def describe_patterns(request) -> dict:
         return {"has_config": False}
     return {
         "has_config": True,
-        "patterns": [_pattern_row(i, p) for i, p in enumerate(_patterns(config))],
+        "patterns": [
+            _pattern_row(i, p, deps.usage(config, "pattern", i)) for i, p in enumerate(_patterns(config))
+        ],
     }
 
 
@@ -139,7 +143,9 @@ def get_pattern(request, pattern_index: int) -> dict:
     """One pattern as plain data, for the edit and delete pages."""
     config = _require_config(get_session(request))
     pattern = _check_index(config, pattern_index)
-    return _pattern_row(pattern_index, pattern)
+    row = _pattern_row(pattern_index, pattern, deps.usage(config, "pattern", pattern_index))
+    row["plan"] = deps.plan(config, "pattern", pattern_index)
+    return row
 
 
 # ---------------------------------------------------------------------- #
@@ -189,18 +195,20 @@ def update_pattern(request, pattern_index: int, form_data) -> list[str]:
 
 
 def delete_pattern(request, pattern_index: int) -> list[str]:
-    """Remove the pattern at pattern_index (the page asks for confirmation
-    first). The library rejects the change if it would leave the configuration
-    invalid, e.g. a course left with no usable pattern."""
+    """Remove the pattern at pattern_index (the page asks for confirmation first).
+
+    If it is the only enabled pattern for its credit value, the course sections
+    with that many credits could not be scheduled any more, so they are deleted
+    too. All of it is one validated edit; the library still rejects the result
+    if the configuration would be left invalid (for example with no courses at all)."""
     session = get_session(request)
     config = _require_config(session)
     _check_index(config, pattern_index)
-
-    def mutate(draft):
-        del _patterns(draft)[pattern_index]
-
-    _apply(session, config, mutate)
-    return []
+    the_plan = deps.plan(config, "pattern", pattern_index)
+    deps.resolve(the_plan)
+    mutate, notices = deps.build(config, "pattern", pattern_index, the_plan)
+    _apply(session, config, mutate, label=f"Delete {the_plan.name}")
+    return notices
 
 
 def _fit_warnings_for(config, pattern) -> list[str]:

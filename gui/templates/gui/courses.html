@@ -61,7 +61,6 @@
                 <dt>Faculty</dt>
                 <dd>
                     {% if course.faculty is not None %}{{ course.faculty|join:", " }}
-                    {% elif course.derived_faculty %}From preferences: {{ course.derived_faculty|join:", " }}
                     {% else %}&mdash;{% endif %}
                 </dd>
             </div>
@@ -69,15 +68,14 @@
                 <dt>Conflicts</dt>
                 <dd>{% if course.conflicts %}{{ course.conflicts|join:", " }}{% else %}&mdash;{% endif %}</dd>
             </div>
+            <div>
+                <dt>Preferred by</dt>
+                <dd>{% if course.preferences %}{{ course.preferences|join:", " }}{% else %}&mdash;{% endif %}</dd>
+            </div>
         </dl>
         <footer class="item-card__foot">
             <a class="btn" href="{% url 'gui:course_edit' course.index %}">Edit</a>
-            {% if course.can_delete %}
             <a class="btn btn-danger" href="{% url 'gui:course_delete' course.index %}">Delete</a>
-            {% else %}
-            <span class="btn btn-disabled" aria-disabled="true">Delete</span>
-            <span class="chip chip--warn in-use">In use by {{ course.referenced_by|join:", " }}.</span>
-            {% endif %}
         </footer>
     </article>
     {% empty %}

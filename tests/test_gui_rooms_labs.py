@@ -9,9 +9,12 @@ every room and lab is used by a course: that is what makes "cannot delete" and
 unused room/lab first.
 """
 
+import re
+from pathlib import Path
 from urllib.parse import quote
 
 import pytest
+from django.template.loader import render_to_string
 
 from gui import session_store
 from gui.forms import availability_to_text, parse_availability
@@ -217,14 +220,217 @@ def test_editing_something_that_no_longer_exists_redirects_with_an_error(client,
     assert "no longer exists" in page(response)
 
 
-def test_deleting_something_in_use_is_blocked_on_the_page_and_in_the_action(client, kind):
+ROOM_KIND = {"key": "room", **KINDS["room"]}
+LAB_KIND = {"key": "lab", **KINDS["lab"]}
+
+
+def test_list_page_summarises_usage_instead_of_listing_everything(client, kind):
+    text = page(client.get(kind["base"]))
+    assert "Used by" in text
+    assert '<details class="usage">' in text
+    assert "In use by" not in text
+
+
+def usage_icons(text):
+    return re.findall(r'<svg class="usage__icon".*?</svg>', text, flags=re.S)
+
+
+def test_usage_toggle_is_a_small_dropdown_icon_not_a_details_link(client, kind):
+    text = page(client.get(kind["base"]))
+    assert "usage__toggle" not in text
+    assert ">details<" not in text
+
+
+def test_the_icon_sits_next_to_the_faculty_preference_chip_not_inside_it(client, kind):
+    text = page(client.get(kind["base"]))
+    assert re.search(r'faculty preferences?</span><svg class="usage__icon"', text)
+    assert not re.search(r'<span class="chip[^"]*">[^<]*<svg', text)  # never inside a chip
+
+
+def test_every_row_in_use_has_exactly_one_icon_after_its_last_chip(client, kind):
+    text = page(client.get(kind["base"]))
+    rows = text.count('<details class="usage">')
+    assert rows > 0 and len(usage_icons(text)) == rows
+    summaries = re.findall(r'<details class="usage">\s*<summary>(.*?)</summary>', text, flags=re.S)
+    assert len(summaries) == rows
+    for summary in summaries:
+        assert summary.count("<svg") == 1
+        assert re.search(r'<span class="chip[^"]*">[^<]*</span><svg class="usage__icon"', summary)
+        assert summary.strip().endswith("</span>")  # nothing after the icon's hidden label
+
+
+def test_the_icon_is_small_even_before_the_stylesheet_loads(client, kind):
+    icon = usage_icons(page(client.get(kind["base"])))[0]
+    width, height = (int(re.search(rf'{name}="(\d+)"', icon).group(1)) for name in ("width", "height"))
+    assert 6 <= width <= 12 and 6 <= height <= 12
+
+
+def test_the_icon_stylesheet_keeps_it_small(client):
+    css = Path("gui/static/gui/css/style.css").read_text()
+    size = re.search(r"\.usage__icon\s*\{[^}]*?width:\s*([\d.]+)rem", css)
+    assert size and float(size.group(1)) <= 0.7
+    assert re.search(r"\.usage__end\s*\{[^}]*white-space:\s*nowrap", css)  # icon never wraps away from its chip
+
+
+def test_the_icon_is_hidden_from_screen_readers_but_the_control_keeps_a_name(client, kind):
+    text = page(client.get(kind["base"]))
+    assert 'aria-hidden="true"' in usage_icons(text)[0]
+    assert '<span class="visually-hidden"> (show details)</span>' in text
+
+
+def test_rooms_and_labs_use_the_identical_icon(client):
+    room_icons = usage_icons(page(client.get(ROOM_KIND["base"])))
+    lab_icons = usage_icons(page(client.get(LAB_KIND["base"])))
+    assert room_icons and lab_icons
+    assert set(room_icons) == set(lab_icons) and len(set(room_icons)) == 1
+
+
+def test_the_other_pages_keep_the_text_toggle_by_default():
+    in_use = {"in_use": True, "groups": [{"chip": "2 courses", "tone": "", "title": "Used by", "names": ["A", "B"]}]}
+    plain = render_to_string("gui/components/usage_summary.html", {"usage": in_use})
+    assert 'class="usage__toggle">details<' in plain and "usage__icon" not in plain
+    icon = render_to_string("gui/components/usage_summary.html", {"usage": in_use, "icon": True})
+    assert "usage__icon" in icon and "usage__toggle" not in icon
+
+
+def test_the_icon_is_next_to_the_last_chip_whatever_the_number_of_chips():
+    def group(chip):
+        return {"chip": chip, "tone": "", "title": chip, "names": ["A"]}
+
+    for groups in ([group("1 course")], [group("1 course"), group("2 faculty preferences")]):
+        text = render_to_string(
+            "gui/components/usage_summary.html", {"usage": {"in_use": True, "groups": groups}, "icon": True}
+        )
+        assert text.count("usage__icon") == 1
+        assert re.search(rf'{re.escape(groups[-1]["chip"])}</span><svg class="usage__icon"', text)
+        assert not re.search(r'<span class="chip[^"]*">[^<]*<svg', text)
+
+
+def test_a_record_that_is_not_in_use_has_no_icon():
+    text = render_to_string("gui/components/usage_summary.html", {"usage": {"in_use": False, "groups": []}, "icon": True})
+    assert "usage__icon" not in text and "Not in use" in text
+
+
+def test_the_icon_styles_use_theme_colours_and_flip_when_open():
+    css = Path("gui/static/gui/css/style.css").read_text()
+    assert ".usage__icon" in css
+    assert re.search(r"\.usage\[open\]\s+\.usage__icon\s*\{[^}]*rotate\(180deg\)", css)
+    block = re.search(r"\.usage__icon\s*\{[^}]*\}", css).group(0)
+    assert not re.search(r"#[0-9a-fA-F]{3,8}\b", block) and "rgb" not in block
+    markup = Path("gui/templates/gui/components/usage_icon.html").read_text()
+    assert "style=" not in markup and 'stroke="currentColor"' in markup  # inherits the chip's themed colour
+
+
+def css_block(css, selector):
+    """The declarations of the rule(s) whose selector list contains `selector`."""
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)  # a comment above a rule must not become part of its selector
+    blocks = re.findall(r"([^{}]+)\{([^}]*)\}", css)
+    return " ".join(body for selectors, body in blocks if selector in [s.strip() for s in selectors.split(",")])
+
+
+def test_the_tables_are_marked_for_centered_columns_and_other_tables_are_not(client, kind):
+    text = page(client.get(kind["base"]))
+    assert re.search(rf'<table class="data-table data-table--centered" id="{kind["key"]}-list">', text)
+    other = page(client.get("/configuration/timeslots/"))
+    assert "data-table--centered" not in other
+
+
+def test_headers_and_cells_share_one_center_line_in_both_tables(client, kind):
+    text = page(client.get(kind["base"]))
+    head = re.search(r"<thead>(.*?)</thead>", text, flags=re.S).group(1)
+    assert [h.strip() for h in re.findall(r"<th[^>]*>(.*?)</th>", head)] == [
+        "Name", "Capacity", "Features", "Availability", "Used by", "Actions",
+    ]
+    row = re.search(r"<tbody>\s*<tr data-filter-item>(.*?)</tr>", text, flags=re.S).group(1)
+    assert len(re.findall(r"<td[ >]", row)) == 6  # one cell under every heading
+
+
+def test_the_stylesheet_centers_the_headers_and_cells_of_those_tables_only(client):
+    css = Path("gui/static/gui/css/style.css").read_text()
+    for selector in (".data-table--centered th", ".data-table--centered td"):
+        assert re.search(r"text-align:\s*center", css_block(css, selector)), selector
+    # the "Used by" summary is a flex row, so it needs justify-content to centre its chips and arrow
+    assert re.search(r"justify-content:\s*center", css_block(css, ".data-table--centered .usage > summary"))
+    assert re.search(r"text-align:\s*left", css_block(css, ".data-table--centered .usage__group"))
+    assert re.search(r"text-align:\s*left", css_block(css, ".data-table th"))  # every other table is unchanged
+
+
+def test_centered_cells_keep_their_content_on_the_same_line_as_the_header(client):
+    css = Path("gui/static/gui/css/style.css").read_text()
+    cells = css_block(css, ".data-table--centered td")
+    assert re.search(r"vertical-align:\s*middle", cells)
+
+
+def test_the_arrow_hangs_beside_its_chip_so_the_chips_stay_centered_under_the_heading(client):
+    """An arrow that takes part in the centring would push its chip left of the "Used by" heading."""
+    css = Path("gui/static/gui/css/style.css").read_text()
+    assert re.search(r"position:\s*relative", css_block(css, ".usage__end"))
+    icon = css_block(css, ".usage__icon")
+    assert re.search(r"position:\s*absolute", icon)
+    assert re.search(r"left:\s*calc\(100%", icon)  # starts where the chip ends
+
+
+def test_deleting_something_in_use_shows_what_will_change(client, kind):
     client.get(kind["base"])
     text = page(client.get(delete_url(kind, kind["existing"])))
-    assert "Cannot delete" in text
-    assert 'value="confirm"' not in text
-    response = client.post(delete_url(kind, kind["existing"]), {"action": "confirm"}, follow=True)
-    assert f"Remove this {kind['key']} from those records first" in page(response)
-    assert find(kind, kind["existing"]) is not None
+    assert "also changes other records" in text
+    assert 'value="confirm"' in text
+
+
+def test_room_cascade_needs_no_tick_even_when_a_course_would_lose_its_only_room(client):
+    client.get(ROOM_KIND["base"])
+    text = page(client.get(delete_url(ROOM_KIND, "Roddy 136")))
+    assert 'type="checkbox"' not in text and 'name="confirm_extra"' not in text
+    assert "Course sections that would be deleted" in text  # the page still says what the click will do
+    response = client.post(delete_url(ROOM_KIND, "Roddy 136"), {"action": "confirm"}, follow=True)
+    assert response.status_code == 200 and "Tick the box" not in page(response)
+    assert find(ROOM_KIND, "Roddy 136") is None
+
+
+def test_room_cascade_removes_every_reference_in_one_step(client):
+    client.get(ROOM_KIND["base"])
+    response = client.post(delete_url(ROOM_KIND, "Roddy 136"), {"action": "confirm"}, follow=True)
+    assert "deleted" in page(response) and "Removed" in page(response)
+    config = browser_session().config.config
+    assert find(ROOM_KIND, "Roddy 136") is None
+    assert all("Roddy 136" not in (course.room or []) for course in config.courses)
+    assert all("Roddy 136" not in (person.room_preferences or {}) for person in config.faculty)
+    assert all(course.room for course in config.courses)
+    assert browser_session().dirty is True
+
+
+def test_lab_cascade_leaves_the_section_without_one_and_names_no_other_lab(client):
+    client.get(LAB_KIND["base"])
+    client.post(delete_url(LAB_KIND, "Mac"), {"action": "confirm"}, follow=True)
+    config = browser_session().config.config
+    assert find(LAB_KIND, "Mac") is None
+    assert [list(course.lab) for course in config.courses if course.course_id == "CMSC 420"] == [[]]
+
+
+def test_a_cascade_that_fails_whole_config_validation_changes_nothing_and_explains(client, monkeypatch):
+    """If the library rejects the cascade, the page says why, the room is still
+    there, and no undo entry is recorded. (The rejection is simulated, as in the
+    other rollback tests; the library's edit mode provides the real atomicity.)"""
+    from app.crud import ValidationFailure
+    from gui.controllers import rooms as rooms_ctrl
+
+    def reject(session_, config, area, mutate, label=None):
+        raise ValidationFailure(area, "simulated whole-config rejection")
+
+    client.get(ROOM_KIND["base"])
+    before = browser_session().config.model_dump_json()
+    monkeypatch.setattr(rooms_ctrl, "apply_session_edit", reject)
+
+    response = client.post(delete_url(ROOM_KIND, "Roddy 136"), {"action": "confirm"})
+
+    assert response.status_code == 200
+    text = page(response)
+    assert "was not deleted and nothing was changed" in text
+    assert "simulated whole-config rejection" in text
+    assert find(ROOM_KIND, "Roddy 136") is not None
+    assert browser_session().config.model_dump_json() == before
+    assert browser_session().history.can_undo is False
+    assert browser_session().dirty is False
 
 
 def test_delete_asks_first_and_cancel_changes_nothing(client, kind):

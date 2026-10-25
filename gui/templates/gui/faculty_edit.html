@@ -7,7 +7,7 @@
         <h1>Edit faculty member</h1>
         <p class="page-intro">
             Editing <strong>{{ faculty.name }}</strong>. Nothing changes until you apply your edits.
-            {% if not faculty.can_delete %}
+            {% if faculty.referenced_by %}
             This name is used by {{ faculty.referenced_by|join:", " }}. Changing it updates those course assignments together.
             {% endif %}
         </p>

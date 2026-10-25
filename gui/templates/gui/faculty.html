@@ -26,7 +26,7 @@
            data-filter-input="#faculty-list" data-filter-status="#faculty-filter-status">
     <p class="help" id="faculty-filter-status" aria-live="polite"></p>
 </div>
-<div class="card-grid" id="faculty-list">
+<div class="card-grid card-grid--start" id="faculty-list">
     {% for person in data.faculty %}
     <article class="item-card" data-filter-item>
         <header class="item-card__head">
@@ -37,11 +37,9 @@
                 <span class="chip">Up to {{ person.maximum_days }} day{{ person.maximum_days|pluralize }}</span>
             </div>
         </header>
-        {% if person.mandatory_days %}
         <dl class="item-card__facts">
-            <div><dt>Required days</dt><dd>{{ person.mandatory_days|join:", " }}</dd></div>
+            <div><dt>Required days</dt><dd>{% if person.mandatory_days %}{{ person.mandatory_days|join:", " }}{% else %}&mdash;{% endif %}</dd></div>
         </dl>
-        {% endif %}
         <details class="item-card__more">
             <summary>Availability and preferences</summary>
             <dl class="item-card__facts">
@@ -57,14 +55,10 @@
                 {% endfor %}
             </dl>
         </details>
-        <footer class="item-card__foot">
+        <footer class="item-card__foot item-card__foot--usage">
             <a class="btn" href="{% url 'gui:faculty_edit' person.name %}">Edit</a>
-            {% if person.can_delete %}
             <a class="btn btn-danger" href="{% url 'gui:faculty_delete' person.name %}">Delete</a>
-            {% else %}
-            <span class="btn btn-disabled" aria-disabled="true">Delete</span>
-            <span class="chip chip--warn in-use">In use by {{ person.referenced_by|join:", " }}.</span>
-            {% endif %}
+            {% include "gui/components/usage_summary.html" with usage=person.usage quiet=True icon=True %}
         </footer>
     </article>
     {% empty %}
