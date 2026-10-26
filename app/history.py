@@ -285,6 +285,24 @@ class ConfigHistory:
                 return [self.redo(session) for _ in range(len(self._redo) - index)]
         raise HistoryError("That history entry does not exist any more.")
 
+    # -- several edits as one step (the AI assistant's apply_changes) --- #
+    def checkpoint(self) -> tuple[list[Snapshot], list[Snapshot], int]:
+        """Remember the stacks and the version as they are now (see rewind_to)."""
+        return list(self._undo), list(self._redo), self.version
+
+    def rewind_to(self, checkpoint: tuple[list[Snapshot], list[Snapshot], int]) -> None:
+        """Forget every change recorded since checkpoint().
+
+        Only the history moves here. The caller puts the configuration itself
+        back first (with a memento taken at the same moment), so afterwards the
+        stacks, the version and the configuration all describe the earlier
+        state, and a rolled-back change can't be redone by mistake."""
+        undo, redo, version = checkpoint
+        self._undo[:] = undo
+        self._redo[:] = redo
+        self.version = version
+        self._fresh = False
+
     # -- lifecycle ------------------------------------------------------ #
     def clear(self) -> None:
         """Forget everything (a different configuration replaced the current one)."""
