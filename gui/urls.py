@@ -2,6 +2,7 @@ from django.urls import path
 
 from . import (
     views,
+    views_ai,
     views_courses,
     views_faculty,
     views_generation,
@@ -77,4 +78,6 @@ urlpatterns = [
     path("schedules/clear/", views.schedule_clear, name="schedule_clear"),
     path("schedules/export/", views.schedule_export, name="schedule_export"),
     path("schedules/export/json/", views.schedule_export, name="schedule_export_json"),
+    path("assistant/", views_ai.assistant, name="assistant"),
+    path("assistant/ask/", views_ai.assistant_ask, name="assistant_ask"),
 ]

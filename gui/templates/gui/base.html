@@ -7,6 +7,7 @@
     <title>{% block title %}Scheduler{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'gui/css/style.css' %}">
     <script src="{% static 'gui/js/theme.js' %}"></script>
+    {% block styles %}{% endblock %}
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
@@ -16,6 +17,7 @@
     <a href="{% url 'gui:config_editor' %}" class="{% if active == 'config' %}active{% endif %}">Configuration Editor</a>
     <a href="{% url 'gui:schedule_generator' %}" class="{% if active == 'generator' %}active{% endif %}">Schedule Generator</a>
     <a href="{% url 'gui:schedule_viewer' %}" class="{% if active == 'viewer' %}active{% endif %}">Schedule Viewer</a>
+    <a href="{% url 'gui:assistant' %}" class="{% if active == 'assistant' %}active{% endif %}">AI Assistant</a>
     <span class="nav-status{% if config_loaded and config_dirty %} nav-status--dirty{% endif %}" role="status">
         Configuration:
         {% if not config_loaded %}none loaded

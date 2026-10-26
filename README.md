@@ -14,6 +14,7 @@ The Sprint 1 command-line shell is still included and shares the same model code
 - [Configuration Editor](#configuration-editor)
 - [Schedule Generator](#schedule-generator)
 - [Schedule Viewer](#schedule-viewer)
+- [AI Assistant](#ai-assistant)
 - [Behavior shared by every page](#behavior-shared-by-every-page)
 - [Architecture (MVC)](#architecture-mvc)
 - [Running the tests](#running-the-tests)
@@ -260,6 +261,36 @@ The viewer shows whatever schedules are currently available, whether generated o
 - Also accepted: a single schedule (just the list of assignments); a bare list of schedules, as written by the scheduler library's `JSONWriter` (where `meetings` may be called `times`); and meetings written as `"MON 09:00-09:50"`.
 - Rejected: a `version` newer than 1, a different `format` value, and files over 5 MB.
 
+## AI Assistant
+
+Open **AI Assistant** in the top menu and type a request in everyday language, for example:
+
+- "What can you do?"
+- "List all rooms", "How many credits is CMSC 420?", "Show me faculty Hogg"
+- "Add a room named RODDY150 with capacity 35"
+- "Add course CMSC 421 with 3 credits, taught by Hogg in RODDY150"
+- "Add a time slot on Friday from 17:00 to 19:00", "Add a class pattern for 3 credits meeting Monday for 150 minutes"
+
+**Setup.** The OpenAI key is read from the `OPENAI_API_KEY` environment variable and never written to a file, a page or a log. The model is `gpt-6-luna` unless `OPENAI_MODEL` is set:
+
+```bash
+export OPENAI_API_KEY="your key here"      # never commit it
+export OPENAI_MODEL="gpt-6-luna"           # optional; this is the default
+uv run python manage.py runserver
+```
+
+With no key set, the assistant says so and nothing else changes.
+
+**How a request runs.**
+- The AI can only call the tools in `gui/ai/tools.py`, and every tool calls the same controller the normal pages use. Duplicate names, unknown rooms and bad values are rejected the same way the forms reject them, and a rejected change leaves the configuration as it was.
+- Your request stays on screen with a **"Processing your request…"** status. When the request finishes, the status is replaced by the result, and the chat box takes a new request.
+- While a request is running, the Send button and the chat box are locked, so a double click or a second Enter is ignored. The server also refuses a second request from the same browser until the first one is done, so a change can't be applied twice.
+- Each request is sent on its own with the configuration as it is right now, edits you just made by hand included. Earlier chat messages are not sent.
+- The reply comes from what the application actually did. A change says **"applied but not yet saved to a file"**: it's in the open configuration and marked as unsaved changes, but it isn't written to disk until you save it.
+- AI service errors are retried at most twice, with a 60-second timeout. After that you get a "couldn't finish" message, and nothing is changed.
+
+Tests use a fake AI (`tests/test_ai_chat.py`, `tests/test_ai_tools.py`) or a mocked OpenAI endpoint (`tests/test_ai_langchain.py`), so no key is needed and no API calls are made.
+
 ## Behavior shared by every page
 
 ### Errors and error pages
@@ -311,6 +342,7 @@ The GUI follows Model–View–Controller. User actions go through a controller;
 | | `gui/templates/gui/` | Pages and shared components (`components/`), including `base.html` (navigation, status, loading banner). |
 | | `gui/forms.py` | Django forms: field types, labels, help text, confirmation checkboxes. |
 | | `gui/static/gui/` | CSS and JavaScript (`loading.js` for busy states, `theme.js` for dark mode). |
+| **AI** | `gui/ai/` | `tools.py`: the fixed tool set (each tool has a Pydantic argument schema and calls a controller); `service.py`: one request (duplicate guard, reply built from tool results); `runner.py`: the LangChain agent; `prompt.py`: base prompt. `gui/views_ai.py` is the page. |
 | **Glue** | `gui/session_store.py` | Gives each browser its own `Session` (keyed by an id in a signed-cookie session). |
 | | `gui/middleware.py` | Turns unexpected exceptions into the friendly error page and logs the traceback. |
 | | `config/` | Django settings and root URL configuration; `gui/urls.py` maps each URL to a view. |
