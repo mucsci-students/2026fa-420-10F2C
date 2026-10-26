@@ -1,0 +1,41 @@
+{% comment %}
+    The AI chat: a round button pinned to the bottom-right corner of the screen that opens a chat
+    panel (Sprint 3 Section 3). Included once, from base.html.
+
+    Hovering the button (or the space just to its right) shows a small arrow that slides the
+    button off the right edge; a small tab stays at the edge to bring it back. See chat.js and
+    the "AI chat" block of style.css.
+
+    The button, the arrow and the tab all start hidden and gui/static/gui/js/chat.js reveals them,
+    so a browser without JavaScript never shows a chat that cannot work (the same
+    progressive-enhancement rule as the rest of the app). The panel posts one request at a time to
+    gui:assistant_ask (gui/views_ai.py, which hands it to gui/ai/service.py); it never sees or
+    sends an API key.
+{% endcomment %}
+<div class="chat-widget" data-chat>
+    <section id="chat-panel" class="chat-panel" role="dialog" aria-labelledby="chat-title" hidden>
+        <header class="chat-panel__header">
+            <h2 id="chat-title" class="chat-panel__title">AI assistant</h2>
+            <button type="button" class="chat-panel__close" data-chat-close aria-label="Close AI assistant">&times;</button>
+        </header>
+        <div class="chat-log" data-chat-log role="log" aria-live="polite" aria-relevant="additions">
+            {# One line on purpose: chat messages keep their line breaks (pre-wrap), so source indentation would show. #}
+            <p class="chat-message chat-message--assistant">Hi! Ask me to look at or change your scheduler configuration. Try &quot;What can you do?&quot;. Changes are applied to the open configuration but not saved to a file until you save it.</p>
+        </div>
+        <form class="chat-form" data-chat-form method="post" action="{% url 'gui:assistant_ask' %}">
+            {% csrf_token %}
+            <label class="visually-hidden" for="chat-input">Your request</label>
+            <textarea id="chat-input" name="message" rows="2" maxlength="2000" placeholder="Type a request, for example: add a room called Roddy 150"></textarea>
+            <button type="submit" class="btn btn-primary" data-chat-send>Send</button>
+        </form>
+    </section>
+    <div class="chat-dock">
+        <button type="button" id="chat-launcher" class="chat-launcher" aria-expanded="false" aria-controls="chat-panel" aria-label="Open AI assistant" title="AI assistant" hidden>
+            <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" focusable="false">
+                <path fill="currentColor" d="M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H9l-5 4v-4H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/>
+            </svg>
+        </button>
+        <button type="button" class="chat-hide" data-chat-hide aria-label="Hide AI assistant button" title="Hide (slides to the side)" hidden>&rsaquo;</button>
+    </div>
+    <button type="button" class="chat-tab" data-chat-show aria-label="Show AI assistant button" title="Show AI assistant" hidden>&lsaquo;</button>
+</div>

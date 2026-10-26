@@ -263,7 +263,7 @@ The viewer shows whatever schedules are currently available, whether generated o
 
 ## AI Assistant
 
-Open **AI Assistant** in the top menu and type a request in everyday language, for example:
+Click the round chat button in the bottom-right corner of any page and type a request in everyday language. Hover the button and click the small arrow to slide it out of the way; a small tab at the screen edge brings it back. For example:
 
 - "What can you do?"
 - "List all rooms", "How many credits is CMSC 420?", "Show me faculty Hogg"
@@ -283,8 +283,8 @@ With no key set, the assistant says so and nothing else changes.
 
 **How a request runs.**
 - The AI can only call the tools in `gui/ai/tools.py`, and every tool calls the same controller the normal pages use. Duplicate names, unknown rooms and bad values are rejected the same way the forms reject them, and a rejected change leaves the configuration as it was.
-- Your request stays on screen with a **"Processing your request…"** status. When the request finishes, the status is replaced by the result, and the chat box takes a new request.
-- While a request is running, the Send button and the chat box are locked, so a double click or a second Enter is ignored. The server also refuses a second request from the same browser until the first one is done, so a change can't be applied twice.
+- Your request stays on screen with a **"Working on it…"** status. When the request finishes, the status is replaced by the result, and the chat box takes a new request. If the AI changed the configuration, the top bar shows **Unsaved changes** and the reply has a **Refresh page** button, because the page behind the chat was drawn before the change.
+- While a request is running, Send and Enter are ignored, so a double click or a second Enter does nothing. The server also refuses a second request from the same browser until the first one is done, so a change can't be applied twice.
 - Each request is sent on its own with the configuration as it is right now, edits you just made by hand included. Earlier chat messages are not sent.
 - The reply comes from what the application actually did. A change says **"applied but not yet saved to a file"**: it's in the open configuration and marked as unsaved changes, but it isn't written to disk until you save it.
 - AI service errors are retried at most twice, with a 60-second timeout. After that you get a "couldn't finish" message, and nothing is changed.
@@ -342,7 +342,7 @@ The GUI follows Model–View–Controller. User actions go through a controller;
 | | `gui/templates/gui/` | Pages and shared components (`components/`), including `base.html` (navigation, status, loading banner). |
 | | `gui/forms.py` | Django forms: field types, labels, help text, confirmation checkboxes. |
 | | `gui/static/gui/` | CSS and JavaScript (`loading.js` for busy states, `theme.js` for dark mode). |
-| **AI** | `gui/ai/` | `tools.py`: the fixed tool set (each tool has a Pydantic argument schema and calls a controller); `service.py`: one request (duplicate guard, reply built from tool results); `runner.py`: the LangChain agent; `prompt.py`: base prompt. `gui/views_ai.py` is the page. |
+| **AI** | `gui/ai/` | `tools.py`: the fixed tool set (each tool has a Pydantic argument schema and calls a controller); `service.py`: one request (duplicate guard, reply built from tool results); `runner.py`: the LangChain agent; `prompt.py`: base prompt. `gui/views_ai.py` is the endpoint the chat button posts to; the button itself is `templates/gui/components/chat_widget.html` with `static/gui/js/chat.js`. |
 | **Glue** | `gui/session_store.py` | Gives each browser its own `Session` (keyed by an id in a signed-cookie session). |
 | | `gui/middleware.py` | Turns unexpected exceptions into the friendly error page and logs the traceback. |
 | | `config/` | Django settings and root URL configuration; `gui/urls.py` maps each URL to a view. |
