@@ -312,8 +312,8 @@ def test_what_can_you_do(client, fake):
     before = browser_session().config.model_dump_json()
     _, body = ask(client, "What can you do?")
     assert body["ok"] is True and body["changed"] is False
-    assert "View, add, change, and delete rooms" in body["reply"]
-    assert "Validate the configuration, save it, and generate schedules" in body["reply"]
+    assert "Delete rooms, labs, courses" in body["reply"]
+    assert "I can't validate the configuration, save it, or generate schedules yet" in body["reply"]
     assert browser_session().config.model_dump_json() == before
 
 

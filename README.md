@@ -270,6 +270,8 @@ Click the round chat button in the bottom-right corner of any page and type a re
 - "Add a room named RODDY150 with capacity 35"
 - "Add course CMSC 421 with 3 credits, taught by Hogg in RODDY150"
 - "Add a time slot on Friday from 17:00 to 19:00", "Add a class pattern for 3 credits meeting Monday for 150 minutes"
+- "Change the capacity of Roddy 140 to 40", "Give Hogg a maximum of 9 credits", "Disable class pattern 4", "Turn off the pack_rooms setting"
+- "Delete room Roddy 136" (see **Deleting** below)
 
 **Setup.** The OpenAI key is read from the `OPENAI_API_KEY` environment variable and never written to a file, a page or a log. The model is `gpt-6-luna` unless `OPENAI_MODEL` is set:
 
@@ -281,15 +283,22 @@ uv run python manage.py runserver
 
 With no key set, the assistant says so and nothing else changes.
 
+**Changing and deleting.** The update tools (`update_room`, `update_lab`, `update_course`, `update_faculty`, `update_time_slot`, `update_timing_options`, `update_class_pattern`, `update_meeting`, `update_global_settings`, plus `add_meeting`) take only the values you want changed and merge them into the current record, then call the same controller the Edit pages use. A change that the scheduler library rejects is rejected as a whole, so nothing is half-applied; a request that changes nothing says so and does not mark the configuration as unsaved. Every real change is on the **History** page and can be undone there.
+
+**Deleting** takes two messages. A `delete_*` tool only describes what would be deleted (the same dependency review the Delete pages show, including other items that go with it). The delete happens only when you confirm in a *new* message (`confirm_delete`); `cancel_delete` forgets it. A pending delete expires after 10 minutes, is refused if the configuration changed after it was described, and only the browser session that asked can confirm it. The assistant cannot confirm in the same message that describes the delete.
+
+The assistant cannot validate the configuration, save it, or generate schedules yet; it says so when asked.
+
 **How a request runs.**
 - The AI can only call the tools in `gui/ai/tools.py`, and every tool calls the same controller the normal pages use. Duplicate names, unknown rooms and bad values are rejected the same way the forms reject them, and a rejected change leaves the configuration as it was.
 - Your request stays on screen with a **"Working on it…"** status. When the request finishes, the status is replaced by the result, and the chat box takes a new request. If the AI changed the configuration, the top bar shows **Unsaved changes** and the reply has a **Refresh page** button, because the page behind the chat was drawn before the change.
 - While a request is running, Send and Enter are ignored, so a double click or a second Enter does nothing. The server also refuses a second request from the same browser until the first one is done, so a change can't be applied twice.
-- Each request is sent on its own with the configuration as it is right now, edits you just made by hand included. Earlier chat messages are not sent.
+- **Look first, then act.** The AI can read the configuration (lists, details) and then decide, so "delete the room with the smallest number" or "give the biggest room 10 more seats" work in one message. Lookups are only for the AI; any add, update, delete or confirmation ends the request with the application's own message, so the AI can't re-word what really happened. A request is limited to 6 model steps.
+- **Short memory.** The last 6 chat messages are sent along so "yes, that one" or "make it 40 instead" are understood (set `AI_HISTORY_MESSAGES` from 0 to 20; `0` sends each request on its own). They are only a hint: names and numbers always come from the tools, which read the configuration as it is right now, edits you just made by hand included. Deleting still needs a separate confirmation that the application enforces itself.
 - The reply comes from what the application actually did. A change says **"applied but not yet saved to a file"**: it's in the open configuration and marked as unsaved changes, but it isn't written to disk until you save it.
 - AI service errors are retried at most twice, with a 60-second timeout. After that you get a "couldn't finish" message, and nothing is changed.
 
-Tests use a fake AI (`tests/test_ai_chat.py`, `tests/test_ai_tools.py`) or a mocked OpenAI endpoint (`tests/test_ai_langchain.py`), so no key is needed and no API calls are made.
+Tests use a fake AI (`tests/test_ai_chat.py`, `tests/test_ai_tools.py`, `tests/test_ai_changes.py`) or a mocked OpenAI endpoint (`tests/test_ai_langchain.py`), so no key is needed and no API calls are made.
 
 ## Behavior shared by every page
 

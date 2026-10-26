@@ -2,19 +2,23 @@
 The LangChain agent that turns a request into tool calls (Sprint 3).
 
 Same setup as the course's LangChain example: create_agent() with OpenAI's
-Responses API, and every tool marked return_direct, so after the model picks
-its tool calls the app's own results are the answer. No second model call
-re-words them, and the model cannot claim something happened that a tool
-did not do.
+Responses API. Action tools (add, update, delete, confirm, capabilities) are
+marked return_direct, so once the model picks one the app's own result is the
+answer: no second model call re-words it, and the model cannot claim something
+happened that a tool did not do. Lookup tools (list_*, get_*, show_*) are not
+direct: the model reads them and goes on, so "delete the smallest room" can
+look first and then act. The number of steps is bounded (MAX_STEPS).
 
 Settings come from environment variables only:
     OPENAI_API_KEY   required; never written to a file, a page, or a log
     OPENAI_MODEL     optional, defaults to gpt-6-luna
 
-Each request is sent alone: the base prompt and this one message, never
-earlier chat text (user story 6). Retries are bounded (MAX_RETRIES) and every
-call has a timeout, so a slow or failing service cannot hang the page or run
-up the bill.
+Each request carries the base prompt, the newest message and the last few chat
+messages (see gui/ai/service.py, AI_HISTORY_MESSAGES), which only help the model
+understand "yes" or "that one". The data itself always comes from the tools
+(user story 6). Retries are bounded (MAX_RETRIES), the steps are bounded
+(MAX_STEPS) and every call has a timeout, so a slow or failing service cannot
+hang the page or run up the bill.
 
 LangChain is imported inside build() so the rest of the app (and the tests
 that use a fake runner) still work where it isn't installed.
@@ -26,12 +30,13 @@ import os
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from gui.ai.prompt import BASE_PROMPT
+from gui.ai.prompt import BASE_PROMPT, tool_overview
 from gui.ai.tools import ToolBox
 
 DEFAULT_MODEL = "gpt-6-luna"
 TIMEOUT_SECONDS = 60
 MAX_RETRIES = 2
+MAX_STEPS = 6  # model calls per request: look, look, act, ...
 
 
 class NotConfigured(Exception):
@@ -97,19 +102,21 @@ class LangChainRunner:
                 func=bind(tool.name),
                 description=tool.description,
                 args_schema=tool.args,
-                return_direct=True,
+                return_direct=tool.final,
                 # Bad arguments come back as a normal failed result, not a crash.
                 handle_validation_error=lambda error, name=tool.name: toolbox.invalid(name, error).message,
             )
             for tool in toolbox.tools.values()
         ]
-        return create_agent(model=self.chat_model(), tools=tools, system_prompt=BASE_PROMPT)
+        prompt = BASE_PROMPT + "\n" + tool_overview(toolbox.tools.values())
+        return create_agent(model=self.chat_model(), tools=tools, system_prompt=prompt)
 
     def run(self, text: str, toolbox: ToolBox) -> str:
         agent = self.build(toolbox)
-        # Only this request: no earlier chat text is sent (user story 6).
-        result = agent.invoke({"messages": [{"role": "user", "content": text}]})
-        if toolbox.results:
-            return ""  # the tools' own results are the answer
-        replies = [message.text for message in result["messages"][1:] if getattr(message, "text", "")]
-        return "\n".join(replies).strip()
+        messages = [*toolbox.history, {"role": "user", "content": text}]
+        result = agent.invoke({"messages": messages}, config={"recursion_limit": 2 * MAX_STEPS + 1})
+        if any(item.final for item in toolbox.results):
+            return ""  # an action's own result is the answer
+        # Only lookups (or nothing): the model's last message is the answer.
+        replies = [m for m in result["messages"] if getattr(m, "type", "") == "ai" and getattr(m, "text", "")]
+        return replies[-1].text.strip() if replies else ""

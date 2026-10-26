@@ -26,13 +26,32 @@ controller checks as the Add forms, duplicate names included.
 from __future__ import annotations
 
 import logging
-import re
-from collections.abc import Callable, Iterable
-from dataclasses import dataclass
-from typing import Any
+from collections.abc import Iterable
+from dataclasses import replace
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
+from gui.ai.base import (
+    NO_CONFIG_MESSAGE,
+    WEEKDAYS,
+    AiTool,
+    AvailabilityArgs,
+    CourseArgs,
+    NameArgs,
+    NoArgs,
+    ToolResult,
+    Unchanged,
+    _course_line,
+    _day,
+    _join,
+    _notes,
+    _place,
+    _plural,
+    _require,
+    _resolve,
+    find_name,
+)
+from gui.ai.changes import CHANGE_TOOLS
 from gui.ai.prompt import CAPABILITIES
 from gui.constants import DAY_NAMES
 from gui.controllers import (
@@ -40,6 +59,7 @@ from gui.controllers import (
     courses,
     faculty,
     labs,
+    meetings,
     patterns,
     rooms,
     settings,
@@ -51,128 +71,13 @@ from gui.session_store import get_session
 
 logger = logging.getLogger("gui.ai")
 
-NO_CONFIG_MESSAGE = "There is no configuration yet. Load or create one first in the Configuration Editor."
 UNEXPECTED_MESSAGE = "Something went wrong while doing that, so it was stopped."
-WEEKDAYS = tuple(DAY_NAMES)
 DEFAULT_FACULTY_HOURS = ("09:00", "17:00")  # same default as the CLI's faculty add
-
-
-@dataclass(frozen=True)
-class ToolResult:
-    """What one tool call really did, in words the user can read."""
-
-    tool: str
-    ok: bool
-    message: str
-    changed: bool = False  # True only when the configuration was edited
-    write: bool = False  # True for tools that try to edit the configuration
-
-
-@dataclass(frozen=True)
-class AiTool:
-    name: str
-    description: str
-    args: type[BaseModel]
-    handler: Callable[[Any, Any], str]
-    write: bool = False
-    needs_config: bool = True
-
-
-# ---------------------------------------------------------------------- #
-#  Small helpers
-# ---------------------------------------------------------------------- #
-def _key(name: str) -> str:
-    """Case, space and punctuation-insensitive form of a name ("Roddy 140" == "RODDY140")."""
-    return re.sub(r"[^0-9a-z]", "", str(name).casefold())
-
-
-def _without_title(name: str) -> str:
-    return re.sub(r"^(dr|prof|professor|mr|mrs|ms)\.?\s+", "", str(name).strip(), flags=re.IGNORECASE)
-
-
-def find_name(wanted: str, names: Iterable[str]) -> str | None:
-    """The existing name the user meant, or None.
-
-    Exact match first, then ignoring case/spaces/punctuation ("roddy140" finds
-    "RODDY140"), then ignoring a title ("Dr. Hogg" finds "Hogg"). A loose
-    match only counts when exactly one name fits; when several fit, a
-    ControllerError asks the user which one they mean, so nothing is guessed.
-    """
-    names = list(names)
-    if wanted in names:
-        return wanted
-    for loosen in (_key, lambda value: _key(_without_title(value))):
-        fits = [name for name in names if loosen(name) == loosen(wanted)]
-        if len(fits) == 1:
-            return fits[0]
-        if len(fits) > 1:
-            # Never guess between two real items (e.g. "RODDY140" and "Roddy 140").
-            raise ControllerError(f"'{wanted}' could mean {_join(fits)}. Say which one you mean.")
-    return None
-
-
-def _resolve(wanted: Iterable[str], names: Iterable[str]) -> list[str]:
-    """Map each requested name to an existing one; unknown names are kept as
-    typed so the controller reports them with its own message."""
-    names = list(names)
-    return [find_name(item, names) or item for item in wanted]
-
-
-def _day(value: str) -> str:
-    """'Friday', 'fri', 'FRI' -> 'FRI'."""
-    text = str(value).strip().upper()
-    for code, name in DAY_NAMES.items():
-        if text in (code, name.upper()):
-            return code
-    raise ValueError(f"'{value}' is not a weekday. Use one of: {', '.join(WEEKDAYS)}.")
-
-
-def _join(items: Iterable[str], empty: str = "none") -> str:
-    items = [str(item) for item in items]
-    return ", ".join(items) if items else empty
-
-
-def _plural(count: int, noun: str) -> str:
-    return f"{count} {noun}{'' if count == 1 else 's'}"
-
-
-def _notes(lines: Iterable[str]) -> str:
-    lines = [line for line in lines if line]
-    return (" " + " ".join(lines)) if lines else ""
-
-
-def _require(data: dict) -> dict:
-    """describe_* controllers return {"has_config": False} with nothing loaded."""
-    if not data.get("has_config"):
-        raise ControllerError(NO_CONFIG_MESSAGE)
-    return data
-
-
-def _place(item: dict) -> str:
-    """Capacity, features and availability of a room or lab, in one line."""
-    parts = [f"capacity {item['capacity']}"]
-    if item.get("features"):
-        parts.append(f"features: {_join(item['features'])}")
-    if item.get("availability"):
-        parts.append("available " + "; ".join(f"{row['day']} {row['ranges']}" for row in item["availability"]))
-    return ", ".join(parts)
 
 
 # ---------------------------------------------------------------------- #
 #  Argument schemas (what the model must send; checked before anything runs)
 # ---------------------------------------------------------------------- #
-class NoArgs(BaseModel):
-    pass
-
-
-class NameArgs(BaseModel):
-    name: str = Field(description="The name, as the user wrote it")
-
-
-class CourseArgs(BaseModel):
-    course_id: str = Field(description='The course ID, e.g. "CMSC 420"')
-
-
 class AddPlaceArgs(BaseModel):
     name: str = Field(description="The new name, exactly as the user wrote it")
     capacity: int = Field(description="How many students it holds (a positive whole number)")
@@ -195,17 +100,6 @@ class AddCourseArgs(BaseModel):
     conflicts: list[str] = Field(default_factory=list, description="Course IDs it must not overlap with")
     section_id: str | None = Field(default=None, description="Section ID, only if the user gave one")
     modality: str = Field(default="in_person", description="in_person, online, or hybrid")
-
-
-class AvailabilityArgs(BaseModel):
-    day: str = Field(description="Weekday: MON, TUE, WED, THU or FRI")
-    start: str = Field(description='24-hour start time, e.g. "09:00"')
-    end: str = Field(description='24-hour end time, e.g. "17:00"')
-
-    @field_validator("day")
-    @classmethod
-    def check_day(cls, value: str) -> str:
-        return _day(value)
 
 
 class AddFacultyArgs(BaseModel):
@@ -311,18 +205,6 @@ def get_lab(request, args: NameArgs) -> str:
     return f"Lab {lab['name']}: {_place(lab)}.{used}"
 
 
-def _course_line(row: dict) -> str:
-    if row["faculty"] is None:
-        taught = f"faculty chosen from preferences ({_join(row['derived_faculty'], 'nobody prefers it yet')})"
-    else:
-        taught = f"faculty: {_join(row['faculty'])}"
-    return (
-        f"{row['display']}: {row['credits']} credits, capacity {row['capacity']}, {row['modality']}, "
-        f"rooms: {_join(row['rooms'])}, labs: {_join(row['labs'])}, {taught}, "
-        f"conflicts: {_join(row['conflicts'])}"
-    )
-
-
 def list_courses(request, args) -> str:
     rows = _require(courses.describe_courses(request))["courses"]
     if not rows:
@@ -401,6 +283,18 @@ def list_class_patterns(request, args) -> str:
         if row["start_time"]:
             extra += f", starts at {row['start_time']}"
         lines.append(f"- Pattern {row['index']}: {row['credits']} credits{extra}: {row['summary']}")
+    return "\n".join(lines)
+
+
+def list_meetings(request, args) -> str:
+    rows = _require(meetings.describe_meetings(request))["patterns"]
+    if not rows:
+        return "There are no class patterns, so there are no meetings."
+    lines = ["Meetings, by class pattern (meetings are numbered from 1 within their pattern):"]
+    for row in rows:
+        extra = "" if row["enabled"] else ", disabled"
+        lines.append(f"- Pattern {row['index']} ({row['credits']} credits{extra}):")
+        lines += [f"  {number}. {meeting['summary']}" for number, meeting in enumerate(row["meetings"], start=1)]
     return "\n".join(lines)
 
 
@@ -554,6 +448,12 @@ TOOLS: tuple[AiTool, ...] = (
         list_class_patterns,
     ),
     AiTool(
+        "list_meetings",
+        "List every meeting of every class pattern, numbered within its pattern.",
+        NoArgs,
+        list_meetings,
+    ),
+    AiTool(
         "get_global_settings",
         "Show the global settings: generation limit and optimizer flags.",
         NoArgs,
@@ -577,6 +477,7 @@ TOOLS: tuple[AiTool, ...] = (
         add_class_pattern,
         write=True,
     ),
+    *CHANGE_TOOLS,
 )
 
 TOOLS_BY_NAME = {tool.name: tool for tool in TOOLS}
@@ -604,10 +505,12 @@ class ToolBox:
     from real outcomes.
     """
 
-    def __init__(self, request, tools: Iterable[AiTool] = TOOLS):
+    def __init__(self, request, tools: Iterable[AiTool] = TOOLS, history: Iterable[dict] = ()):
         self.request = request
         self.tools = {tool.name: tool for tool in tools}
         self.results: list[ToolResult] = []
+        # The last few chat messages ({"role", "content"}) the runner may send along (story 6).
+        self.history: list[dict] = list(history)
 
     def call(self, name: str, arguments: dict | None = None) -> ToolResult:
         tool = self.tools.get(name)
@@ -628,7 +531,8 @@ class ToolBox:
         except Exception:
             logger.exception("AI tool %s failed unexpectedly", name)
             return self._record(ToolResult(name, False, UNEXPECTED_MESSAGE, write=tool.write))
-        return self._record(ToolResult(name, True, message, changed=tool.write, write=tool.write))
+        edited = tool.write and not isinstance(message, Unchanged)
+        return self._record(ToolResult(name, True, message, changed=edited, write=tool.write))
 
     def invalid(self, name: str, error: Exception) -> ToolResult:
         """Record arguments LangChain already rejected (wrong types, missing values)."""
@@ -641,5 +545,8 @@ class ToolBox:
         return self._record(ToolResult(name, False, _failure(tool, reason), write=tool.write))
 
     def _record(self, result: ToolResult) -> ToolResult:
+        tool = self.tools.get(result.tool)
+        if tool is not None and not tool.final:
+            result = replace(result, final=False)
         self.results.append(result)
         return result
