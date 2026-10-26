@@ -36,6 +36,8 @@ form_data keys (plain Python values; the View's form produces them):
     enabled     bool (optional, default True)
   add_pattern also reads the first meeting, prefixed with "meeting_":
     meeting_day, meeting_duration, meeting_lab, meeting_delivery, meeting_start_time
+  or, instead, "meetings": a list of meeting dicts (day, duration, lab, delivery,
+  start_time) to add a pattern with several meetings in one edit.
 """
 
 from __future__ import annotations
@@ -159,15 +161,24 @@ def add_pattern(request, form_data) -> list[str]:
     problems: list[FieldError] = []
     if _check_credits(form_data) is None:
         problems.append(FieldError("credits", CREDITS_MESSAGE))
-    meeting = None
-    try:
-        meeting = build_meeting(form_data, prefix="meeting_")
-    except ControllerError as error:
-        problems.extend(error.errors)
+    meetings = []
+    if form_data.get("meetings"):
+        # Several meetings at once (the AI assistant's add_class_pattern tool),
+        # e.g. Monday/Wednesday/Friday, added in one atomic edit.
+        for number, item in enumerate(form_data["meetings"], start=1):
+            try:
+                meetings.append(build_meeting(item))
+            except ControllerError as error:
+                problems.extend(FieldError(None, f"Meeting {number}: {e.message}") for e in error.errors)
+    else:
+        try:
+            meetings.append(build_meeting(form_data, prefix="meeting_"))
+        except ControllerError as error:
+            problems.extend(error.errors)
     if problems:
         raise ControllerError(problems)
 
-    pattern = _build_pattern(form_data, [meeting])
+    pattern = _build_pattern(form_data, meetings)
 
     def mutate(draft):
         _patterns(draft).append(pattern)
