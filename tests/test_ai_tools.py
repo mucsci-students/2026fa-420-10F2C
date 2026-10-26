@@ -515,6 +515,24 @@ def test_an_unknown_setting_is_refused_with_the_real_ones(roddy, box):
     assert snapshot(roddy) == before
 
 
+def test_a_change_with_no_matching_setting_is_refused_by_the_tool(roddy, box):
+    # "Make RODDY140 blue": the model puts what has no setting in `other`.
+    before = snapshot(roddy)
+    result = box.call("update_room", {"name": "RODDY140", "other": {"color": "blue"}})
+    assert not result.ok and result.write and not result.changed
+    assert "'color' is not a setting that can be changed" in result.message
+    assert "You can change: new_name, capacity, features, availability." in result.message
+    assert "other" not in result.message.split("You can change:")[1]
+    assert snapshot(roddy) == before
+
+
+def test_the_model_is_told_to_let_the_tools_check_values():
+    from gui.ai.prompt import BASE_PROMPT
+
+    assert "Never check, reject or correct a value yourself" in BASE_PROMPT
+    assert "`other`" in BASE_PROMPT
+
+
 def test_an_update_that_names_no_setting_asks_what_to_change(roddy, box):
     result = box.call("update_room", {"name": "RODDY140"})
     assert not result.ok and "Say what to change" in result.message

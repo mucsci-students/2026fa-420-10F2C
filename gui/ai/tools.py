@@ -282,14 +282,27 @@ class UpdateArgs(BaseModel):
     setting the tool doesn't have is refused (extra="forbid") so "make it
     blue" can't quietly succeed by changing nothing. `identifies` names the
     fields that say WHICH item to change; the rest are its settings.
+
+    `other` is where the model puts anything the user asked to change that
+    has no setting (a color, say). Without it the model has nowhere to send
+    such a request and answers some other way; with it, the tool refuses and
+    lists what CAN be changed, so the reply comes from the application.
     """
 
     model_config = ConfigDict(extra="forbid")
     identifies: ClassVar[tuple[str, ...]] = ("name",)
 
+    other: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Anything the user asked to change that is NOT one of the other settings, "
+            'e.g. {"color": "blue"}. Leave it out otherwise'
+        ),
+    )
+
     @classmethod
     def settings(cls) -> list[str]:
-        return [name for name in cls.model_fields if name not in cls.identifies]
+        return [name for name in cls.model_fields if name not in cls.identifies and name != "other"]
 
     def nothing_given(self) -> bool:
         return all(getattr(self, name) is None for name in type(self).settings())
@@ -693,7 +706,17 @@ def _set(changes: list[str], label: str, old, new, show: Callable[[Any], str] = 
     return new
 
 
+def _not_settings(names: Iterable[str], settings_list: Iterable[str] | None = None) -> str:
+    names = [f"'{name}'" for name in names]
+    text = f"{_join(names)} {'is' if len(names) == 1 else 'are'} not a setting that can be changed"
+    if settings_list is not None:
+        text += f". You can change: {_join(settings_list)}"
+    return text
+
+
 def _say_what(args: UpdateArgs) -> None:
+    if args.other:
+        raise ControllerError(_not_settings(args.other, type(args).settings()) + ".")
     if args.nothing_given():
         raise ControllerError(f"Say what to change. You can change: {_join(type(args).settings())}.")
 
@@ -1212,15 +1235,13 @@ def _argument_problems(error: ValidationError, tool: AiTool | None = None) -> st
     for item in error.errors():
         where = ".".join(str(part) for part in item.get("loc", ()))
         if item.get("type") == "extra_forbidden":
-            unknown.append(f"'{where}'")
+            unknown.append(where)
             continue
         message = str(item.get("msg", "invalid value")).removeprefix("Value error, ")
         parts.append(f"{where}: {message}" if where else message)
     if unknown:
-        text = f"{_join(unknown)} {'is' if len(unknown) == 1 else 'are'} not a setting that can be changed"
-        if tool is not None and issubclass(tool.args, UpdateArgs):
-            text += f". You can change: {_join(tool.args.settings())}"
-        parts.insert(0, text)
+        known = tool.args.settings() if tool is not None and issubclass(tool.args, UpdateArgs) else None
+        parts.insert(0, _not_settings(unknown, known))
     return "; ".join(parts)
 
 
