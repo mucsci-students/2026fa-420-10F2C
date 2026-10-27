@@ -12,6 +12,7 @@ Saved chats, "New chat" and live page updates for the AI assistant (Sprint 3).
 The tools run for real (the AI is replaced by a small scripted stand-in), so no key and no network.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -97,7 +98,14 @@ def lines(request):
 def test_a_browser_starts_with_one_empty_chat(request_):
     state = chats.state(session(request_))
     assert len(state["chats"]) == 1 and state["messages"] == [] and state["busy"] is False
-    assert state["chats"][0] == {"id": state["active"], "title": "New chat", "count": 0, "active": True}
+    first = state["chats"][0]
+    assert {key: first[key] for key in ("id", "title", "count", "active")} == {
+        "id": state["active"],
+        "title": "New chat",
+        "count": 0,
+        "active": True,
+    }
+    assert isinstance(first["updated"], int) and first["updated"] > 0  # when it was last used: the sidebar groups by day
 
 
 def test_lines_are_kept_in_order_and_the_first_message_gives_the_title(request_):
@@ -353,20 +361,22 @@ def test_a_browser_that_never_chatted_gets_one_empty_chat(client):
 #  The markup and scripts
 # ---------------------------------------------------------------------- #
 @pytest.mark.parametrize("path", ["/", "/configuration/", "/generate/", "/schedules/"])
-def test_every_page_has_the_chat_toolbar_and_where_the_chats_live(client, path):
+def test_every_page_has_the_history_sidebar_and_where_the_chats_live(client, path):
     text = client.get(path).content.decode()
     for needed in (
         f'data-chat-url="{CHAT_URL}"',
         f'data-chat-new-url="{NEW_URL}"',
         f'data-chat-switch-url="{SWITCH_URL}"',
         f'data-chat-delete-url="{DELETE_URL}"',
-        "data-chat-toolbar",
-        "data-chat-picker",
+        "data-chat-sidebar",
+        "data-chat-history",
+        "data-chat-sidebar-toggle",
         "data-chat-new",
-        "data-chat-delete",
+        "data-chat-scrim",
     ):
         assert needed in text, needed
-    assert "data-chat-toolbar hidden" in text  # shown by the script, so no-JavaScript pages stay clean
+    assert "data-chat-sidebar hidden" in text  # shown by the script, so no-JavaScript pages stay clean
+    assert "data-chat-toolbar" not in text and "<select" not in text.split('id="chat-panel"')[1].split("chat-dock")[0]
 
 
 def read(path):
@@ -383,7 +393,8 @@ def test_the_chat_script_restores_chats_and_updates_the_page_in_place():
         "chatAction(newUrl",
         "chatAction(switchUrl",
         "chatAction(deleteUrl",
-        "Really delete?",
+        "setSidebar(",
+        "drawHistory()",
         "function updatePage()",
         "scheduler:content-updated",
         "fieldsChanged(",
@@ -391,7 +402,7 @@ def test_the_chat_script_restores_chats_and_updates_the_page_in_place():
     ):
         assert needed in script, needed
     assert "innerHTML" not in script  # replies and swapped content are inserted as nodes, never as HTML strings
-    assert "window.confirm" not in script  # no pop-up: the delete button asks by changing its label
+    assert "window.confirm" not in script  # no pop-up: the history row asks in place
 
 
 def test_the_page_scripts_wire_the_new_content_after_an_in_place_update():
@@ -400,7 +411,16 @@ def test_the_page_scripts_wire_the_new_content_after_an_in_place_update():
     assert "innerHTML" not in read("gui/static/gui/js/schedule_viewer.js")
 
 
-def test_the_toolbar_has_light_and_dark_styles():
+def test_the_sidebar_has_light_and_dark_styles():
     css = read("gui/static/gui/css/style.css")
-    assert ".chat-toolbar" in css and ".chat-picker" in css
-    assert 'html[data-theme="dark"] .chat-toolbar' in css and 'html[data-theme="dark"] .chat-picker' in css
+    for needed in (".chat-sidebar", ".chat-history__row", ".chat-icon-button", "@media (max-width: 40rem)"):
+        assert needed in css, needed
+    for needed in ('html[data-theme="dark"] .chat-sidebar', 'html[data-theme="dark"] .chat-history__row'):
+        assert needed in css, needed
+    assert ".chat-toolbar" not in css and ".chat-picker" not in css
+
+
+def test_the_stylesheet_and_chat_script_are_versioned_so_a_browser_never_mixes_old_and_new(client):
+    text = client.get("/").content.decode()
+    assert re.search(r'href="/static/gui/css/style\.css\?v=\d+"', text)
+    assert re.search(r'src="/static/gui/js/chat\.js\?v=\d+"', text)

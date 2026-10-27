@@ -20,8 +20,9 @@
  *     NOT swapped while you have typed something into one of its forms (that would throw it away), or
  *     while this page is running a generation; then the reply offers a "Refresh page" button.
  *   - Chats are kept on the server (data-chat-url ...): the saved chat is drawn again on every page and
- *     after a reload, "New chat" starts a fresh one (the old ones stay in the picker), "Delete" removes
- *     one. A request that is still running when the page changes is picked up again.
+ *     after a reload. The history sidebar (button at the left of the header) lists them newest first,
+ *     grouped by day: click one to open it, the bin deletes it (asked in place), "New chat" starts a
+ *     fresh one. Whether the sidebar is open is remembered (localStorage). A request that is still running when the page changes is picked up again.
  *   - Schedule generation: while a request runs, the "Working on it" line asks the server how far a
  *     generation is (data-status-url, once a second) and shows "found 2 of 10". When schedules were
  *     generated, the reply links to the Schedule Viewer (data-viewer-url).
@@ -49,10 +50,13 @@
     var closeButton = root.querySelector("[data-chat-close]");
     var hideButton = root.querySelector("[data-chat-hide]");
     var showButton = root.querySelector("[data-chat-show]");
-    var toolbar = root.querySelector("[data-chat-toolbar]");
-    var picker = root.querySelector("[data-chat-picker]");
-    var newButton = root.querySelector("[data-chat-new]");
-    var deleteButton = root.querySelector("[data-chat-delete]");
+    var sidebar = root.querySelector("[data-chat-sidebar]");
+    var historyList = root.querySelector("[data-chat-history]");
+    var sidebarToggle = root.querySelector("[data-chat-sidebar-toggle]");
+    var subtitle = root.querySelector("[data-chat-subtitle]");
+    var scrim = root.querySelector("[data-chat-scrim]");
+    var newButtons = Array.prototype.slice.call(root.querySelectorAll("[data-chat-new]"));
+    var composeButton = root.querySelector(".chat-panel__header [data-chat-new]");
     var greeting = log.firstElementChild;   // the static hello; every chat starts with it
     var chatUrl = root.getAttribute("data-chat-url");
     var newUrl = root.getAttribute("data-chat-new-url");
@@ -62,7 +66,9 @@
     var viewerUrl = root.getAttribute("data-viewer-url");
     var progressTimer = null;
     var resumeTimer = null;
-    var deleteTimer = null;
+    var confirmId = null;
+    var confirmTimer = null;
+    var lastState = null;
     var pending = false;
     var activeChat = null;
 
@@ -75,6 +81,10 @@
     var EMPTY_PROMPT = "Type a request first.";
     var PROGRESS_MS = 1000;
     var OPEN_KEY = "scheduler-chat-open";
+    var SIDEBAR_KEY = "scheduler-chat-sidebar";
+    var WIDE = "chat-panel--sidebar";
+    var SVG = "http://www.w3.org/2000/svg";
+    var TRASH_PATH = "M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3";
     var UPDATED_EVENT = "scheduler:content-updated";
 
     // -- hide / show ----------------------------------------------------------------------- //
@@ -167,10 +177,9 @@
 
     function setPending(on) {
         pending = on;
-        [picker, newButton, deleteButton].forEach(function (control) {
-            if (control) {
-                control.disabled = on;   // a reply must never land in a different chat
-            }
+        // A reply must never land in a different chat: while one runs the history can't be used.
+        newButtons.concat(Array.prototype.slice.call(historyList.querySelectorAll("button"))).forEach(function (control) {
+            control.disabled = on;
         });
         form.setAttribute("aria-busy", on ? "true" : "false");
         sendButton.setAttribute("aria-disabled", on ? "true" : "false");
@@ -203,7 +212,7 @@
         if (body.changed || body.refresh || body.generated) {
             liveUpdate(item);   // the page behind the chat was drawn before the change: update it in place
         }
-        refreshChats();   // the first message gives a new chat its title in the picker
+        refreshChats();   // the first message gives a new chat its title in the history
     }
 
     // Schedules were generated: link to the Schedule Viewer (when it is already open, liveUpdate shows them).
@@ -504,21 +513,212 @@
         });
     }
 
-    function updatePicker(state) {
-        if (!picker) {
+    // -- history sidebar ----------------------------------------------------------------- //
+    function sidebarOpen() {
+        return !sidebar.hidden;
+    }
+
+    function setSidebar(open, remember) {
+        sidebar.hidden = !open;
+        panel.classList.toggle(WIDE, open);
+        scrim.hidden = !open;
+        sidebarToggle.setAttribute("aria-expanded", open ? "true" : "false");
+        sidebarToggle.setAttribute("aria-label", open ? "Hide chat history" : "Show chat history");
+        composeButton.hidden = open || !lastState;   // the sidebar has its own "New chat"
+        if (remember) {
+            try {
+                if (open) {
+                    window.localStorage.setItem(SIDEBAR_KEY, "1");
+                } else {
+                    window.localStorage.setItem(SIDEBAR_KEY, "0");
+                }
+            } catch (ignore) {
+                // Remembering is a courtesy.
+            }
+        }
+    }
+
+    function readSidebar() {
+        try {
+            var saved = window.localStorage.getItem(SIDEBAR_KEY);
+            if (saved !== null) {
+                return saved === "1";
+            }
+        } catch (ignore) {
+            // fall through to the default
+        }
+        return window.innerWidth > 640;   // a phone starts with the history closed
+    }
+
+    function dayLabel(seconds) {
+        var then = new Date(seconds * 1000);
+        var today = new Date();
+        today.setHours(0, 0, 0, 0);
+        var days = Math.round((today - new Date(then.getFullYear(), then.getMonth(), then.getDate())) / 86400000);
+        if (days <= 0) {
+            return "Today";
+        }
+        if (days === 1) {
+            return "Yesterday";
+        }
+        if (days < 7) {
+            return "Previous 7 days";
+        }
+        if (days < 30) {
+            return "Previous 30 days";
+        }
+        return "Older";
+    }
+
+    function resetConfirm() {
+        if (confirmTimer !== null) {
+            window.clearTimeout(confirmTimer);
+            confirmTimer = null;
+        }
+        confirmId = null;
+    }
+
+    function historyButton(className, text, label) {
+        var button = document.createElement("button");
+        button.type = "button";
+        button.className = className;
+        if (text) {
+            button.textContent = text;
+        }
+        if (label) {
+            button.setAttribute("aria-label", label);
+            button.title = label;
+        }
+        button.disabled = pending;
+        return button;
+    }
+
+    function trashIcon() {
+        var svg = document.createElementNS(SVG, "svg");
+        var path = document.createElementNS(SVG, "path");
+        svg.setAttribute("viewBox", "0 0 24 24");
+        svg.setAttribute("width", "16");
+        svg.setAttribute("height", "16");
+        svg.setAttribute("aria-hidden", "true");
+        svg.setAttribute("focusable", "false");
+        path.setAttribute("d", TRASH_PATH);
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke", "currentColor");
+        path.setAttribute("stroke-width", "1.8");
+        path.setAttribute("stroke-linecap", "round");
+        path.setAttribute("stroke-linejoin", "round");
+        svg.appendChild(path);
+        return svg;
+    }
+
+    function historyRow(chat) {
+        var row = document.createElement("li");
+        row.className = "chat-history__row";
+        row.setAttribute("data-chat-id", chat.id);
+        if (chat.active) {
+            row.classList.add("is-active");
+        }
+        if (confirmId === chat.id) {
+            row.classList.add("is-confirming");
+            var ask = document.createElement("p");
+            ask.className = "chat-history__ask";
+            ask.textContent = "Delete \u201c" + chat.title + "\u201d?";
+            var yes = historyButton("chat-history__yes", "Delete", "Yes, delete this chat");
+            var no = historyButton("chat-history__no", "Cancel", "Keep this chat");
+            yes.addEventListener("click", function () {
+                resetConfirm();
+                chatAction(deleteUrl, { id: chat.id });
+            });
+            no.addEventListener("click", function () {
+                resetConfirm();
+                drawHistory();
+            });
+            row.appendChild(ask);
+            row.appendChild(yes);
+            row.appendChild(no);
+            return row;
+        }
+        var open = historyButton("chat-history__item", chat.title);
+        open.title = chat.title;
+        if (chat.active) {
+            open.setAttribute("aria-current", "true");
+        }
+        open.addEventListener("click", function () {
+            resetConfirm();
+            if (chat.id !== activeChat) {
+                chatAction(switchUrl, { id: chat.id });
+            }
+            if (window.innerWidth <= 640) {
+                setSidebar(false, false);   // on a phone the history covers the chat
+            }
+        });
+        var bin = historyButton("chat-history__delete", "", "Delete chat \u201c" + chat.title + "\u201d");
+        bin.appendChild(trashIcon());
+        bin.addEventListener("click", function () {
+            confirmId = chat.id;
+            if (confirmTimer !== null) {
+                window.clearTimeout(confirmTimer);
+            }
+            confirmTimer = window.setTimeout(function () {
+                resetConfirm();
+                drawHistory();
+            }, 6000);
+            drawHistory();
+            var yes = historyList.querySelector(".chat-history__no");
+            if (yes) {
+                yes.focus();
+            }
+        });
+        row.appendChild(open);
+        row.appendChild(bin);
+        return row;
+    }
+
+    function drawHistory() {
+        if (!lastState) {
             return;
         }
-        while (picker.firstChild) {
-            picker.removeChild(picker.firstChild);
+        var hadFocus = historyList.contains(document.activeElement);
+        while (historyList.firstChild) {
+            historyList.removeChild(historyList.firstChild);
         }
-        state.chats.forEach(function (chat) {
-            var option = document.createElement("option");
-            option.value = chat.id;
-            option.textContent = chat.title;
-            option.selected = chat.active;
-            picker.appendChild(option);
+        var list = null;
+        var group = null;
+        lastState.chats.forEach(function (chat) {
+            var label = chat.updated ? dayLabel(chat.updated) : "Today";
+            if (label !== group) {
+                group = label;
+                var heading = document.createElement("h3");
+                heading.className = "chat-history__group";
+                heading.textContent = label;
+                historyList.appendChild(heading);
+                list = document.createElement("ul");
+                list.className = "chat-history__list";
+                historyList.appendChild(list);
+            }
+            list.appendChild(historyRow(chat));
         });
-        deleteButton.disabled = pending;
+        if (hadFocus && !historyList.contains(document.activeElement)) {
+            var current = historyList.querySelector(".is-active button");
+            if (current) {
+                current.focus();
+            }
+        }
+    }
+
+    function updatePicker(state) {
+        lastState = state;
+        var active = state.chats.filter(function (chat) { return chat.active; })[0];
+        var count = active ? active.count : 0;
+        if (active && count > 0) {
+            subtitle.textContent = active.title;
+            subtitle.hidden = false;
+        } else {
+            subtitle.hidden = true;
+        }
+        sidebarToggle.hidden = false;
+        composeButton.hidden = sidebarOpen();
+        drawHistory();
     }
 
     function renderChat(state) {
@@ -540,7 +740,7 @@
         log.scrollTop = log.scrollHeight;
     }
 
-    // Only the list (not the lines): the picker's titles after a message was sent.
+    // Only the list (not the lines): the history titles after a message was sent.
     function refreshChats() {
         if (!chatUrl) {
             return;
@@ -550,7 +750,7 @@
                 updatePicker(result.body);
             }
         }).catch(function () {
-            // The picker is a courtesy; the conversation itself is already on screen.
+            // The history is a courtesy; the conversation itself is already on screen.
         });
     }
 
@@ -608,7 +808,6 @@
             if (!result.body || !result.body.chats) {
                 return;
             }
-            toolbar.hidden = false;
             renderChat(result.body);
             if (result.body.busy) {
                 resumeRunning();
@@ -625,15 +824,6 @@
         chatRequest(url, extra).then(applyChat).catch(function () {
             addMessage("error", NETWORK_PROBLEM);
         });
-    }
-
-    // Delete asks twice (no pop-up): the first click changes the label, the second one deletes.
-    function resetDelete() {
-        if (deleteTimer !== null) {
-            window.clearTimeout(deleteTimer);
-            deleteTimer = null;
-        }
-        deleteButton.textContent = "Delete";
     }
 
     function submit() {
@@ -692,31 +882,23 @@
     launcher.addEventListener("click", function () {
         setOpen(!isOpen());
     });
-    if (toolbar) {
-        newButton.addEventListener("click", function () {
-            resetDelete();
+    newButtons.forEach(function (button) {
+        button.addEventListener("click", function () {
+            resetConfirm();
             chatAction(newUrl, {});
             input.focus();
-        });
-        picker.addEventListener("change", function () {
-            resetDelete();
-            if (picker.value && picker.value !== activeChat) {
-                chatAction(switchUrl, { id: picker.value });
+            if (window.innerWidth <= 640 && sidebarOpen()) {
+                setSidebar(false, false);
             }
         });
-        deleteButton.addEventListener("click", function () {
-            if (pending || !activeChat) {
-                return;
-            }
-            if (deleteTimer === null) {
-                deleteButton.textContent = "Really delete?";
-                deleteTimer = window.setTimeout(resetDelete, 4000);
-                return;
-            }
-            resetDelete();
-            chatAction(deleteUrl, { id: activeChat });
-        });
-    }
+    });
+    sidebarToggle.addEventListener("click", function () {
+        setSidebar(!sidebarOpen(), true);
+    });
+    scrim.addEventListener("click", function () {
+        setSidebar(false, false);
+        sidebarToggle.focus();
+    });
     closeButton.addEventListener("click", function () {
         setOpen(false);
         launcher.focus();
@@ -730,7 +912,13 @@
         launcher.focus();
     });
     root.addEventListener("keydown", function (event) {
-        if (event.key === "Escape" && isOpen()) {
+        if (event.key === "Escape" && isOpen() && confirmId !== null) {
+            resetConfirm();
+            drawHistory();
+        } else if (event.key === "Escape" && isOpen() && window.innerWidth <= 640 && sidebarOpen()) {
+            setSidebar(false, false);
+            sidebarToggle.focus();
+        } else if (event.key === "Escape" && isOpen()) {
             setOpen(false);
             launcher.focus();
         }
@@ -761,5 +949,6 @@
     if (readOpen() && !isTucked()) {
         setOpen(true, true);   // the panel was open on the page before this one
     }
+    setSidebar(readSidebar(), false);
     loadChats();
 })();

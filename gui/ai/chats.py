@@ -22,6 +22,7 @@ Bounded on purpose: at most MAX_CHATS chats (the oldest is dropped) of at most M
 from __future__ import annotations
 
 import threading
+import time
 import uuid
 
 from gui.ai.generation import _forget_waiting
@@ -48,7 +49,7 @@ def _chats(session) -> list[dict]:
 
 
 def _make() -> dict:
-    return {"id": uuid.uuid4().hex[:12], "title": EMPTY_TITLE, "messages": [], "history": []}
+    return {"id": uuid.uuid4().hex[:12], "title": EMPTY_TITLE, "messages": [], "history": [], "updated": time.time()}
 
 
 def _find(session, chat_id) -> dict | None:
@@ -89,6 +90,7 @@ def record(session, kind: str, text: str, suggestions=(), generated: bool = Fals
             }
         )
         del chat["messages"][:-MAX_MESSAGES]
+        chat["updated"] = time.time()  # the sidebar lists chats by their last activity
 
 
 def _save_memory(session) -> None:
@@ -167,8 +169,10 @@ def state(session, busy: bool = False) -> dict:
                     "title": chat["title"],
                     "count": len(chat["messages"]),
                     "active": chat["id"] == current["id"],
+                    "updated": int(chat.get("updated", 0)),  # seconds since 1970; the page groups by day
                 }
-                for chat in reversed(_chats(session))
+                # Most recent activity first; chats with the same time keep newest-created first.
+                for chat in sorted(reversed(_chats(session)), key=lambda chat: -chat.get("updated", 0))
             ],
             "messages": [dict(message) for message in current["messages"]],
         }
