@@ -74,7 +74,7 @@ The editor home page shows the current configuration (file name, unsaved-changes
 
 - **New configuration** starts a fresh configuration seeded with one placeholder room, course, faculty member and class pattern. The scheduler library does not accept a completely empty configuration, so edit or replace the placeholders as you add real data.
 - **Load configuration** uploads a JSON file and validates it completely before replacing anything. If the file is not valid JSON or is not a valid configuration, the problems are listed under the file field and the current configuration is kept exactly as it was.
-- **Save configuration** validates, then downloads the configuration as JSON (named after the file it was loaded from, or `scheduler_config.json`). It is serialized through the library's own Pydantic model.
+- **Save configuration** validates, then downloads the configuration as JSON. A **File name** box beside the button starts with the loaded file's name (or `scheduler_config.json`); change it to name the download, and `.json` is added if you leave it off. A path is refused: the box and the server share one rule (no `/`, `\` or control characters, at most 100 characters), so the browser stops a bad name before anything is sent. The name you use becomes the configuration's name ("Loaded from or saved as"). It is serialized through the library's own Pydantic model. This is an ordinary browser download, so it works in current Chrome, Edge, Safari and Firefox with no experimental feature. The browser decides where the file goes and what happens if a file with that name exists, and the application **cannot tell whether the download finished**: the unsaved-changes flag is cleared when the file is handed over, and the page says only that the download started. The AI chat's **Save JSON** button posts to the same Save view, so there is one export.
 - **Validate configuration** re-checks the entire configuration through the library and lists any problems.
 
 **Unsaved-changes protection.** Any successful edit marks the configuration as having unsaved changes. Before **New** or **Load** would discard unsaved changes or loaded schedules, the form says exactly what will be lost and requires you to tick a confirmation box. Saving clears the flag.
@@ -226,7 +226,7 @@ The viewer shows whatever schedules are currently available, whether generated o
 - **JSON** uses the format below, so a single schedule or the whole set can be loaded back later.
 - **CSV** is for spreadsheets: one row per meeting with the columns `schedule, course, faculty, room, lab, day, start, end, duration_minutes, lab_meeting`. A section with no meetings (for example an online course) gets one row with blank meeting columns. CSV can't be loaded back into the viewer; use JSON for that.
 - Export buttons are disabled until there are schedules. Exporting never changes the loaded schedules.
-- **Overwrite protection:** exports (and configuration saves) are browser downloads. The browser decides where the file goes and asks before replacing an existing file, or renames the new one. The application never writes to a path on your computer, so it cannot overwrite your files.
+- **Overwrite protection:** exports and configuration saves are ordinary browser downloads. The browser decides where the file goes and what happens if a file with that name already exists (most ask or rename the new file). The application never writes to a path on your computer, so it cannot overwrite your files, and it cannot see whether a download finished. A file name you give the chat is only a suggested download name; a path is refused.
 
 ### Clearing schedules
 
@@ -287,7 +287,13 @@ With no key set, the assistant says so and nothing else changes.
 
 **Deleting** takes two messages. A `delete_*` tool only describes what would be deleted (the same dependency review the Delete pages show, including other items that go with it). The delete happens only when you confirm in a *new* message (`confirm_delete`); `cancel_delete` forgets it. A pending delete expires after 10 minutes, is refused if the configuration changed after it was described, and only the browser session that asked can confirm it. The assistant cannot confirm in the same message that describes the delete.
 
-The assistant cannot validate the configuration, save it, or generate schedules yet; it says so when asked.
+**Saving.** Ask **"Save my configuration"**, **"Download my config"**, or **"Save as fall.json"**. The reply has a **File name** box (starting with the name you asked for, or the current one) and a **Save JSON** button; clicking it starts the same standard browser download as the Configuration Editor's Save button (same view, same validation and serialization, so the file holds the current configuration). The box follows the same rule as the editor's: a file name only, never a path, and the browser stops a bad name before anything is sent. Clicking **Save JSON** posts a message in the chat ("Download requested...") so the click is acknowledged; a second click while the first download is still starting gets a short notice instead. The assistant never says the file was saved: the browser decides where it goes and the application cannot tell whether the download finished. An invalid configuration is reported in the chat and nothing is offered.
+
+**Starting a new configuration.** Ask **"Start a new configuration"**. If the open configuration has no unsaved changes and there are no generated schedules (or nothing is loaded), the assistant starts it at once. Otherwise it warns you what would be discarded (your unsaved changes and the number of schedules) and offers three buttons: **Save JSON** (download the current configuration first, under a file name you can change; this replaces nothing), **Discard and Continue** (replace it and clear the schedules) and **Cancel** (change nothing). Only **Discard and Continue** replaces anything, and the assistant then replies that the new configuration was started and that the one you had is kept for this session (**Restore previous configuration** in the Configuration Editor brings it back with its schedules). The confirmation is single use, belongs to the browser session that asked, expires after 10 minutes, and is refused if the configuration was edited or the number of schedules changed after the warning. A download in between does not invalidate it.
+
+To **load** a configuration, ask the assistant to load one: it offers the Configuration Editor's **Load Configuration** form (with its usual discard confirmation) so you choose the JSON file there. If you ask to save with nothing loaded, the assistant says there is nothing to save and offers **New Configuration** and **Load Configuration**.
+
+The assistant cannot validate the configuration or generate schedules yet; it says so when asked.
 
 **How a request runs.**
 - The AI can only call the tools in `gui/ai/tools.py`, and every tool calls the same controller the normal pages use. Duplicate names, unknown rooms and bad values are rejected the same way the forms reject them, and a rejected change leaves the configuration as it was.
@@ -314,7 +320,7 @@ Pages never appear blank. With no configuration loaded, the Configuration Editor
 
 ### Loading states
 
-While a file loads, saves, validates or generates, the button you pressed changes to a busy label ("Loading…", "Validating…") and a banner with a spinner appears at the top of the page. The form's buttons are greyed out and a second click is ignored. Downloads (Save, Export) stay busy until the file arrives, then the banner says "Download started." Without JavaScript every button still works, just without the busy state.
+While a file loads, saves, validates or generates, the button you pressed changes to a busy label ("Loading…", "Validating…") and a banner with a spinner appears at the top of the page. The form's buttons are greyed out and a second click is ignored. Downloads (Save, Export) stay busy until the file arrives, then the banner says "Download started." and that the application can't confirm it was saved. Without JavaScript every button still works, just without the busy state.
 
 ### Usability and accessibility
 
