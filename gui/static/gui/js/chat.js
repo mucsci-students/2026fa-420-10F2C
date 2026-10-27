@@ -45,6 +45,7 @@
     var LABELS = { error: "Problem: ", notice: "Note: " };
     var NETWORK_PROBLEM =
         "Could not reach the server, so nothing was confirmed. Check your configuration before trying again.";
+    var EMPTY_PROMPT = "Type a request first.";
 
     // -- hide / show ----------------------------------------------------------------------- //
     function readTucked() {
@@ -176,6 +177,12 @@
         }
         var text = input.value.trim();
         if (!text) {
+            var old = log.querySelector("[data-chat-empty]");
+            if (old) {
+                old.remove(); //don't stack repeated prompts
+            }
+            addMessage("notice", EMPTY_PROMPT).setAttribute("data-chat-empty", "");
+            input.value = "";
             input.focus();
             return;
         }

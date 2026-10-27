@@ -26,7 +26,13 @@ from gui.views import download_response
 
 
 def record(faculty):
-    return Assignment("CMSC 140.01", faculty, "Roddy 136", None, (MeetingTime("MON", "09:00", "09:50", 50),))
+    return Assignment(
+        "CMSC 140.01",
+        faculty,
+        "Roddy 136",
+        None,
+        (MeetingTime("MON", "09:00", "09:50", 50),),
+    )
 
 
 # ---------------------------------------------------------------------- #
@@ -38,7 +44,11 @@ class TestReadUpload:
 
     @pytest.mark.parametrize(
         "uploaded, fragment",
-        [(None, "Choose a file"), (io.BytesIO(b""), "empty"), (io.BytesIO(b"  \n"), "empty")],
+        [
+            (None, "Choose a file"),
+            (io.BytesIO(b""), "empty"),
+            (io.BytesIO(b"  \n"), "empty"),
+        ],
     )
     def test_problems_are_attached_to_the_given_field(self, uploaded, fragment):
         with pytest.raises(ControllerError) as info:
@@ -60,7 +70,9 @@ class TestReadUpload:
             size = 50 * 1024 * 1024
 
             def read(self):
-                raise AssertionError("should not read a file that is already known to be too large")
+                raise AssertionError(
+                    "should not read a file that is already known to be too large"
+                )
 
         with pytest.raises(ControllerError) as info:
             read_upload(Huge(), "f")
@@ -96,13 +108,20 @@ class TestScheduleHelpers:
     def test_generated_schedules_are_returned_as_the_same_records(self, session):
         class FakeCourseInstance:  # what the generator stores: the library's objects
             def as_json(self):
-                return {"course": "CMSC 140.01", "faculty": "A", "room": "Roddy 136", "lab": None,
-                        "times": [{"day": "MON", "start": "09:00", "duration": 50}]}
+                return {
+                    "course": "CMSC 140.01",
+                    "faculty": "A",
+                    "room": "Roddy 136",
+                    "lab": None,
+                    "times": [{"day": "MON", "start": "09:00", "duration": 50}],
+                }
 
         session.schedules = [[FakeCourseInstance()]]
         assert ctrl.get_schedule(None, 0) == [record("A")]
 
-    @pytest.mark.parametrize("call", [lambda: ctrl.get_schedules(None), lambda: ctrl.get_schedule(None, 0)])
+    @pytest.mark.parametrize(
+        "call", [lambda: ctrl.get_schedules(None), lambda: ctrl.get_schedule(None, 0)]
+    )
     def test_no_schedules(self, session, call):
         with pytest.raises(ControllerError) as info:
             call()
@@ -141,7 +160,9 @@ class ExampleForm(ConfirmReplaceMixin, forms.Form):
 
     def __init__(self, *args, needed=False, **kwargs):
         super().__init__(*args, **kwargs)
-        self.require_confirmation(needed, label="Discard my changes", error="Tick to confirm.")
+        self.require_confirmation(
+            needed, label="Discard my changes", error="Tick to confirm."
+        )
 
 
 class TestConfirmReplaceMixin:
@@ -157,18 +178,29 @@ class TestConfirmReplaceMixin:
         assert form.errors["confirm_replace"] == ["Tick to confirm."]
 
     def test_ticked_checkbox_passes(self):
-        assert ExampleForm({"name": "x", "confirm_replace": "on"}, needed=True).is_valid()
+        assert ExampleForm(
+            {"name": "x", "confirm_replace": "on"}, needed=True
+        ).is_valid()
 
 
 # ---------------------------------------------------------------------- #
 #  download_response
 # ---------------------------------------------------------------------- #
 def test_download_response_sends_an_attachment():
-    response = download_response("schedules-all-2.json", json.dumps({"ok": "é"}), "application/json; charset=utf-8")
-    assert response["Content-Disposition"] == 'attachment; filename="schedules-all-2.json"'
+    response = download_response(
+        "schedules-all-2.json",
+        json.dumps({"ok": "é"}),
+        "application/json; charset=utf-8",
+    )
+    assert (
+        response["Content-Disposition"] == 'attachment; filename="schedules-all-2.json"'
+    )
     assert response["Content-Type"] == "application/json; charset=utf-8"
     assert json.loads(response.content.decode("utf-8")) == {"ok": "é"}
 
 
 def test_download_response_accepts_bytes():
-    assert download_response("a.csv", b"x,y\n", "text/csv; charset=utf-8").content == b"x,y\n"
+    assert (
+        download_response("a.csv", b"x,y\n", "text/csv; charset=utf-8").content
+        == b"x,y\n"
+    )

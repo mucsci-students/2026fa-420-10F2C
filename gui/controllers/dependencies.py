@@ -58,6 +58,7 @@ configuration object it is given, so it needs no session.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from app.commands.courses import course_display_name
 from gui.controllers.errors import ControllerError
@@ -72,12 +73,16 @@ KINDS = ("room", "lab", "faculty", "course", "pattern")
 class Plan:
     kind: str
     ident: object
-    name: str                                 # shown to the user
-    effects: list = field(default_factory=list)   # one line per kind of change
-    groups: list = field(default_factory=list)    # [{"title", "names"}] the affected records
-    notes: list = field(default_factory=list)     # information only: records that refer to it but do not change
+    name: str  # shown to the user
+    effects: list = field(default_factory=list)  # one line per kind of change
+    groups: list = field(
+        default_factory=list
+    )  # [{"title", "names"}] the affected records
+    notes: list = field(
+        default_factory=list
+    )  # information only: records that refer to it but do not change
     blockers: list = field(default_factory=list)
-    removes_courses: list = field(default_factory=list)   # course positions that go too
+    removes_courses: list = field(default_factory=list)  # course positions that go too
 
     @property
     def in_use(self) -> bool:
@@ -94,19 +99,28 @@ def _plural(count: int, noun: str, plural: str | None = None) -> str:
 
 def _names(names, limit: int = 3) -> str:
     names = list(names)
-    return ", ".join(names) if len(names) <= limit else ", ".join(names[:limit]) + f" and {len(names) - limit} more"
+    return (
+        ", ".join(names)
+        if len(names) <= limit
+        else ", ".join(names[:limit]) + f" and {len(names) - limit} more"
+    )
 
 
-def _sections(config) -> list[tuple[int, str, object]]:
+def _sections(config) -> list[tuple[int, str, Any]]:
     """(position, display name, course) for every section, in list order."""
     seen: dict[str, int] = {}
-    return [(i, course_display_name(c, seen), c) for i, c in enumerate(config.config.courses)]
+    return [
+        (i, course_display_name(c, seen), c)
+        for i, c in enumerate(config.config.courses)
+    ]
 
 
 def _is_last_section(config, index: int) -> bool:
     course_id = config.config.courses[index].course_id
     return not any(
-        other.course_id == course_id for i, other in enumerate(config.config.courses) if i != index
+        other.course_id == course_id
+        for i, other in enumerate(config.config.courses)
+        if i != index
     )
 
 
@@ -118,7 +132,9 @@ def _drop_course_ids(draft, ids: set) -> None:
     for person in draft.config.faculty:
         preferences = dict(person.course_preferences or {})
         if set(preferences) & ids:
-            person.course_preferences = {k: v for k, v in preferences.items() if k not in ids}
+            person.course_preferences = {
+                k: v for k, v in preferences.items() if k not in ids
+            }
 
 
 def _delete_sections(draft, positions) -> None:
@@ -131,7 +147,11 @@ def _delete_sections(draft, positions) -> None:
     ids = {courses[position].course_id for position in positions}
     for position in positions:
         del courses[position]
-    gone = {course_id for course_id in ids if not any(c.course_id == course_id for c in courses)}
+    gone = {
+        course_id
+        for course_id in ids
+        if not any(c.course_id == course_id for c in courses)
+    }
     if gone:
         _drop_course_ids(draft, gone)
 
@@ -144,7 +164,12 @@ def _also_deleted_effects(plan: Plan, dependents, why: str) -> None:
         f"{'That section is' if count == 1 else 'Those sections are'} deleted along with it "
         f"(and removed from any conflict lists and faculty preferences)."
     )
-    plan.groups.append({"title": "Course sections that would be deleted", "names": [d for _, d, _ in dependents]})
+    plan.groups.append(
+        {
+            "title": "Course sections that would be deleted",
+            "names": [d for _, d, _ in dependents],
+        }
+    )
     plan.removes_courses = [i for i, _, _ in dependents]
 
 
@@ -153,7 +178,9 @@ def _also_deleted_notice(config, plan: Plan) -> list[str]:
         return []
     wanted = set(plan.removes_courses)
     names = [display for i, display, _ in _sections(config) if i in wanted]
-    return [f"Also deleted {_plural(len(names), 'course section')}: {_names(names, 4)}."]
+    return [
+        f"Also deleted {_plural(len(names), 'course section')}: {_names(names, 4)}."
+    ]
 
 
 # ---------------------------------------------------------------------- #
@@ -162,10 +189,10 @@ def _also_deleted_notice(config, plan: Plan) -> list[str]:
 @dataclass(frozen=True)
 class _Resource:
     label: str
-    collection: str        # attribute of config.config holding the records
-    course_field: str      # attribute on a course listing resource names
+    collection: str  # attribute of config.config holding the records
+    course_field: str  # attribute on a course listing resource names
     preference_field: str  # attribute on faculty keyed by resource name
-    required: bool         # a section cannot exist without one (rooms), or can (labs)
+    required: bool  # a section cannot exist without one (rooms), or can (labs)
 
 
 _RESOURCES = {
@@ -175,7 +202,9 @@ _RESOURCES = {
 
 
 def _resource_record(config, res: _Resource, name: str):
-    record = next((r for r in getattr(config.config, res.collection) if r.name == name), None)
+    record = next(
+        (r for r in getattr(config.config, res.collection) if r.name == name), None
+    )
     if record is None:
         raise ControllerError(
             f"{res.label.capitalize()} '{name}' no longer exists. Refresh the page and try again."
@@ -246,7 +275,9 @@ def _plan_resource(config, res: _Resource, name: str) -> Plan:
             f"It is removed from {_plural(len(kept), 'course section')} "
             f"({_plural(len(course_ids), 'course')})."
         )
-        plan.groups.append({"title": "Course sections", "names": [display for _, display, _ in kept]})
+        plan.groups.append(
+            {"title": "Course sections", "names": [display for _, display, _ in kept]}
+        )
     if faculty:
         plan.effects.append(
             f"Its {res.label} preference is removed for {_plural(len(faculty), 'faculty member')}."
@@ -265,7 +296,12 @@ def _plan_resource(config, res: _Resource, name: str) -> Plan:
             f"{res.label} and will be left without {'one' if len(sole) == 1 else 'any'}. "
             f"No other {res.label} is put in its place."
         )
-        plan.groups.append({"title": f"Sections left without a {res.label}", "names": [d for _, d, _ in sole]})
+        plan.groups.append(
+            {
+                "title": f"Sections left without a {res.label}",
+                "names": [d for _, d, _ in sole],
+            }
+        )
     return plan
 
 
@@ -278,7 +314,9 @@ def _build_resource(config, res: _Resource, name: str, plan: Plan):
                 continue
             names = list(getattr(course, res.course_field, None) or [])
             if name in names:
-                setattr(course, res.course_field, [item for item in names if item != name])
+                setattr(
+                    course, res.course_field, [item for item in names if item != name]
+                )
         for person in draft.config.faculty:
             preferences = dict(getattr(person, res.preference_field, None) or {})
             if name in preferences:
@@ -313,7 +351,9 @@ def _build_resource(config, res: _Resource, name: str, plan: Plan):
 def _faculty_record(config, name: str):
     person = next((p for p in config.config.faculty if p.name == name), None)
     if person is None:
-        raise ControllerError(f"Faculty member '{name}' no longer exists. Refresh the page and try again.")
+        raise ControllerError(
+            f"Faculty member '{name}' no longer exists. Refresh the page and try again."
+        )
     return person
 
 
@@ -326,7 +366,11 @@ def _faculty_sections(config, name: str):
             if name in assigned:
                 explicit.append((index, display, course))
             continue
-        preferring = [p.name for p in config.config.faculty if course.course_id in (p.course_preferences or {})]
+        preferring = [
+            p.name
+            for p in config.config.faculty
+            if course.course_id in (p.course_preferences or {})
+        ]
         if preferring == [name]:
             derived_only.append((index, display, course))
     return explicit, derived_only
@@ -341,10 +385,10 @@ def _someone_else_prefers(config, name: str, course) -> bool:
 
 def _faculty_split(config, name: str):
     """Sort the sections this person affects into:
-        shared    assigned to them AND someone else (they are just removed)
-        handed    assigned to only them, but someone else prefers the course, so
-                  the scheduler chooses among those who prefer it
-        doomed    nobody else could teach them, so they are deleted too
+    shared    assigned to them AND someone else (they are just removed)
+    handed    assigned to only them, but someone else prefers the course, so
+              the scheduler chooses among those who prefer it
+    doomed    nobody else could teach them, so they are deleted too
     """
     explicit, derived_only = _faculty_sections(config, name)
     shared, handed, doomed = [], [], list(derived_only)
@@ -394,15 +438,24 @@ def _plan_faculty(config, name: str) -> Plan:
         return plan
     shared, handed, doomed = _faculty_split(config, name)
     if shared:
-        plan.effects.append(f"They are removed from {_plural(len(shared), 'course section')} that also have other faculty.")
-        plan.groups.append({"title": "Course sections", "names": [display for _, display, _ in shared]})
+        plan.effects.append(
+            f"They are removed from {_plural(len(shared), 'course section')} that also have other faculty."
+        )
+        plan.groups.append(
+            {"title": "Course sections", "names": [display for _, display, _ in shared]}
+        )
     if handed:
         plan.effects.append(
             f"{_plural(len(handed), 'course section')} assign{'s' if len(handed) == 1 else ''} only them. "
-            f"{'It' if len(handed) == 1 else 'They'} will go back to \"the scheduler chooses\" "
+            f'{"It" if len(handed) == 1 else "They"} will go back to "the scheduler chooses" '
             f"from the faculty who prefer {'it' if len(handed) == 1 else 'them'}; nobody is named in their place."
         )
-        plan.groups.append({"title": "Sections the scheduler will staff", "names": [display for _, display, _ in handed]})
+        plan.groups.append(
+            {
+                "title": "Sections the scheduler will staff",
+                "names": [display for _, display, _ in handed],
+            }
+        )
     if doomed:
         _also_deleted_effects(
             plan,
@@ -448,12 +501,18 @@ def _build_faculty(config, name: str, plan: Plan):
 # ---------------------------------------------------------------------- #
 def _course_at(config, index):
     courses = config.config.courses
-    if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(courses):
-        raise ControllerError("That course no longer exists. Refresh the page and try again.")
+    if (
+        isinstance(index, bool)
+        or not isinstance(index, int)
+        or not 0 <= index < len(courses)
+    ):
+        raise ControllerError(
+            "That course no longer exists. Refresh the page and try again."
+        )
     return courses[index]
 
 
-def _course_preferences(config, course_id: str) -> list[tuple[str, object]]:
+def _course_preferences(config, course_id: str) -> list[tuple[str, Any]]:
     """(faculty name, weight) for everyone who prefers the course id."""
     return [
         (person.name, person.course_preferences[course_id])
@@ -487,7 +546,9 @@ def _usage_course(config, index: int) -> dict:
     """The Courses list shows ONE chip and a dropdown of the faculty who prefer the course, highest weight
     first. A course nobody prefers shows nothing."""
     course_id = _course_at(config, index).course_id
-    preferring = sorted(_course_preferences(config, course_id), key=lambda pair: pair[1], reverse=True)
+    preferring = sorted(
+        _course_preferences(config, course_id), key=lambda pair: pair[1], reverse=True
+    )
     if not preferring:
         return {"in_use": False, "groups": []}
     return {
@@ -527,7 +588,9 @@ def _plan_course(config, index: int) -> Plan:
             )
         plan.groups.append({"title": "Faculty preferences", "names": faculty})
     if plan.groups and not removing:
-        plan.notes.append(f"Other sections of {course.course_id} remain, so these references stay as they are.")
+        plan.notes.append(
+            f"Other sections of {course.course_id} remain, so these references stay as they are."
+        )
     return plan
 
 
@@ -541,7 +604,9 @@ def _build_course(config, index: int, plan: Plan):
     notices = []
     parts = []
     if conflicts:
-        parts.append(f"the conflict list of {_plural(len(conflicts), 'course section')}")
+        parts.append(
+            f"the conflict list of {_plural(len(conflicts), 'course section')}"
+        )
     if faculty:
         parts.append(_plural(len(faculty), "faculty course preference"))
     if parts:
@@ -554,19 +619,28 @@ def _build_course(config, index: int, plan: Plan):
 # ---------------------------------------------------------------------- #
 def _pattern_at(config, index):
     patterns = config.time_slot_config.classes
-    if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(patterns):
-        raise ControllerError("That class pattern no longer exists. Refresh the page and try again.")
+    if (
+        isinstance(index, bool)
+        or not isinstance(index, int)
+        or not 0 <= index < len(patterns)
+    ):
+        raise ControllerError(
+            "That class pattern no longer exists. Refresh the page and try again."
+        )
     return patterns[index]
 
 
-def _pattern_dependents(config, index: int) -> list[tuple[int, str, object]]:
+def _pattern_dependents(config, index: int) -> list[tuple[int, str, Any]]:
     """Course sections that would have NO enabled pattern left with their credits."""
     pattern = _pattern_at(config, index)
     if getattr(pattern, "disabled", False):
         return []
     others = [
-        p for i, p in enumerate(config.time_slot_config.classes)
-        if i != index and not getattr(p, "disabled", False) and p.credits == pattern.credits
+        p
+        for i, p in enumerate(config.time_slot_config.classes)
+        if i != index
+        and not getattr(p, "disabled", False)
+        and p.credits == pattern.credits
     ]
     if others:
         return []
@@ -604,7 +678,12 @@ def _plan_pattern(config, index: int) -> Plan:
             f"{'That section is' if count == 1 else 'Those sections are'} deleted along with it "
             f"(and removed from any conflict lists and faculty preferences)."
         )
-        plan.groups.append({"title": "Course sections that would be deleted", "names": [d for _, d, _ in dependents]})
+        plan.groups.append(
+            {
+                "title": "Course sections that would be deleted",
+                "names": [d for _, d, _ in dependents],
+            }
+        )
         plan.removes_courses = [i for i, _, _ in dependents]
     return plan
 

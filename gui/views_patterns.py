@@ -24,7 +24,9 @@ def _render_patterns(request, add_form=None):
     context = {"active": "config", "data": data}
     if data["has_config"]:
         if add_form is None:
-            add_form = AddClassPatternForm(initial={"enabled": True, "meeting_duration": 50})
+            add_form = AddClassPatternForm(
+                initial={"enabled": True, "meeting_duration": 50}
+            )
         context["add_form"] = add_form
     return render(request, "gui/patterns.html", context)
 
@@ -61,7 +63,9 @@ def pattern_edit(request, pattern_index):
         form = ClassPatternFieldsForm(request.POST)
         if form.is_valid():
             try:
-                warnings = pattern_controller.update_pattern(request, pattern_index, form.cleaned_data)
+                warnings = pattern_controller.update_pattern(
+                    request, pattern_index, form.cleaned_data
+                )
             except ControllerError as error:
                 _attach_errors(form, error)
             else:
@@ -76,7 +80,11 @@ def pattern_edit(request, pattern_index):
                 "enabled": pattern["enabled"],
             }
         )
-    return render(request, "gui/pattern_edit.html", {"active": "config", "form": form, "pattern": pattern})
+    return render(
+        request,
+        "gui/pattern_edit.html",
+        {"active": "config", "form": form, "pattern": pattern},
+    )
 
 
 def pattern_delete(request, pattern_index):

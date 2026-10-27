@@ -29,7 +29,11 @@ def page(response):
 
 
 def grid_classes(text, grid_id=None):
-    pattern = rf'<div class="([^"]*)" id="{grid_id}"' if grid_id else r'<div class="(card-grid[^"]*)"'
+    pattern = (
+        rf'<div class="([^"]*)" id="{grid_id}"'
+        if grid_id
+        else r'<div class="(card-grid[^"]*)"'
+    )
     match = re.search(pattern, text)
     assert match, "card grid not found"
     return match.group(1).split()
@@ -37,8 +41,10 @@ def grid_classes(text, grid_id=None):
 
 def rules(css):
     """(selector list, declarations) pairs in source order, with comments removed."""
-    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
-    return [(sel.strip(), body) for sel, body in re.findall(r"([^{}]+)\{([^}]*)\}", css)]
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    return [
+        (sel.strip(), body) for sel, body in re.findall(r"([^{}]+)\{([^}]*)\}", css)
+    ]
 
 
 @pytest.mark.parametrize("url, grid_id", OPTED_OUT)
@@ -47,7 +53,9 @@ def test_faculty_and_course_grids_opt_out_of_stretching(client, url, grid_id):
     assert "card-grid" in classes and "card-grid--start" in classes
 
 
-@pytest.mark.parametrize("url, grid_id", OPTED_OUT + [("/configuration/courses/", "course-list")])
+@pytest.mark.parametrize(
+    "url, grid_id", OPTED_OUT + [("/configuration/courses/", "course-list")]
+)
 def test_the_grids_keep_the_ids_the_search_box_uses(client, url, grid_id):
     text = page(client.get(url))
     assert f'id="{grid_id}"' in text
@@ -55,7 +63,9 @@ def test_the_grids_keep_the_ids_the_search_box_uses(client, url, grid_id):
 
 
 def test_course_cards_keep_the_equal_height_grid(client):
-    assert grid_classes(page(client.get("/configuration/courses/")), "course-list") == ["card-grid"]
+    assert grid_classes(page(client.get("/configuration/courses/")), "course-list") == [
+        "card-grid"
+    ]
 
 
 def test_class_patterns_keep_the_equal_height_grid(client):
@@ -76,10 +86,17 @@ def test_the_modifier_comes_after_the_base_rule_so_it_wins():
 
 
 def test_the_modifier_changes_nothing_but_the_alignment():
-    modifier = next(body for sel, body in rules(CSS.read_text()) if sel == ".card-grid--start")
-    assert [d.split(":")[0].strip() for d in modifier.split(";") if d.strip()] == ["align-items"]
+    modifier = next(
+        body for sel, body in rules(CSS.read_text()) if sel == ".card-grid--start"
+    )
+    assert [d.split(":")[0].strip() for d in modifier.split(";") if d.strip()] == [
+        "align-items"
+    ]
 
 
 def test_the_single_column_layout_on_small_screens_is_untouched():
     text = CSS.read_text()
-    assert re.search(r"\.card-grid,\s*\.day-grid,\s*\.split\s*\{\s*grid-template-columns:\s*1fr;", text)
+    assert re.search(
+        r"\.card-grid,\s*\.day-grid,\s*\.split\s*\{\s*grid-template-columns:\s*1fr;",
+        text,
+    )

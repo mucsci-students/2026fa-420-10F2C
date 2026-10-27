@@ -43,7 +43,9 @@ def sections_per_course(session):
 
 
 def lists_before(session, field):
-    return [set(getattr(course, field) or []) for course in session.config.config.courses]
+    return [
+        set(getattr(course, field) or []) for course in session.config.config.courses
+    ]
 
 
 def course_named(config, course_id):
@@ -56,7 +58,10 @@ def course_named(config, course_id):
 def test_a_rooms_usage_counts_courses_and_faculty(session):
     usage = deps.usage(session.config, "room", "Roddy 136")
     assert usage["in_use"] is True
-    assert [group["chip"] for group in usage["groups"]] == ["9 courses", "9 faculty preferences"]
+    assert [group["chip"] for group in usage["groups"]] == [
+        "9 courses",
+        "9 faculty preferences",
+    ]
 
 
 def test_a_labs_usage_works_the_same_way(session):
@@ -74,23 +79,33 @@ def test_a_member_nobody_depends_on_is_not_in_use(session):
     assert deps.usage(session.config, "faculty", "sam")["in_use"] is False
 
 
-def test_every_section_of_a_course_shows_the_faculty_preferences_its_course_id_has(session):
-    first_of_two = deps.usage(session.config, "course", 0)               # CMSC 140 has a second section
+def test_every_section_of_a_course_shows_the_faculty_preferences_its_course_id_has(
+    session,
+):
+    first_of_two = deps.usage(
+        session.config, "course", 0
+    )  # CMSC 140 has a second section
     assert first_of_two["in_use"] is True
     assert [group["chip"] for group in first_of_two["groups"]] == ["1 preference"]
-    last = deps.usage(session.config, "course", 6)                          # the only CMSC 162
+    last = deps.usage(session.config, "course", 6)  # the only CMSC 162
     assert [group["chip"] for group in last["groups"]] == ["1 preference"]
 
 
 def test_a_course_usage_has_no_conflicts_chip_and_no_conflict_list(session):
-    usage = deps.usage(session.config, "course", 6)                         # the only CMSC 162
+    usage = deps.usage(session.config, "course", 6)  # the only CMSC 162
     assert all("conflict" not in group["chip"] for group in usage["groups"])
     assert "lists" not in usage
 
 
-def test_a_pattern_is_only_needed_when_it_is_the_last_enabled_one_for_its_credits(session):
-    assert deps.usage(session.config, "pattern", 0)["in_use"] is False   # 3 credits, but no course uses them
-    assert deps.usage(session.config, "pattern", 2)["in_use"] is False   # other enabled 4-credit patterns exist
+def test_a_pattern_is_only_needed_when_it_is_the_last_enabled_one_for_its_credits(
+    session,
+):
+    assert (
+        deps.usage(session.config, "pattern", 0)["in_use"] is False
+    )  # 3 credits, but no course uses them
+    assert (
+        deps.usage(session.config, "pattern", 2)["in_use"] is False
+    )  # other enabled 4-credit patterns exist
 
 
 def test_unknown_records_are_reported_not_crashed_on(session):
@@ -106,12 +121,20 @@ def test_unknown_records_are_reported_not_crashed_on(session):
 SOLE_ROOM_SECTIONS = ["CMSC 161.01", "CMSC 362.01", "CMSC 476.01"]
 
 
-def test_the_plan_lists_the_sections_that_could_not_be_scheduled_without_the_room(session):
+def test_the_plan_lists_the_sections_that_could_not_be_scheduled_without_the_room(
+    session,
+):
     plan = deps.plan(session.config, "room", "Roddy 136")
-    deleted = next(group for group in plan.groups if group["title"].startswith("Course sections that would be deleted"))
+    deleted = next(
+        group
+        for group in plan.groups
+        if group["title"].startswith("Course sections that would be deleted")
+    )
     assert deleted["names"] == SOLE_ROOM_SECTIONS
     assert len(plan.removes_courses) == 3
-    assert "11 course sections" in plan.effects[0]          # the other sections just lose it from their list
+    assert (
+        "11 course sections" in plan.effects[0]
+    )  # the other sections just lose it from their list
     assert plan.in_use and not plan.blocked
 
 
@@ -134,7 +157,9 @@ def test_no_other_room_takes_the_deleted_rooms_place(session):
     assert [room.name for room in config.rooms] == ["Roddy 140", "Roddy 147"]
     after = lists_before(session, "room")
     kept_before = [rooms for rooms in before if rooms != {"Roddy 136"}]
-    assert after == [rooms - {"Roddy 136"} for rooms in kept_before]      # nothing was added anywhere
+    assert after == [
+        rooms - {"Roddy 136"} for rooms in kept_before
+    ]  # nothing was added anywhere
     assert all("Roddy 136" not in person.room_preferences for person in config.faculty)
 
 
@@ -145,8 +170,14 @@ def test_the_cascade_reports_what_it_did(session):
         "Also deleted 3 course sections: CMSC 161.01, CMSC 362.01, CMSC 476.01.",
     ]
     counts = sections_per_course(session)
-    assert counts["CMSC 161"] == 2 and "CMSC 362" not in counts and "CMSC 476" not in counts
-    assert list(course_named(session.config, "CMSC 162")[0].room) == ["Roddy 140"]      # untouched
+    assert (
+        counts["CMSC 161"] == 2
+        and "CMSC 362" not in counts
+        and "CMSC 476" not in counts
+    )
+    assert list(course_named(session.config, "CMSC 162")[0].room) == [
+        "Roddy 140"
+    ]  # untouched
     assert session.history.undo_label == "Delete room"
 
 
@@ -173,14 +204,16 @@ def test_a_lab_is_removed_and_its_sections_are_left_without_one(session):
     assert any("left without" in line for line in plan.effects)
     notices = run_delete(session, "lab", "Mac")
     assert [lab.name for lab in session.config.config.labs] == ["Linux"]
-    assert lists_before(session, "lab") == [labs - {"Mac"} for labs in before]    # Linux took nobody's place
+    assert lists_before(session, "lab") == [
+        labs - {"Mac"} for labs in before
+    ]  # Linux took nobody's place
     assert any("no lab" in note for note in notices)
 
 
 def test_the_only_room_cannot_be_deleted(session):
     fresh = Session()
     fresh.new_config()
-    name = fresh.config.config.rooms[0].name
+    name = fresh.require_config().config.rooms[0].name
     plan = deps.plan(fresh.config, "room", name)
     assert plan.blocked and "only room" in plan.blockers[0]
     with pytest.raises(ControllerError, match="only room"):
@@ -190,12 +223,22 @@ def test_the_only_room_cannot_be_deleted(session):
 # ---------------------------------------------------------------------- #
 #  Faculty
 # ---------------------------------------------------------------------- #
-def test_the_plan_separates_sections_the_scheduler_can_staff_from_ones_nobody_else_could_teach(session):
+def test_the_plan_separates_sections_the_scheduler_can_staff_from_ones_nobody_else_could_teach(
+    session,
+):
     plan = deps.plan(session.config, "faculty", "Zoppetti")
-    deleted = next(group for group in plan.groups if group["title"].startswith("Course sections that would be deleted"))
-    handed = next(group for group in plan.groups if group["title"].startswith("Sections the scheduler"))
+    deleted = next(
+        group
+        for group in plan.groups
+        if group["title"].startswith("Course sections that would be deleted")
+    )
+    handed = next(
+        group
+        for group in plan.groups
+        if group["title"].startswith("Sections the scheduler")
+    )
     assert deleted["names"] == ["CMSC 362.01", "CMSC 476.01"]
-    assert handed["names"] == ["CMSC 161.01"]                # others prefer CMSC 161
+    assert handed["names"] == ["CMSC 161.01"]  # others prefer CMSC 161
     assert "nobody is named in their place" in " ".join(plan.effects)
     assert plan.removes_courses and not plan.blocked
 
@@ -205,11 +248,13 @@ def test_faculty_cascade_names_nobody_in_their_place(session):
     notices = run_delete(session, "faculty", "Zoppetti")
     config = session.config.config
     assert "Zoppetti" not in [person.name for person in config.faculty]
-    assert config.courses[3].faculty is None                                # the scheduler chooses again
+    assert config.courses[3].faculty is None  # the scheduler chooses again
     counts = sections_per_course(session)
     assert "CMSC 362" not in counts and "CMSC 476" not in counts
     after = [set(course.faculty or []) for course in config.courses]
-    assert after == [names - {"Zoppetti"} for i, names in enumerate(before) if i not in (10, 16)]   # nobody inherited anything
+    assert after == [
+        names - {"Zoppetti"} for i, names in enumerate(before) if i not in (10, 16)
+    ]  # nobody inherited anything
     assert notices[0] == "Removed 'Zoppetti' from 1 course section."
     assert "staffed by the scheduler" in notices[1]
     assert notices[-1].startswith("Also deleted 2 course sections")
@@ -225,27 +270,33 @@ def test_a_member_nobody_depends_on_is_removed_without_a_tick(session):
 def test_the_only_faculty_member_cannot_be_deleted(session):
     fresh = Session()
     fresh.new_config()
-    name = fresh.config.config.faculty[0].name
+    name = fresh.require_config().config.faculty[0].name
     assert deps.plan(fresh.config, "faculty", name).blocked
 
 
 # ---------------------------------------------------------------------- #
 #  Courses
 # ---------------------------------------------------------------------- #
-def test_deleting_the_last_section_removes_the_course_from_everything_that_named_it(session):
+def test_deleting_the_last_section_removes_the_course_from_everything_that_named_it(
+    session,
+):
     notices = run_delete(session, "course", 6)
     config = session.config.config
     assert not course_named(session.config, "CMSC 162")
     assert all("CMSC 162" not in course.conflicts for course in config.courses)
     assert all("CMSC 162" not in person.course_preferences for person in config.faculty)
-    assert notices == ["Removed CMSC 162 from the conflict list of 2 course sections and 1 faculty course preference."]
+    assert notices == [
+        "Removed CMSC 162 from the conflict list of 2 course sections and 1 faculty course preference."
+    ]
 
 
 def test_deleting_one_of_several_sections_leaves_references_alone(session):
     before = [list(course.conflicts) for course in session.config.config.courses]
     notices = run_delete(session, "course", 0)
     assert notices == []
-    assert [list(course.conflicts) for course in session.config.config.courses] == before[1:]
+    assert [
+        list(course.conflicts) for course in session.config.config.courses
+    ] == before[1:]
 
 
 # ---------------------------------------------------------------------- #
@@ -270,7 +321,10 @@ def test_a_pattern_the_courses_depend_on_lists_them_and_needs_no_tick(session):
     index = add_two_credit_world(session)
     plan = deps.plan(session.config, "pattern", index)
     assert len(plan.removes_courses) == 2
-    assert any("Course sections that would be deleted" in group["title"] for group in plan.groups)
+    assert any(
+        "Course sections that would be deleted" in group["title"]
+        for group in plan.groups
+    )
     assert deps.resolve(plan) is None
 
 
@@ -284,7 +338,7 @@ def test_confirming_deletes_the_pattern_and_the_courses_that_needed_it(session):
 
 def test_a_pattern_with_a_twin_or_that_is_disabled_deletes_alone(session):
     assert deps.plan(session.config, "pattern", 0).removes_courses == []
-    assert deps.plan(session.config, "pattern", 4).removes_courses == []   # disabled
+    assert deps.plan(session.config, "pattern", 4).removes_courses == []  # disabled
 
 
 # ---------------------------------------------------------------------- #

@@ -59,7 +59,9 @@ def lab_edit(request, lab_name):
         form = LabForm(request.POST)
         if form.is_valid():
             try:
-                notices = lab_controller.update_lab(request, lab_name, form.cleaned_data)
+                notices = lab_controller.update_lab(
+                    request, lab_name, form.cleaned_data
+                )
             except ControllerError as error:
                 _attach_errors(form, error)
             else:
@@ -75,7 +77,9 @@ def lab_edit(request, lab_name):
                 "times": availability_to_text(lab["times"]),
             }
         )
-    return render(request, "gui/lab_edit.html", {"active": "config", "form": form, "lab": lab})
+    return render(
+        request, "gui/lab_edit.html", {"active": "config", "form": form, "lab": lab}
+    )
 
 
 def lab_delete(request, lab_name):

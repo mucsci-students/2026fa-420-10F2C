@@ -35,7 +35,9 @@ from app.session import ConfigError, Session
 # with. Set to False (or delete) once New/Load exist. Pages still handle the
 # "no configuration loaded" state (Section 19) either way.
 AUTO_LOAD_EXAMPLE = True
-EXAMPLE_CONFIG_PATH = Path(__file__).resolve().parent.parent / "app" / "examples" / "config_example.json"
+EXAMPLE_CONFIG_PATH = (
+    Path(__file__).resolve().parent.parent / "app" / "examples" / "config_example.json"
+)
 
 _SESSION_ID_KEY = "scheduler_session_id"
 _SESSIONS: dict[str, Session] = {}

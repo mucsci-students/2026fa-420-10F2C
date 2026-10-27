@@ -88,13 +88,20 @@ def _check_flags(flags) -> list[str]:
     unknown = [flag for flag in flags if flag not in allowed]
     if unknown:
         raise ControllerError(
-            [FieldError("optimizer_flags", f"'{flag}' is not a valid optimizer flag.") for flag in unknown]
+            [
+                FieldError(
+                    "optimizer_flags", f"'{flag}' is not a valid optimizer flag."
+                )
+                for flag in unknown
+            ]
         )
     return list(flags)
 
 
 def _apply(session, config, mutate) -> None:
-    apply_config_edit(session, config, "global_settings", mutate, form_fields=SETTINGS_FIELDS)
+    apply_config_edit(
+        session, config, "global_settings", mutate, form_fields=SETTINGS_FIELDS
+    )
 
 
 def _change(request, *, limit=None, enable=(), disable=()) -> list[str]:

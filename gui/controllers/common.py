@@ -22,7 +22,8 @@ reports problems and tracks unsaved changes the same way.
 
 from __future__ import annotations
 
-from typing import Callable, Iterable
+from collections.abc import Callable, Iterable
+from typing import Any
 
 from app.commands.common import apply_session_edit
 from app.crud import ValidationFailure
@@ -48,7 +49,7 @@ def apply_config_edit(
     session,
     config,
     area: str,
-    mutate: Callable[[object], None],
+    mutate: Callable[[Any], None],
     form_fields: Iterable[str] = (),
     label: str | None = None,
 ) -> None:

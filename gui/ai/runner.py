@@ -73,7 +73,9 @@ class LangChainRunner:
     def chat_model(self):
         from langchain_openai import ChatOpenAI
 
-        options: dict[str, Any] = {"http_client": self.http_client} if self.http_client is not None else {}
+        options: dict[str, Any] = (
+            {"http_client": self.http_client} if self.http_client is not None else {}
+        )
         return ChatOpenAI(
             model=self.model,
             use_responses_api=True,
@@ -88,7 +90,9 @@ class LangChainRunner:
             from langchain.agents import create_agent
             from langchain_core.tools import StructuredTool
         except ImportError as error:  # pragma: no cover - depends on the install
-            raise NotConfigured("The AI assistant isn't installed. Run `uv sync` and restart.") from error
+            raise NotConfigured(
+                "The AI assistant isn't installed. Run `uv sync` and restart."
+            ) from error
 
         def bind(name: str):
             def run_tool(**arguments) -> str:
@@ -104,7 +108,9 @@ class LangChainRunner:
                 args_schema=tool.args,
                 return_direct=tool.final,
                 # Bad arguments come back as a normal failed result, not a crash.
-                handle_validation_error=lambda error, name=tool.name: toolbox.invalid(name, error).message,
+                handle_validation_error=lambda error, name=tool.name: (
+                    toolbox.invalid(name, error).message
+                ),
             )
             for tool in toolbox.tools.values()
         ]
@@ -114,9 +120,15 @@ class LangChainRunner:
     def run(self, text: str, toolbox: ToolBox) -> str:
         agent = self.build(toolbox)
         messages = [*toolbox.history, {"role": "user", "content": text}]
-        result = agent.invoke({"messages": messages}, config={"recursion_limit": 2 * MAX_STEPS + 1})
+        result = agent.invoke(
+            {"messages": messages}, config={"recursion_limit": 2 * MAX_STEPS + 1}
+        )
         if any(item.final for item in toolbox.results):
             return ""  # an action's own result is the answer
         # Only lookups (or nothing): the model's last message is the answer.
-        replies = [m for m in result["messages"] if getattr(m, "type", "") == "ai" and getattr(m, "text", "")]
+        replies = [
+            m
+            for m in result["messages"]
+            if getattr(m, "type", "") == "ai" and getattr(m, "text", "")
+        ]
         return replies[-1].text.strip() if replies else ""

@@ -75,19 +75,27 @@ def fresh(request_):
 
 
 def room(request_, name):
-    return next((item for item in config(request_).config.rooms if item.name == name), None)
+    return next(
+        (item for item in config(request_).config.rooms if item.name == name), None
+    )
 
 
 def lab(request_, name):
-    return next((item for item in config(request_).config.labs if item.name == name), None)
+    return next(
+        (item for item in config(request_).config.labs if item.name == name), None
+    )
 
 
 def person(request_, name):
-    return next((item for item in config(request_).config.faculty if item.name == name), None)
+    return next(
+        (item for item in config(request_).config.faculty if item.name == name), None
+    )
 
 
 def sections(request_, course_id):
-    return [item for item in config(request_).config.courses if item.course_id == course_id]
+    return [
+        item for item in config(request_).config.courses if item.course_id == course_id
+    ]
 
 
 def course_ids(request_):
@@ -125,18 +133,29 @@ DELETE_TOOLS = (
 
 
 def test_every_area_can_be_updated_and_deleted():
-    for name in UPDATE_TOOLS + DELETE_TOOLS + ("confirm_delete", "cancel_delete", "add_meeting", "list_meetings"):
+    for name in (
+        UPDATE_TOOLS
+        + DELETE_TOOLS
+        + ("confirm_delete", "cancel_delete", "add_meeting", "list_meetings")
+    ):
         assert name in TOOLS_BY_NAME, name
 
 
 def test_updates_write_and_delete_requests_only_describe():
     assert all(TOOLS_BY_NAME[name].write for name in UPDATE_TOOLS)
-    assert not any(TOOLS_BY_NAME[name].write for name in DELETE_TOOLS)  # they delete nothing
-    assert TOOLS_BY_NAME["confirm_delete"].write and not TOOLS_BY_NAME["cancel_delete"].write
+    assert not any(
+        TOOLS_BY_NAME[name].write for name in DELETE_TOOLS
+    )  # they delete nothing
+    assert (
+        TOOLS_BY_NAME["confirm_delete"].write
+        and not TOOLS_BY_NAME["cancel_delete"].write
+    )
 
 
 def test_update_tools_only_require_what_names_the_item():
-    required = lambda name: set(TOOLS_BY_NAME[name].args.model_json_schema()["required"])
+    required = lambda name: set(
+        TOOLS_BY_NAME[name].args.model_json_schema()["required"]
+    )
     assert required("update_room") == {"name"}
     assert required("update_course") == {"course_id"}
     assert required("update_class_pattern") == {"pattern_number"}
@@ -164,13 +183,20 @@ def test_update_room_rename_follows_every_reference(box, request_):
     assert room(request_, "Roddy 147") is None and room(request_, "Roddy 150")
     assert all("Roddy 147" not in item.room for item in config(request_).config.courses)
     assert any("Roddy 150" in item.room for item in config(request_).config.courses)
-    assert "Roddy 150" in person(request_, "Hardy").room_preferences  # faculty preference moved too
+    assert (
+        "Roddy 150" in person(request_, "Hardy").room_preferences
+    )  # faculty preference moved too
 
 
 def test_update_room_adds_and_removes_features(box, request_):
-    box.call("update_room", {"name": "Roddy 136", "features": {"add": ["projector", "whiteboard"]}})
+    box.call(
+        "update_room",
+        {"name": "Roddy 136", "features": {"add": ["projector", "whiteboard"]}},
+    )
     assert sorted(room(request_, "Roddy 136").features) == ["projector", "whiteboard"]
-    result = ToolBox(request_).call("update_room", {"name": "Roddy 136", "features": {"remove": ["projector"]}})
+    result = ToolBox(request_).call(
+        "update_room", {"name": "Roddy 136", "features": {"remove": ["projector"]}}
+    )
     assert result.ok and "features removed: projector" in result.message
     assert sorted(room(request_, "Roddy 136").features) == ["whiteboard"]
 
@@ -214,7 +240,11 @@ def test_malformed_update_arguments_are_rejected_before_anything_runs(box, reque
     result = box.call("update_room", {"name": "Roddy 140", "capacity": "lots"})
     assert not result.ok and "capacity" in result.message
     result = box.call(
-        "update_room", {"name": "Roddy 140", "availability": [{"day": "someday", "start": "09:00", "end": "10:00"}]}
+        "update_room",
+        {
+            "name": "Roddy 140",
+            "availability": [{"day": "someday", "start": "09:00", "end": "10:00"}],
+        },
     )
     assert not result.ok and "weekday" in result.message.lower()
     assert snapshot(request_) == before
@@ -232,12 +262,18 @@ def test_update_lab_changes_capacity(box, request_):
 def test_update_course_with_several_sections_asks_which_one(box, request_):
     before = snapshot(request_)
     result = box.call("update_course", {"course_id": "CMSC 140", "capacity": 20})
-    assert not result.ok and "has 2 sections" in result.message and "CMSC 140.01" in result.message
+    assert (
+        not result.ok
+        and "has 2 sections" in result.message
+        and "CMSC 140.01" in result.message
+    )
     assert snapshot(request_) == before
 
 
 def test_update_course_changes_just_the_chosen_section(box, request_):
-    result = box.call("update_course", {"course_id": "CMSC 140", "section": "02", "capacity": 20})
+    result = box.call(
+        "update_course", {"course_id": "CMSC 140", "section": "02", "capacity": 20}
+    )
     assert result.ok and result.changed and "capacity 28 -> 20" in result.message
     first, second = sections(request_, "CMSC 140")
     assert (first.capacity, second.capacity) == (28, 20)
@@ -246,22 +282,35 @@ def test_update_course_changes_just_the_chosen_section(box, request_):
 def test_update_course_edits_lists_by_adding_and_removing(box, request_):
     result = box.call(
         "update_course",
-        {"course_id": "cmsc420", "conflicts": {"add": ["CMSC 162"]}, "labs": {"replace": ["Linux"]}},
+        {
+            "course_id": "cmsc420",
+            "conflicts": {"add": ["CMSC 162"]},
+            "labs": {"replace": ["Linux"]},
+        },
     )
     assert result.ok and result.changed, result.message
     (course,) = sections(request_, "CMSC 420")
-    assert "CMSC 162" in course.conflicts and "CMSC 380" in course.conflicts  # added, the rest kept
+    assert (
+        "CMSC 162" in course.conflicts and "CMSC 380" in course.conflicts
+    )  # added, the rest kept
     assert list(course.lab) == ["Linux"]
 
 
 def test_update_course_can_hand_staffing_back_to_the_scheduler(box, request_):
-    result = box.call("update_course", {"course_id": "CMSC 161", "section": "01", "faculty": {"replace": []}})
+    result = box.call(
+        "update_course",
+        {"course_id": "CMSC 161", "section": "01", "faculty": {"replace": []}},
+    )
     assert result.ok and result.changed, result.message
-    assert not sections(request_, "CMSC 161")[0].faculty  # "chosen from faculty preferences"
+    assert not sections(request_, "CMSC 161")[
+        0
+    ].faculty  # "chosen from faculty preferences"
 
 
 def test_renaming_a_course_updates_what_points_at_it(box, request_):
-    result = box.call("update_course", {"course_id": "CMSC 420", "new_course_id": "CMSC 421"})
+    result = box.call(
+        "update_course", {"course_id": "CMSC 420", "new_course_id": "CMSC 421"}
+    )
     assert result.ok and result.changed, result.message
     assert "CMSC 420" not in course_ids(request_) and "CMSC 421" in course_ids(request_)
     assert "CMSC 421" in person(request_, "Hobbs").course_preferences
@@ -271,7 +320,9 @@ def test_renaming_a_course_updates_what_points_at_it(box, request_):
 def test_update_course_with_an_unknown_room_changes_nothing(box, request_):
     fresh(request_)
     before = snapshot(request_)
-    result = box.call("update_course", {"course_id": "CMSC 420", "rooms": {"add": ["Atlantis"]}})
+    result = box.call(
+        "update_course", {"course_id": "CMSC 420", "rooms": {"add": ["Atlantis"]}}
+    )
     assert not result.ok and result.write and "Atlantis" in result.message
     assert snapshot(request_) == before and session(request_).dirty is False
 
@@ -295,14 +346,31 @@ def test_update_faculty_changes_limits_and_preferences(box, request_):
     schwartz = person(request_, "Schwartz")
     assert schwartz.maximum_credits == 4
     assert schwartz.course_preferences["CMSC 420"] == 7
-    assert "Roddy 140" not in schwartz.room_preferences and "Roddy 136" in schwartz.room_preferences
+    assert (
+        "Roddy 140" not in schwartz.room_preferences
+        and "Roddy 136" in schwartz.room_preferences
+    )
 
 
-def test_update_faculty_rejects_a_preference_for_something_that_does_not_exist(box, request_):
+def test_update_faculty_rejects_a_preference_for_something_that_does_not_exist(
+    box, request_
+):
     before = snapshot(request_)
-    result = box.call("update_faculty", {"name": "Hogg", "preferences": [{"kind": "course", "name": "CMSC 999", "weight": 5}]})
+    result = box.call(
+        "update_faculty",
+        {
+            "name": "Hogg",
+            "preferences": [{"kind": "course", "name": "CMSC 999", "weight": 5}],
+        },
+    )
     assert not result.ok and "CMSC 999" in result.message
-    result = box.call("update_faculty", {"name": "Hogg", "preferences": [{"kind": "room", "name": "Roddy 140", "weight": 99}]})
+    result = box.call(
+        "update_faculty",
+        {
+            "name": "Hogg",
+            "preferences": [{"kind": "room", "name": "Roddy 140", "weight": 99}],
+        },
+    )
     assert not result.ok
     assert snapshot(request_) == before
 
@@ -311,15 +379,23 @@ def test_update_faculty_rejects_a_preference_for_something_that_does_not_exist(b
 #  Time slots, class patterns, meetings, global settings
 # ---------------------------------------------------------------------- #
 def test_update_time_slot_finds_the_slot_by_day_and_start(box, request_):
-    result = box.call("update_time_slot", {"day": "monday", "start": "8:00", "new_spacing": 30})
+    result = box.call(
+        "update_time_slot", {"day": "monday", "start": "8:00", "new_spacing": 30}
+    )
     assert result.ok and result.changed, result.message
     assert config(request_).time_slot_config.times["MON"][0].spacing == 30
 
 
 def test_update_time_slot_lists_the_real_slots_when_none_matches(box, request_):
     before = snapshot(request_)
-    result = box.call("update_time_slot", {"day": "MON", "start": "09:15", "new_spacing": 30})
-    assert not result.ok and "no time slot starting at 09:15" in result.message and "08:00-19:00" in result.message
+    result = box.call(
+        "update_time_slot", {"day": "MON", "start": "09:15", "new_spacing": 30}
+    )
+    assert (
+        not result.ok
+        and "no time slot starting at 09:15" in result.message
+        and "08:00-19:00" in result.message
+    )
     assert snapshot(request_) == before
 
 
@@ -343,16 +419,22 @@ def test_update_class_pattern_with_a_number_that_does_not_exist(box, request_):
 
 
 def test_update_meeting_is_found_by_pattern_and_meeting_number(box, request_):
-    result = box.call("update_meeting", {"pattern_number": 0, "meeting_number": 2, "duration": 60})
+    result = box.call(
+        "update_meeting", {"pattern_number": 0, "meeting_number": 2, "duration": 60}
+    )
     assert result.ok and result.changed, result.message
     meetings = config(request_).time_slot_config.classes[0].meetings
     assert [meeting.duration for meeting in meetings] == [50, 60, 50]
-    result = box.call("update_meeting", {"pattern_number": 0, "meeting_number": 9, "duration": 60})
+    result = box.call(
+        "update_meeting", {"pattern_number": 0, "meeting_number": 9, "duration": 60}
+    )
     assert not result.ok and "numbered 1 to 3" in result.message
 
 
 def test_add_meeting_appends_to_the_pattern(box, request_):
-    result = box.call("add_meeting", {"pattern_number": 1, "day": "monday", "duration": 50})
+    result = box.call(
+        "add_meeting", {"pattern_number": 1, "day": "monday", "duration": 50}
+    )
     assert result.ok and result.changed, result.message
     assert len(config(request_).time_slot_config.classes[1].meetings) == 3
 
@@ -364,10 +446,14 @@ def test_list_meetings_shows_numbered_meetings(box):
 
 
 def test_update_global_settings_changes_limit_and_flags_together(box, request_):
-    result = box.call("update_global_settings", {"limit": 25, "disable_flags": ["pack_rooms"]})
+    result = box.call(
+        "update_global_settings", {"limit": 25, "disable_flags": ["pack_rooms"]}
+    )
     assert result.ok and result.changed, result.message
     assert config(request_).limit == 25
-    flags = [str(getattr(flag, "value", flag)) for flag in config(request_).optimizer_flags]
+    flags = [
+        str(getattr(flag, "value", flag)) for flag in config(request_).optimizer_flags
+    ]
     assert "pack_rooms" not in flags and "faculty_course" in flags
 
 
@@ -408,13 +494,18 @@ def test_a_delete_request_only_describes_what_would_happen(box, request_):
     before = snapshot(request_)
     result = box.call("delete_room", {"name": "roddy 136"})
     assert result.ok and not result.changed and not result.write
-    assert "Roddy 136" in result.message and "Nothing has been deleted yet" in result.message
+    assert (
+        "Roddy 136" in result.message
+        and "Nothing has been deleted yet" in result.message
+    )
     assert snapshot(request_) == before
     assert session(request_).dirty is False and not session(request_).history.can_undo
 
 
 def test_the_description_lists_the_sections_that_would_be_deleted_too(box, request_):
-    result = box.call("delete_room", {"name": "Roddy 136"})  # the only room of CMSC 362 and 476
+    result = box.call(
+        "delete_room", {"name": "Roddy 136"}
+    )  # the only room of CMSC 362 and 476
     assert result.ok and "CMSC 476" in result.message
     assert "CMSC 476" in course_ids(request_)  # still here: nothing was deleted
 
@@ -433,12 +524,17 @@ def test_confirming_in_a_later_message_deletes_it_and_it_can_be_undone(box, requ
     box.call("delete_room", {"name": "Roddy 136"})
     result = confirm(request_)
     assert result.ok and result.changed and result.write
-    assert "Deleted room 'Roddy 136'" in result.message and "History page" in result.message
+    assert (
+        "Deleted room 'Roddy 136'" in result.message
+        and "History page" in result.message
+    )
     assert room(request_, "Roddy 136") is None
     assert session(request_).dirty is True and session(request_).history.can_undo
 
 
-def test_deleting_a_room_also_deletes_the_sections_that_cannot_exist_without_it(box, request_):
+def test_deleting_a_room_also_deletes_the_sections_that_cannot_exist_without_it(
+    box, request_
+):
     box.call("delete_room", {"name": "Roddy 136"})
     assert confirm(request_).ok
     assert room(request_, "Roddy 136") is None
@@ -475,9 +571,15 @@ def test_a_newer_description_replaces_the_older_one(box, request_):
     assert lab(request_, "Mac") is None and room(request_, "Roddy 147")
 
 
-def test_a_delete_is_refused_when_the_configuration_changed_after_it_was_described(box, request_):
+def test_a_delete_is_refused_when_the_configuration_changed_after_it_was_described(
+    box, request_
+):
     box.call("delete_lab", {"name": "Mac"})
-    assert ToolBox(later(request_)).call("update_room", {"name": "Roddy 136", "capacity": 30}).ok
+    assert (
+        ToolBox(later(request_))
+        .call("update_room", {"name": "Roddy 136", "capacity": 30})
+        .ok
+    )
     result = confirm(request_)
     assert not result.ok and "changed after I described" in result.message
     assert lab(request_, "Mac")
@@ -485,7 +587,9 @@ def test_a_delete_is_refused_when_the_configuration_changed_after_it_was_describ
 
 def test_a_described_delete_expires(box, request_, monkeypatch):
     box.call("delete_lab", {"name": "Mac"})
-    monkeypatch.setattr(changes, "_now", lambda: changes.time.monotonic() + changes.PENDING_SECONDS + 5)
+    monkeypatch.setattr(
+        changes, "_now", lambda: changes.time.monotonic() + changes.PENDING_SECONDS + 5
+    )
     result = confirm(request_)
     assert not result.ok and "too long ago" in result.message
     assert lab(request_, "Mac")
@@ -528,13 +632,27 @@ def test_deleting_each_kind_of_item(request_):
     meeting_ctrl.add_meeting(
         request_,
         number,
-        {"day": "THU", "duration": 50, "lab": False, "delivery": "in_person", "start_time": None},
+        {
+            "day": "THU",
+            "duration": 50,
+            "lab": False,
+            "delivery": "in_person",
+            "start_time": None,
+        },
     )
     classes = lambda: config(request_).time_slot_config.classes
     cases = [
-        ("delete_faculty", {"name": "Zoppetti"}, lambda: person(request_, "Zoppetti") is None),
+        (
+            "delete_faculty",
+            {"name": "Zoppetti"},
+            lambda: person(request_, "Zoppetti") is None,
+        ),
         ("delete_lab", {"name": "Mac"}, lambda: lab(request_, "Mac") is None),
-        ("delete_course", {"course_id": "CMSC 162"}, lambda: "CMSC 162" not in course_ids(request_)),
+        (
+            "delete_course",
+            {"course_id": "CMSC 162"},
+            lambda: "CMSC 162" not in course_ids(request_),
+        ),
         (
             "delete_time_slot",
             {"day": "tue", "start": "13:10"},
@@ -566,7 +684,9 @@ def test_deleting_a_course_with_several_sections_asks_which(box, request_):
     assert not result.ok and "no section '09'" in result.message
 
 
-def test_the_only_time_slot_of_a_day_and_the_only_meeting_of_a_pattern_cannot_be_deleted(box, request_):
+def test_the_only_time_slot_of_a_day_and_the_only_meeting_of_a_pattern_cannot_be_deleted(
+    box, request_
+):
     friday = box.call("delete_time_slot", {"day": "FRI", "start": "08:00"})
     assert not friday.ok and "only time block on FRI" in friday.message
     number = new_pattern(request_)
@@ -582,7 +702,10 @@ SCRIPT = {
     "Delete room Roddy 136": [("delete_room", {"name": "Roddy 136"})],
     "confirm": [("confirm_delete", {})],
     "cancel": [("cancel_delete", {})],
-    "Delete it and confirm": [("delete_room", {"name": "Roddy 136"}), ("confirm_delete", {})],
+    "Delete it and confirm": [
+        ("delete_room", {"name": "Roddy 136"}),
+        ("confirm_delete", {}),
+    ],
     "Make Roddy 140 bigger": [("update_room", {"name": "Roddy 140", "capacity": 40})],
 }
 
@@ -610,18 +733,28 @@ def chat(client, monkeypatch):
 
 def test_a_delete_over_two_chat_messages(chat):
     first = chat("Delete room Roddy 136")
-    assert first["ok"] and first["changed"] is False and "Nothing has been deleted yet" in first["reply"]
+    assert (
+        first["ok"]
+        and first["changed"] is False
+        and "Nothing has been deleted yet" in first["reply"]
+    )
     second = chat("confirm")
     assert second["ok"] and second["changed"] is True and second["dirty"] is True
     assert "Deleted room 'Roddy 136'" in second["reply"]
     assert "applied but not yet saved" in second["reply"]
 
 
-def test_a_delete_and_its_confirmation_in_one_chat_message_deletes_nothing(chat, client):
+def test_a_delete_and_its_confirmation_in_one_chat_message_deletes_nothing(
+    chat, client
+):
     body = chat("Delete it and confirm")
     assert body["changed"] is False and body["ok"] is False
-    assert "separate message" in body["reply"] and "not changed" in body["reply"].lower()
-    assert chat("confirm")["changed"] is True  # the description is still waiting for a real confirmation
+    assert (
+        "separate message" in body["reply"] and "not changed" in body["reply"].lower()
+    )
+    assert (
+        chat("confirm")["changed"] is True
+    )  # the description is still waiting for a real confirmation
 
 
 def test_cancel_over_chat_keeps_everything(chat):
@@ -634,7 +767,10 @@ def test_cancel_over_chat_keeps_everything(chat):
 def test_an_update_over_chat_reports_applied_but_not_saved(chat):
     body = chat("Make Roddy 140 bigger")
     assert body["ok"] and body["changed"] and body["dirty"]
-    assert "capacity 28 -> 40" in body["reply"] and "not yet saved to a file" in body["reply"]
+    assert (
+        "capacity 28 -> 40" in body["reply"]
+        and "not yet saved to a file" in body["reply"]
+    )
 
 
 # ---------------------------------------------------------------------- #
@@ -642,8 +778,14 @@ def test_an_update_over_chat_reports_applied_but_not_saved(chat):
 # ---------------------------------------------------------------------- #
 def test_only_lookups_are_not_final():
     lookups = {tool.name for tool in TOOLS_BY_NAME.values() if not tool.final}
-    assert lookups and all(name.startswith(("list_", "get_", "show_")) for name in lookups)
-    for name in UPDATE_TOOLS + DELETE_TOOLS + ("confirm_delete", "cancel_delete", "describe_capabilities", "add_room"):
+    assert lookups and all(
+        name.startswith(("list_", "get_", "show_")) for name in lookups
+    )
+    for name in (
+        UPDATE_TOOLS
+        + DELETE_TOOLS
+        + ("confirm_delete", "cancel_delete", "describe_capabilities", "add_room")
+    ):
         assert TOOLS_BY_NAME[name].final, name
 
 
@@ -653,15 +795,23 @@ def test_a_look_then_a_delete_shows_only_the_delete(box):
     box.call("list_rooms")
     box.call("delete_room", {"name": "Roddy 136"})
     reply = service.compose(box.results, "I'll look at the rooms first.")
-    assert "Roddy 136" in reply.message and "Nothing has been deleted yet" in reply.message
-    assert "Rooms (" not in reply.message and "look at the rooms first" not in reply.message
+    assert (
+        "Roddy 136" in reply.message and "Nothing has been deleted yet" in reply.message
+    )
+    assert (
+        "Rooms (" not in reply.message
+        and "look at the rooms first" not in reply.message
+    )
 
 
 def test_lookups_alone_show_the_models_words_or_else_the_lookup(box):
     from gui.ai import service
 
     box.call("list_rooms")
-    assert service.compose(box.results, "You have three rooms.").message == "You have three rooms."
+    assert (
+        service.compose(box.results, "You have three rooms.").message
+        == "You have three rooms."
+    )
     assert "Rooms (" in service.compose(box.results, "").message
 
 
@@ -680,7 +830,12 @@ def test_chat_history_is_kept_per_browser_and_trimmed(monkeypatch, request_):
     for number in range(4):
         service.handle_request(request_, f"message {number}")
     assert seen[0] == []
-    assert [item["content"] for item in seen[-1]] == ["message 1", "ok", "message 2", "ok"]
+    assert [item["content"] for item in seen[-1]] == [
+        "message 1",
+        "ok",
+        "message 2",
+        "ok",
+    ]
     other = FakeRequest()
     service.handle_request(other, "hello")
     assert seen[-1] == []  # another browser never sees this chat
