@@ -77,7 +77,9 @@ from gui.controllers.errors import ControllerError
 from gui.session_store import get_session
 
 PENDING_SECONDS = 600  # a described delete stops being confirmable after this long
-_PENDING_ATTR = "ai_pending"  # where the described delete waits, on the browser's own Session
+_PENDING_ATTR = (
+    "ai_pending"  # where the described delete waits, on the browser's own Session
+)
 UNDO_HINT = "You can undo it from the History page."
 NOTHING_TO_CHANGE = "Tell me what to change, for example a new capacity or name."
 
@@ -98,7 +100,9 @@ def _existing(wanted: str, names: Iterable[str], label: str) -> str:
 def _hhmm(value: str) -> str:
     """'9:00' -> '09:00' so a time typed loosely still finds the block it names."""
     match = re.fullmatch(r"\s*(\d{1,2}):(\d{2})\s*", str(value))
-    return f"{int(match.group(1)):02d}:{match.group(2)}" if match else str(value).strip()
+    return (
+        f"{int(match.group(1)):02d}:{match.group(2)}" if match else str(value).strip()
+    )
 
 
 def _version(request) -> int:
@@ -126,10 +130,15 @@ class ListChange(BaseModel):
     """How to change a list: replace all of it, or add to it and remove from it."""
 
     replace: list[str] | None = Field(
-        default=None, description="Make the list exactly these. Leave out to keep the current list"
+        default=None,
+        description="Make the list exactly these. Leave out to keep the current list",
     )
-    add: list[str] = Field(default_factory=list, description="Things to add to the list")
-    remove: list[str] = Field(default_factory=list, description="Things to take out of the list")
+    add: list[str] = Field(
+        default_factory=list, description="Things to add to the list"
+    )
+    remove: list[str] = Field(
+        default_factory=list, description="Things to take out of the list"
+    )
 
     @property
     def asked(self) -> bool:
@@ -151,16 +160,24 @@ def _asked(*values: Any) -> bool:
     return False
 
 
-def _edited_list(current: list[str], change: ListChange | None, known: Iterable[str] | None = None) -> list[str]:
+def _edited_list(
+    current: list[str], change: ListChange | None, known: Iterable[str] | None = None
+) -> list[str]:
     """`current` with the change applied; names are matched to `known` items when given."""
     if change is None or not change.asked:
         return list(current)
     known = list(known) if known is not None else None
 
     def match(items: list[str], against: Iterable[str] | None) -> list[str]:
-        return _resolve(items, against) if against is not None else [str(item).strip() for item in items]
+        return (
+            _resolve(items, against)
+            if against is not None
+            else [str(item).strip() for item in items]
+        )
 
-    result = match(change.replace, known) if change.replace is not None else list(current)
+    result = (
+        match(change.replace, known) if change.replace is not None else list(current)
+    )
     gone = set(match(change.remove, list(current) if known is None else known))
     result = [item for item in result if item not in gone]
     for item in match(change.add, known):
@@ -185,25 +202,37 @@ def _list_changes(label: str, before: list[str], after: list[str]) -> list[str]:
 def _times_from(items: Iterable[AvailabilityArgs]) -> dict[str, list[dict]]:
     times: dict[str, list[dict]] = {}
     for item in items:
-        times.setdefault(item.day, []).append({"start": _hhmm(item.start), "end": _hhmm(item.end)})
+        times.setdefault(item.day, []).append(
+            {"start": _hhmm(item.start), "end": _hhmm(item.end)}
+        )
     return times
 
 
 def _times_text(times: dict) -> str:
     rows = [
-        f"{day} " + ", ".join(f"{block['start']}-{block['end']}" for block in times[day])
+        f"{day} "
+        + ", ".join(f"{block['start']}-{block['end']}" for block in times[day])
         for day in WEEKDAYS
         if times.get(day)
     ]
     return "; ".join(rows) if rows else "any time"
 
 
-def _finish(request, before_version: int, label: str, changes: list[str], notices: list[str], now: str = "") -> str:
+def _finish(
+    request,
+    before_version: int,
+    label: str,
+    changes: list[str],
+    notices: list[str],
+    now: str = "",
+) -> str:
     """The reply for an update: what changed, built from what the controller really did."""
     if _version(request) == before_version:
         return Unchanged(f"{label} already has those values, so nothing was changed.")
     said = "; ".join(changes) if changes else "updated"
-    return f"{label} updated: {said}." + (f" Now: {now}." if now else "") + _notes(notices)
+    return (
+        f"{label} updated: {said}." + (f" Now: {now}." if now else "") + _notes(notices)
+    )
 
 
 # ---------------------------------------------------------------------- #
@@ -211,22 +240,38 @@ def _finish(request, before_version: int, label: str, changes: list[str], notice
 # ---------------------------------------------------------------------- #
 class UpdatePlaceArgs(BaseModel):
     name: str = Field(description="The room or lab to change, as the user wrote it")
-    new_name: str | None = Field(default=None, description="A new name. Only when the user wants to rename it")
-    capacity: int | None = Field(default=None, description="The new capacity. Only when it should change")
+    new_name: str | None = Field(
+        default=None, description="A new name. Only when the user wants to rename it"
+    )
+    capacity: int | None = Field(
+        default=None, description="The new capacity. Only when it should change"
+    )
     features: ListChange | None = Field(
-        default=None, description="Change the features it provides: replace the list, or add/remove some"
+        default=None,
+        description="Change the features it provides: replace the list, or add/remove some",
     )
     availability: list[AvailabilityArgs] | None = Field(
         default=None,
         description="The COMPLETE new weekly availability (every day and time range). Leave out to keep it",
     )
-    any_time: bool = Field(default=False, description="True to make it available at any time (clears availability)")
+    any_time: bool = Field(
+        default=False,
+        description="True to make it available at any time (clears availability)",
+    )
 
 
-def _update_place(request, args: UpdatePlaceArgs, *, kind: str, names, get, update) -> str:
+def _update_place(
+    request, args: UpdatePlaceArgs, *, kind: str, names, get, update
+) -> str:
     label = kind.capitalize()
     found = _existing(args.name, names, kind)
-    if not _asked(args.new_name, args.capacity, args.features, args.availability, args.any_time or None):
+    if not _asked(
+        args.new_name,
+        args.capacity,
+        args.features,
+        args.availability,
+        args.any_time or None,
+    ):
         raise ControllerError(NOTHING_TO_CHANGE)
     current = get(request, found)
 
@@ -248,21 +293,43 @@ def _update_place(request, args: UpdatePlaceArgs, *, kind: str, names, get, upda
     if times != current["times"]:
         changes.append(f"availability: {_times_text(times)}")
     if not changes:
-        return Unchanged(f"{label} '{found}' already has those values, so nothing was changed.")
+        return Unchanged(
+            f"{label} '{found}' already has those values, so nothing was changed."
+        )
 
     before = _version(request)
-    notices = update(request, found, {"name": new_name, "capacity": capacity, "features": features, "times": times})
-    return _finish(request, before, f"{label} '{found}'", changes, notices, _place(get(request, new_name)))
+    notices = update(
+        request,
+        found,
+        {"name": new_name, "capacity": capacity, "features": features, "times": times},
+    )
+    return _finish(
+        request,
+        before,
+        f"{label} '{found}'",
+        changes,
+        notices,
+        _place(get(request, new_name)),
+    )
 
 
 def update_room(request, args: UpdatePlaceArgs) -> str:
-    names = [room.name for room in get_session(request).config.config.rooms]
-    return _update_place(request, args, kind="room", names=names, get=rooms.get_room, update=rooms.update_room)
+    names = [room.name for room in get_session(request).require_config().config.rooms]
+    return _update_place(
+        request,
+        args,
+        kind="room",
+        names=names,
+        get=rooms.get_room,
+        update=rooms.update_room,
+    )
 
 
 def update_lab(request, args: UpdatePlaceArgs) -> str:
-    names = [lab.name for lab in get_session(request).config.config.labs]
-    return _update_place(request, args, kind="lab", names=names, get=labs.get_lab, update=labs.update_lab)
+    names = [lab.name for lab in get_session(request).require_config().config.labs]
+    return _update_place(
+        request, args, kind="lab", names=names, get=labs.get_lab, update=labs.update_lab
+    )
 
 
 # ---------------------------------------------------------------------- #
@@ -276,44 +343,73 @@ class SectionArgs(CourseArgs):
 
 
 class UpdateCourseArgs(SectionArgs):
-    new_course_id: str | None = Field(default=None, description='A new course ID, e.g. "CMSC 421"')
+    new_course_id: str | None = Field(
+        default=None, description='A new course ID, e.g. "CMSC 421"'
+    )
     new_section_id: str | None = Field(default=None, description="A new section ID")
-    credits: int | None = Field(default=None, description="New credit hours (an enabled class pattern must have them)")
+    credits: int | None = Field(
+        default=None,
+        description="New credit hours (an enabled class pattern must have them)",
+    )
     capacity: int | None = Field(default=None, description="New enrollment capacity")
-    modality: str | None = Field(default=None, description="in_person, online, or hybrid")
-    rooms: ListChange | None = Field(default=None, description="Rooms the course may use (names of existing rooms)")
-    labs: ListChange | None = Field(default=None, description="Labs the course may use (names of existing labs)")
+    modality: str | None = Field(
+        default=None, description="in_person, online, or hybrid"
+    )
+    rooms: ListChange | None = Field(
+        default=None, description="Rooms the course may use (names of existing rooms)"
+    )
+    labs: ListChange | None = Field(
+        default=None, description="Labs the course may use (names of existing labs)"
+    )
     faculty: ListChange | None = Field(
         default=None,
         description="Faculty who teach it (existing names). Replacing with an empty list lets the scheduler choose",
     )
-    conflicts: ListChange | None = Field(default=None, description="Course IDs it must not overlap with")
-    required_room_features: ListChange | None = Field(default=None, description="Features its room must have")
-    required_lab_features: ListChange | None = Field(default=None, description="Features its lab must have")
-    reserve_room_during_lab: bool | None = Field(default=None, description="Keep the room reserved during lab meetings")
+    conflicts: ListChange | None = Field(
+        default=None, description="Course IDs it must not overlap with"
+    )
+    required_room_features: ListChange | None = Field(
+        default=None, description="Features its room must have"
+    )
+    required_lab_features: ListChange | None = Field(
+        default=None, description="Features its lab must have"
+    )
+    reserve_room_during_lab: bool | None = Field(
+        default=None, description="Keep the room reserved during lab meetings"
+    )
 
 
 def _find_section(request, args: SectionArgs, what: str) -> dict:
     """The one course section the user meant, as a row of describe_courses()."""
     rows = courses.describe_courses(request)["courses"]
-    course_id = _existing(args.course_id, sorted({row["course_id"] for row in rows}), "course")
+    course_id = _existing(
+        args.course_id, sorted({row["course_id"] for row in rows}), "course"
+    )
     sections = [row for row in rows if row["course_id"] == course_id]
     if args.section is None or not str(args.section).strip():
         if len(sections) > 1:
             listing = _join(row["display"] for row in sections)
-            raise ControllerError(f"{course_id} has {len(sections)} sections ({listing}). Say which one to {what}.")
+            raise ControllerError(
+                f"{course_id} has {len(sections)} sections ({listing}). Say which one to {what}."
+            )
         return sections[0]
     wanted = str(args.section).strip().casefold()
     for row in sections:
-        names = {str(row["section_id"] or "").casefold(), row["display"].casefold(), row["display"].split(".")[-1].casefold()}
+        names = {
+            str(row["section_id"] or "").casefold(),
+            row["display"].casefold(),
+            row["display"].split(".")[-1].casefold(),
+        }
         if wanted in names:
             return row
-    raise ControllerError(f"{course_id} has no section '{args.section}'. Its sections are: {_join(row['display'] for row in sections)}.")
+    raise ControllerError(
+        f"{course_id} has no section '{args.section}'. Its sections are: {_join(row['display'] for row in sections)}."
+    )
 
 
 def update_course(request, args: UpdateCourseArgs) -> str:
     session = get_session(request)
-    entities = session.config.config
+    entities = session.require_config().config
     if not _asked(
         args.new_course_id, args.new_section_id, args.credits, args.capacity, args.modality, args.rooms,
         args.labs, args.faculty, args.conflicts, args.required_room_features, args.required_lab_features,
@@ -334,7 +430,13 @@ def update_course(request, args: UpdateCourseArgs) -> str:
     if args.reserve_room_during_lab is not None:
         form["reserve_room_during_lab"] = args.reserve_room_during_lab
 
-    other_ids = sorted({c.course_id for position, c in enumerate(entities.courses) if position != row["index"]})
+    other_ids = sorted(
+        {
+            c.course_id
+            for position, c in enumerate(entities.courses)
+            if position != row["index"]
+        }
+    )
     for key, field, known in (
         ("room", args.rooms, [room.name for room in entities.rooms]),
         ("lab", args.labs, [lab.name for lab in entities.labs]),
@@ -342,7 +444,10 @@ def update_course(request, args: UpdateCourseArgs) -> str:
         ("conflicts", args.conflicts, other_ids),
     ):
         form[key] = _edited_list(current[key], field, known)
-    for key, field in (("required_room_features", args.required_room_features), ("required_lab_features", args.required_lab_features)):
+    for key, field in (
+        ("required_room_features", args.required_room_features),
+        ("required_lab_features", args.required_lab_features),
+    ):
         before = [item.strip() for item in str(current[key]).split(",") if item.strip()]
         form[key] = _edited_list(before, field)
 
@@ -352,9 +457,17 @@ def update_course(request, args: UpdateCourseArgs) -> str:
                        ("keep room during lab", "reserve_room_during_lab")):  # fmt: skip
         if form[key] != current[key]:
             changes.append(f"{label} {current[key]} -> {form[key]}")
-    for label, key in (("rooms", "room"), ("labs", "lab"), ("faculty", "faculty"), ("conflicts", "conflicts")):
+    for label, key in (
+        ("rooms", "room"),
+        ("labs", "lab"),
+        ("faculty", "faculty"),
+        ("conflicts", "conflicts"),
+    ):
         changes += _list_changes(label, current[key], form[key])
-    for label, key in (("required room features", "required_room_features"), ("required lab features", "required_lab_features")):
+    for label, key in (
+        ("required room features", "required_room_features"),
+        ("required lab features", "required_lab_features"),
+    ):
         before = [item.strip() for item in str(current[key]).split(",") if item.strip()]
         changes += _list_changes(label, before, form[key])
     name = row["display"]
@@ -362,9 +475,18 @@ def update_course(request, args: UpdateCourseArgs) -> str:
         return Unchanged(f"{name} already has those values, so nothing was changed.")
 
     before_version = _version(request)
-    notices = courses.update_course(request, row["index"], form, expected_course_id=current["course_id"])
+    notices = courses.update_course(
+        request, row["index"], form, expected_course_id=current["course_id"]
+    )
     now_row = courses.describe_courses(request)["courses"][row["index"]]
-    return _finish(request, before_version, f"Course {name}", changes, notices, _course_line(now_row))
+    return _finish(
+        request,
+        before_version,
+        f"Course {name}",
+        changes,
+        notices,
+        _course_line(now_row),
+    )
 
 
 # ---------------------------------------------------------------------- #
@@ -374,7 +496,10 @@ class PreferenceArgs(BaseModel):
     kind: str = Field(description="What the preference is for: course, room or lab")
     name: str = Field(description="The course ID, room name or lab name")
     weight: int | None = Field(
-        default=None, ge=0, le=10, description="How much they want it, 0 to 10. Leave out to REMOVE the preference"
+        default=None,
+        ge=0,
+        le=10,
+        description="How much they want it, 0 to 10. Leave out to REMOVE the preference",
     )
 
     @field_validator("kind")
@@ -388,24 +513,40 @@ class PreferenceArgs(BaseModel):
 
 class UpdateFacultyArgs(BaseModel):
     name: str = Field(description="The faculty member to change, as the user wrote it")
-    new_name: str | None = Field(default=None, description="A new name. Only when the user wants to rename them")
-    minimum_credits: int | None = Field(default=None, description="Fewest credits they must teach")
-    maximum_credits: int | None = Field(default=None, description="Most credits they can teach")
-    unique_course_limit: int | None = Field(default=None, description="Most different courses they can teach")
-    maximum_days: int | None = Field(default=None, description="Most teaching days per week (0 to 5)")
-    availability: list[AvailabilityArgs] | None = Field(
-        default=None, description="The COMPLETE new weekly availability (every day and range). Leave out to keep it"
+    new_name: str | None = Field(
+        default=None, description="A new name. Only when the user wants to rename them"
     )
-    mandatory_days: ListChange | None = Field(default=None, description="Weekdays (MON..FRI) they must teach on")
+    minimum_credits: int | None = Field(
+        default=None, description="Fewest credits they must teach"
+    )
+    maximum_credits: int | None = Field(
+        default=None, description="Most credits they can teach"
+    )
+    unique_course_limit: int | None = Field(
+        default=None, description="Most different courses they can teach"
+    )
+    maximum_days: int | None = Field(
+        default=None, description="Most teaching days per week (0 to 5)"
+    )
+    availability: list[AvailabilityArgs] | None = Field(
+        default=None,
+        description="The COMPLETE new weekly availability (every day and range). Leave out to keep it",
+    )
+    mandatory_days: ListChange | None = Field(
+        default=None, description="Weekdays (MON..FRI) they must teach on"
+    )
     preferences: list[PreferenceArgs] | None = Field(
-        default=None, description="Course, room or lab preferences to set (with a weight) or remove (no weight)"
+        default=None,
+        description="Course, room or lab preferences to set (with a weight) or remove (no weight)",
     )
 
 
 def update_faculty(request, args: UpdateFacultyArgs) -> str:
     session = get_session(request)
-    entities = session.config.config
-    found = _existing(args.name, [person.name for person in entities.faculty], "faculty member")
+    entities = session.require_config().config
+    found = _existing(
+        args.name, [person.name for person in entities.faculty], "faculty member"
+    )
     if not _asked(
         args.new_name, args.minimum_credits, args.maximum_credits, args.unique_course_limit, args.maximum_days,
         args.availability, args.mandatory_days, args.preferences,
@@ -418,12 +559,19 @@ def update_faculty(request, args: UpdateFacultyArgs) -> str:
         "mandatory_days", "times", "course_preferences", "room_preferences", "lab_preferences",
     )}  # fmt: skip
     form["name"] = (args.new_name or "").strip() or found
-    for key in ("minimum_credits", "maximum_credits", "unique_course_limit", "maximum_days"):
+    for key in (
+        "minimum_credits",
+        "maximum_credits",
+        "unique_course_limit",
+        "maximum_days",
+    ):
         if getattr(args, key) is not None:
             form[key] = getattr(args, key)
         elif form[key] is None:
             # The edit form needs a whole number here; never invent one for the user.
-            raise ControllerError(f"{found} has no {key.replace('_', ' ')} set. Tell me what it should be.")
+            raise ControllerError(
+                f"{found} has no {key.replace('_', ' ')} set. Tell me what it should be."
+            )
     if args.availability is not None:
         form["times"] = _times_from(args.availability)
     if args.mandatory_days is not None and args.mandatory_days.asked:
@@ -445,18 +593,26 @@ def update_faculty(request, args: UpdateFacultyArgs) -> str:
     preference_changes = []
     for item in args.preferences or []:
         bucket = form[f"{item.kind}_preferences"]
-        target = find_name(item.name.strip(), list(bucket) if item.weight is None else known[item.kind])
+        target = find_name(
+            item.name.strip(), list(bucket) if item.weight is None else known[item.kind]
+        )
         if target is None:
             raise ControllerError(
                 f"No {item.kind} named '{item.name.strip()}' "
-                + ("has a preference to remove." if item.weight is None else "exists to have a preference for.")
+                + (
+                    "has a preference to remove."
+                    if item.weight is None
+                    else "exists to have a preference for."
+                )
             )
         if item.weight is None:
             bucket.pop(target, None)
             preference_changes.append(f"{item.kind} preference for {target} removed")
         elif bucket.get(target) != item.weight:
             bucket[target] = item.weight
-            preference_changes.append(f"{item.kind} preference for {target} set to {item.weight}")
+            preference_changes.append(
+                f"{item.kind} preference for {target} set to {item.weight}"
+            )
 
     changes = []
     if form["name"] != found:
@@ -467,10 +623,14 @@ def update_faculty(request, args: UpdateFacultyArgs) -> str:
             changes.append(f"{label} {current[key]} -> {form[key]}")
     if form["times"] != current["times"]:
         changes.append(f"availability: {_times_text(form['times'])}")
-    changes += _list_changes("mandatory days", current["mandatory_days"], form["mandatory_days"])
+    changes += _list_changes(
+        "mandatory days", current["mandatory_days"], form["mandatory_days"]
+    )
     changes += preference_changes
     if not changes:
-        return Unchanged(f"Faculty member '{found}' already has those values, so nothing was changed.")
+        return Unchanged(
+            f"Faculty member '{found}' already has those values, so nothing was changed."
+        )
 
     before_version = _version(request)
     notices = faculty.update_faculty(request, found, form)
@@ -479,7 +639,9 @@ def update_faculty(request, args: UpdateFacultyArgs) -> str:
         f"{now['minimum_credits']}-{now['maximum_credits']} credits, at most "
         f"{_plural(now['unique_course_limit'], 'different course')} and {_plural(now['maximum_days'], 'teaching day')}"
     )
-    return _finish(request, before_version, f"Faculty member '{found}'", changes, notices, summary)
+    return _finish(
+        request, before_version, f"Faculty member '{found}'", changes, notices, summary
+    )
 
 
 # ---------------------------------------------------------------------- #
@@ -487,7 +649,9 @@ def update_faculty(request, args: UpdateFacultyArgs) -> str:
 # ---------------------------------------------------------------------- #
 class TimeSlotRef(BaseModel):
     day: str = Field(description="Weekday: MON, TUE, WED, THU or FRI")
-    start: str = Field(description='Start time of the existing time slot, 24-hour, e.g. "08:00"')
+    start: str = Field(
+        description='Start time of the existing time slot, 24-hour, e.g. "08:00"'
+    )
 
     @field_validator("day")
     @classmethod
@@ -498,12 +662,20 @@ class TimeSlotRef(BaseModel):
 class UpdateTimeSlotArgs(TimeSlotRef):
     new_start: str | None = Field(default=None, description="New start time (24-hour)")
     new_end: str | None = Field(default=None, description="New end time (24-hour)")
-    new_spacing: int | None = Field(default=None, description="New minutes between possible class start times")
+    new_spacing: int | None = Field(
+        default=None, description="New minutes between possible class start times"
+    )
 
 
 class TimingOptionsArgs(BaseModel):
-    max_time_gap: int | None = Field(default=None, description="Largest gap in minutes allowed between a faculty member's classes")
-    min_time_overlap: int | None = Field(default=None, description="Smallest overlap in minutes that counts as an overlap")
+    max_time_gap: int | None = Field(
+        default=None,
+        description="Largest gap in minutes allowed between a faculty member's classes",
+    )
+    min_time_overlap: int | None = Field(
+        default=None,
+        description="Smallest overlap in minutes that counts as an overlap",
+    )
 
 
 def _find_block(request, day: str, start: str) -> tuple[int, dict]:
@@ -514,7 +686,9 @@ def _find_block(request, day: str, start: str) -> tuple[int, dict]:
         if block["start"] == wanted:
             return block["index"], block
     starts = _join(f"{block['start']}-{block['end']}" for block in row)
-    raise ControllerError(f"There is no time slot starting at {wanted} on {DAY_NAMES[day]}. Its time slots are: {starts}.")
+    raise ControllerError(
+        f"There is no time slot starting at {wanted} on {DAY_NAMES[day]}. Its time slots are: {starts}."
+    )
 
 
 def update_time_slot(request, args: UpdateTimeSlotArgs) -> str:
@@ -527,7 +701,11 @@ def update_time_slot(request, args: UpdateTimeSlotArgs) -> str:
         "spacing": block["spacing"] if args.new_spacing is None else args.new_spacing,
     }
     label = f"The {DAY_NAMES[args.day]} time slot {block['start']}-{block['end']}"
-    if (form["start"], form["end"], form["spacing"]) == (block["start"], block["end"], block["spacing"]):
+    if (form["start"], form["end"], form["spacing"]) == (
+        block["start"],
+        block["end"],
+        block["spacing"],
+    ):
         return Unchanged(f"{label} already has those values, so nothing was changed.")
     before = _version(request)
     warnings = timeslots.update_timeslot(request, args.day, index, form)
@@ -540,16 +718,26 @@ def update_timing_options(request, args: TimingOptionsArgs) -> str:
         raise ControllerError(NOTHING_TO_CHANGE)
     now = timeslots.describe_timeslots(request)
     form = {
-        "max_time_gap": args.max_time_gap if args.max_time_gap is not None else now["max_time_gap"],
-        "min_time_overlap": args.min_time_overlap if args.min_time_overlap is not None else now["min_time_overlap"],
+        "max_time_gap": args.max_time_gap
+        if args.max_time_gap is not None
+        else now["max_time_gap"],
+        "min_time_overlap": args.min_time_overlap
+        if args.min_time_overlap is not None
+        else now["min_time_overlap"],
     }
     changes = []
     if form["max_time_gap"] != now["max_time_gap"]:
-        changes.append(f"max time gap {now['max_time_gap']} -> {form['max_time_gap']} min")
+        changes.append(
+            f"max time gap {now['max_time_gap']} -> {form['max_time_gap']} min"
+        )
     if form["min_time_overlap"] != now["min_time_overlap"]:
-        changes.append(f"min time overlap {now['min_time_overlap']} -> {form['min_time_overlap']} min")
+        changes.append(
+            f"min time overlap {now['min_time_overlap']} -> {form['min_time_overlap']} min"
+        )
     if not changes:
-        return Unchanged("The time slot timing options already have those values, so nothing was changed.")
+        return Unchanged(
+            "The time slot timing options already have those values, so nothing was changed."
+        )
     before = _version(request)
     timeslots.update_timing_options(request, form)
     return _finish(request, before, "The time slot timing options", changes, [])
@@ -559,26 +747,42 @@ def update_timing_options(request, args: TimingOptionsArgs) -> str:
 #  Class patterns and meetings
 # ---------------------------------------------------------------------- #
 class PatternRef(BaseModel):
-    pattern_number: int = Field(description='The pattern number shown by list_class_patterns ("Pattern 2" is 2)')
+    pattern_number: int = Field(
+        description='The pattern number shown by list_class_patterns ("Pattern 2" is 2)'
+    )
 
 
 class UpdatePatternArgs(PatternRef):
     credits: int | None = Field(default=None, description="New credit hours")
-    start_time: str | None = Field(default=None, description="A fixed 24-hour start time for the whole pattern")
-    clear_start_time: bool = Field(default=False, description="True to remove the pattern's fixed start time")
-    enabled: bool | None = Field(default=None, description="True to enable the pattern, False to disable it")
+    start_time: str | None = Field(
+        default=None, description="A fixed 24-hour start time for the whole pattern"
+    )
+    clear_start_time: bool = Field(
+        default=False, description="True to remove the pattern's fixed start time"
+    )
+    enabled: bool | None = Field(
+        default=None, description="True to enable the pattern, False to disable it"
+    )
 
 
 class MeetingRef(PatternRef):
-    meeting_number: int = Field(description="The meeting's number within its pattern, counting from 1")
+    meeting_number: int = Field(
+        description="The meeting's number within its pattern, counting from 1"
+    )
 
 
 class AddMeetingArgs(PatternRef):
     day: str = Field(description="Weekday: MON, TUE, WED, THU or FRI")
     duration: int = Field(description="Length of the meeting in minutes")
-    lab: bool = Field(default=False, description="True if this meeting is held in a lab")
-    delivery: str = Field(default="in_person", description="in_person, online, or hybrid")
-    start_time: str | None = Field(default=None, description="Fixed 24-hour start time, only if the user gave one")
+    lab: bool = Field(
+        default=False, description="True if this meeting is held in a lab"
+    )
+    delivery: str = Field(
+        default="in_person", description="in_person, online, or hybrid"
+    )
+    start_time: str | None = Field(
+        default=None, description="Fixed 24-hour start time, only if the user gave one"
+    )
 
     @field_validator("day")
     @classmethod
@@ -587,12 +791,22 @@ class AddMeetingArgs(PatternRef):
 
 
 class UpdateMeetingArgs(MeetingRef):
-    day: str | None = Field(default=None, description="New weekday: MON, TUE, WED, THU or FRI")
+    day: str | None = Field(
+        default=None, description="New weekday: MON, TUE, WED, THU or FRI"
+    )
     duration: int | None = Field(default=None, description="New length in minutes")
-    lab: bool | None = Field(default=None, description="True if it should be held in a lab")
-    delivery: str | None = Field(default=None, description="in_person, online, or hybrid")
-    start_time: str | None = Field(default=None, description="A fixed 24-hour start time")
-    clear_start_time: bool = Field(default=False, description="True to remove the meeting's fixed start time")
+    lab: bool | None = Field(
+        default=None, description="True if it should be held in a lab"
+    )
+    delivery: str | None = Field(
+        default=None, description="in_person, online, or hybrid"
+    )
+    start_time: str | None = Field(
+        default=None, description="A fixed 24-hour start time"
+    )
+    clear_start_time: bool = Field(
+        default=False, description="True to remove the meeting's fixed start time"
+    )
 
     @field_validator("day")
     @classmethod
@@ -601,7 +815,7 @@ class UpdateMeetingArgs(MeetingRef):
 
 
 def _pattern_index(request, args: PatternRef) -> int:
-    count = len(get_session(request).config.time_slot_config.classes)
+    count = len(get_session(request).require_config().time_slot_config.classes)
     if not 0 <= args.pattern_number < count:
         raise ControllerError(
             f"There is no class pattern {args.pattern_number}. Patterns are numbered 0 to {count - 1}; "
@@ -612,9 +826,13 @@ def _pattern_index(request, args: PatternRef) -> int:
 
 def _meeting_index(request, args: MeetingRef) -> tuple[int, int]:
     pattern = _pattern_index(request, args)
-    count = len(get_session(request).config.time_slot_config.classes[pattern].meetings)
+    count = len(
+        get_session(request).require_config().time_slot_config.classes[pattern].meetings
+    )
     if not 1 <= args.meeting_number <= count:
-        raise ControllerError(f"Pattern {pattern} has {_plural(count, 'meeting')}, numbered 1 to {count}.")
+        raise ControllerError(
+            f"Pattern {pattern} has {_plural(count, 'meeting')}, numbered 1 to {count}."
+        )
     return pattern, args.meeting_number - 1
 
 
@@ -623,7 +841,13 @@ def add_meeting(request, args: AddMeetingArgs) -> str:
     warnings = meetings.add_meeting(
         request,
         pattern,
-        {"day": args.day, "duration": args.duration, "lab": args.lab, "delivery": args.delivery, "start_time": args.start_time},
+        {
+            "day": args.day,
+            "duration": args.duration,
+            "lab": args.lab,
+            "delivery": args.delivery,
+            "start_time": args.start_time,
+        },
     )
     return (
         f"Meeting added to pattern {pattern}: {DAY_NAMES[args.day]} {args.duration} min"
@@ -634,20 +858,26 @@ def add_meeting(request, args: AddMeetingArgs) -> str:
 
 
 def update_class_pattern(request, args: UpdatePatternArgs) -> str:
-    if not _asked(args.credits, args.start_time, args.clear_start_time or None, args.enabled):
+    if not _asked(
+        args.credits, args.start_time, args.clear_start_time or None, args.enabled
+    ):
         raise ControllerError(NOTHING_TO_CHANGE)
     index = _pattern_index(request, args)
     current = patterns.get_pattern(request, index)
     form = {
         "credits": current["credits"] if args.credits is None else args.credits,
-        "start_time": "" if args.clear_start_time else (_hhmm(args.start_time) if args.start_time else current["start_time"]),
+        "start_time": ""
+        if args.clear_start_time
+        else (_hhmm(args.start_time) if args.start_time else current["start_time"]),
         "enabled": current["enabled"] if args.enabled is None else args.enabled,
     }
     changes = []
     if form["credits"] != current["credits"]:
         changes.append(f"credits {current['credits']} -> {form['credits']}")
     if form["start_time"] != current["start_time"]:
-        changes.append(f"start time {current['start_time'] or 'none'} -> {form['start_time'] or 'none'}")
+        changes.append(
+            f"start time {current['start_time'] or 'none'} -> {form['start_time'] or 'none'}"
+        )
     if form["enabled"] != current["enabled"]:
         changes.append("enabled" if form["enabled"] else "disabled")
     label = f"Class pattern {index}"
@@ -659,7 +889,14 @@ def update_class_pattern(request, args: UpdatePatternArgs) -> str:
 
 
 def update_meeting(request, args: UpdateMeetingArgs) -> str:
-    if not _asked(args.day, args.duration, args.lab, args.delivery, args.start_time, args.clear_start_time or None):
+    if not _asked(
+        args.day,
+        args.duration,
+        args.lab,
+        args.delivery,
+        args.start_time,
+        args.clear_start_time or None,
+    ):
         raise ControllerError(NOTHING_TO_CHANGE)
     pattern, meeting = _meeting_index(request, args)
     current = meetings.get_meeting(request, pattern, meeting)
@@ -668,10 +905,18 @@ def update_meeting(request, args: UpdateMeetingArgs) -> str:
         "duration": current["duration"] if args.duration is None else args.duration,
         "lab": current["lab"] if args.lab is None else args.lab,
         "delivery": (args.delivery or current["delivery"]).strip().lower(),
-        "start_time": "" if args.clear_start_time else (_hhmm(args.start_time) if args.start_time else current["start_time"]),
+        "start_time": ""
+        if args.clear_start_time
+        else (_hhmm(args.start_time) if args.start_time else current["start_time"]),
     }
     changes = []
-    for label, key in (("day", "day"), ("duration", "duration"), ("lab", "lab"), ("delivery", "delivery"), ("start time", "start_time")):
+    for label, key in (
+        ("day", "day"),
+        ("duration", "duration"),
+        ("lab", "lab"),
+        ("delivery", "delivery"),
+        ("start time", "start_time"),
+    ):
         if form[key] != current[key]:
             changes.append(f"{label} {current[key] or 'none'} -> {form[key] or 'none'}")
     label = f"Meeting {args.meeting_number} of pattern {pattern}"
@@ -686,29 +931,52 @@ def update_meeting(request, args: UpdateMeetingArgs) -> str:
 #  Global settings
 # ---------------------------------------------------------------------- #
 class UpdateSettingsArgs(BaseModel):
-    limit: int | None = Field(default=None, description="New generation limit (a positive whole number)")
-    reset_limit: bool = Field(default=False, description="True to put the generation limit back to its default")
-    enable_flags: list[str] = Field(default_factory=list, description="Optimizer flags to turn on")
-    disable_flags: list[str] = Field(default_factory=list, description="Optimizer flags to turn off")
+    limit: int | None = Field(
+        default=None, description="New generation limit (a positive whole number)"
+    )
+    reset_limit: bool = Field(
+        default=False,
+        description="True to put the generation limit back to its default",
+    )
+    enable_flags: list[str] = Field(
+        default_factory=list, description="Optimizer flags to turn on"
+    )
+    disable_flags: list[str] = Field(
+        default_factory=list, description="Optimizer flags to turn off"
+    )
 
 
 def update_global_settings(request, args: UpdateSettingsArgs) -> str:
-    if not _asked(args.limit, args.reset_limit or None, args.enable_flags, args.disable_flags):
+    if not _asked(
+        args.limit, args.reset_limit or None, args.enable_flags, args.disable_flags
+    ):
         raise ControllerError(NOTHING_TO_CHANGE)
     if args.limit is not None and args.reset_limit:
-        raise ControllerError("Ask for either a new generation limit or a reset to the default, not both.")
+        raise ControllerError(
+            "Ask for either a new generation limit or a reset to the default, not both."
+        )
     data = settings.describe_settings(request)
     known = [flag["name"] for flag in data["flags"]]
     enable = [_existing(flag, known, "optimizer flag") for flag in args.enable_flags]
     disable = [_existing(flag, known, "optimizer flag") for flag in args.disable_flags]
     if set(enable) & set(disable):
-        raise ControllerError("The same optimizer flag can't be turned both on and off.")
-    wanted = [flag for flag in known if (flag in data["enabled_flags"] and flag not in disable) or flag in enable]
+        raise ControllerError(
+            "The same optimizer flag can't be turned both on and off."
+        )
+    wanted = [
+        flag
+        for flag in known
+        if (flag in data["enabled_flags"] and flag not in disable) or flag in enable
+    ]
     limit = data["default_limit"] if args.reset_limit else args.limit
     before = _version(request)
-    changes = settings.update_settings(request, {"limit": limit, "optimizer_flags": wanted})
+    changes = settings.update_settings(
+        request, {"limit": limit, "optimizer_flags": wanted}
+    )
     if _version(request) == before:
-        return Unchanged("The global settings already have those values, so nothing was changed.")
+        return Unchanged(
+            "The global settings already have those values, so nothing was changed."
+        )
     return "Global settings updated: " + " ".join(changes)
 
 
@@ -727,7 +995,11 @@ class _Pending:
 
 def _short_names(names: list[str], limit: int = 8) -> str:
     names = list(names)
-    return _join(names) if len(names) <= limit else _join(names[:limit]) + f" and {len(names) - limit} more"
+    return (
+        _join(names)
+        if len(names) <= limit
+        else _join(names[:limit]) + f" and {len(names) - limit} more"
+    )
 
 
 def _plan_lines(plan: deps.Plan) -> list[str]:
@@ -738,7 +1010,9 @@ def _plan_lines(plan: deps.Plan) -> list[str]:
     return lines or ["- Nothing else in the configuration refers to it."]
 
 
-def _stage(request, *, label: str, lines: list[str], done: str, run: Callable[[Any], list[str]]) -> str:
+def _stage(
+    request, *, label: str, lines: list[str], done: str, run: Callable[[Any], list[str]]
+) -> str:
     """Remember the delete that was just described, and tell the user what it would do."""
     session = get_session(request)
     setattr(
@@ -749,31 +1023,65 @@ def _stage(request, *, label: str, lines: list[str], done: str, run: Callable[[A
     return "\n".join(
         [f"Deleting {label} would do this:"]
         + lines
-        + ['Nothing has been deleted yet. Reply "confirm" to delete it, or "cancel" to keep it.']
+        + [
+            'Nothing has been deleted yet. Reply "confirm" to delete it, or "cancel" to keep it.'
+        ]
     )
 
 
-def _stage_plan(request, kind: str, ident, label: str, run: Callable[[Any], list[str]]) -> str:
+def _stage_plan(
+    request, kind: str, ident, label: str, run: Callable[[Any], list[str]]
+) -> str:
     config = require_config(get_session(request), "deleting")
     the_plan = deps.plan(config, kind, ident)
     deps.resolve(the_plan)  # raises with the reason when something blocks the delete
-    return _stage(request, label=label, lines=_plan_lines(the_plan), done=f"Deleted {label}.", run=run)
+    return _stage(
+        request,
+        label=label,
+        lines=_plan_lines(the_plan),
+        done=f"Deleted {label}.",
+        run=run,
+    )
 
 
 def delete_room(request, args: NameArgs) -> str:
-    name = _existing(args.name, [room.name for room in get_session(request).config.config.rooms], "room")
-    return _stage_plan(request, "room", name, f"room '{name}'", lambda req: rooms.delete_room(req, name))
+    name = _existing(
+        args.name,
+        [room.name for room in get_session(request).require_config().config.rooms],
+        "room",
+    )
+    return _stage_plan(
+        request,
+        "room",
+        name,
+        f"room '{name}'",
+        lambda req: rooms.delete_room(req, name),
+    )
 
 
 def delete_lab(request, args: NameArgs) -> str:
-    name = _existing(args.name, [lab.name for lab in get_session(request).config.config.labs], "lab")
-    return _stage_plan(request, "lab", name, f"lab '{name}'", lambda req: labs.delete_lab(req, name))
+    name = _existing(
+        args.name,
+        [lab.name for lab in get_session(request).require_config().config.labs],
+        "lab",
+    )
+    return _stage_plan(
+        request, "lab", name, f"lab '{name}'", lambda req: labs.delete_lab(req, name)
+    )
 
 
 def delete_faculty(request, args: NameArgs) -> str:
-    people = [person.name for person in get_session(request).config.config.faculty]
+    people = [
+        person.name for person in get_session(request).require_config().config.faculty
+    ]
     name = _existing(args.name, people, "faculty member")
-    return _stage_plan(request, "faculty", name, f"faculty member '{name}'", lambda req: faculty.delete_faculty(req, name))
+    return _stage_plan(
+        request,
+        "faculty",
+        name,
+        f"faculty member '{name}'",
+        lambda req: faculty.delete_faculty(req, name),
+    )
 
 
 def delete_course(request, args: SectionArgs) -> str:
@@ -788,15 +1096,29 @@ def delete_course(request, args: SectionArgs) -> str:
 def delete_class_pattern(request, args: PatternRef) -> str:
     index = _pattern_index(request, args)
     pattern = patterns.get_pattern(request, index)
-    label = f"class pattern {index} ({pattern['credits']} credits: {pattern['summary']})"
-    return _stage_plan(request, "pattern", index, label, lambda req: patterns.delete_pattern(req, index))
+    label = (
+        f"class pattern {index} ({pattern['credits']} credits: {pattern['summary']})"
+    )
+    return _stage_plan(
+        request,
+        "pattern",
+        index,
+        label,
+        lambda req: patterns.delete_pattern(req, index),
+    )
 
 
 def delete_time_slot(request, args: TimeSlotRef) -> str:
     index, block = _find_block(request, args.day, args.start)
-    day_blocks = next(item for item in timeslots.describe_timeslots(request)["days"] if item["day"] == args.day)["blocks"]
+    day_blocks = next(
+        item
+        for item in timeslots.describe_timeslots(request)["days"]
+        if item["day"] == args.day
+    )["blocks"]
     if len(day_blocks) == 1:
-        raise ControllerError(f"Can't delete the only time block on {args.day} -- every weekday needs at least one.")
+        raise ControllerError(
+            f"Can't delete the only time block on {args.day} -- every weekday needs at least one."
+        )
     label = f"the {DAY_NAMES[args.day]} time slot {block['start']}-{block['end']}"
     return _stage(
         request, label=label, lines=["- Nothing else in the configuration refers to it, but fewer time slots may leave some classes with fewer places to go."],
@@ -806,7 +1128,9 @@ def delete_time_slot(request, args: TimeSlotRef) -> str:
 
 def delete_meeting(request, args: MeetingRef) -> str:
     pattern, meeting = _meeting_index(request, args)
-    count = len(get_session(request).config.time_slot_config.classes[pattern].meetings)
+    count = len(
+        get_session(request).require_config().time_slot_config.classes[pattern].meetings
+    )
     if count == 1:
         raise ControllerError(meetings.LAST_MEETING_MESSAGE)
     row = meetings.get_meeting(request, pattern, meeting)
@@ -822,7 +1146,9 @@ def confirm_delete(request, args: NoArgs) -> str:
     session = get_session(request)
     pending = getattr(session, _PENDING_ATTR, None)
     if pending is None:
-        raise ControllerError("There is nothing waiting to be deleted. Ask me to delete something first, then confirm.")
+        raise ControllerError(
+            "There is nothing waiting to be deleted. Ask me to delete something first, then confirm."
+        )
     if pending.token == _token(request):
         raise ControllerError(
             "A delete has to be confirmed in a separate message, after you have seen what it would change. "
@@ -830,7 +1156,9 @@ def confirm_delete(request, args: NoArgs) -> str:
         )
     setattr(session, _PENDING_ATTR, None)  # used up, whatever happens next
     if _now() - pending.created > PENDING_SECONDS:
-        raise ControllerError(f"That delete ({pending.label}) was described too long ago. Ask me again.")
+        raise ControllerError(
+            f"That delete ({pending.label}) was described too long ago. Ask me again."
+        )
     if session.history.version != pending.version:
         raise ControllerError(
             f"The configuration changed after I described deleting {pending.label}, so I did not delete it. "
@@ -855,7 +1183,13 @@ def cancel_delete(request, args: NoArgs) -> str:
 #  The registry for this file
 # ---------------------------------------------------------------------- #
 CHANGE_TOOLS: tuple[AiTool, ...] = (
-    AiTool("add_meeting", "Add one meeting to an existing class pattern.", AddMeetingArgs, add_meeting, write=True),
+    AiTool(
+        "add_meeting",
+        "Add one meeting to an existing class pattern.",
+        AddMeetingArgs,
+        add_meeting,
+        write=True,
+    ),
     AiTool(
         "update_room",
         "Change a room: rename it, change its capacity, features or availability. Send only what changes.",
@@ -921,8 +1255,18 @@ CHANGE_TOOLS: tuple[AiTool, ...] = (
         update_global_settings,
         write=True,
     ),
-    AiTool("delete_room", "Describe what deleting a room would change. Deletes nothing yet.", NameArgs, delete_room),
-    AiTool("delete_lab", "Describe what deleting a lab would change. Deletes nothing yet.", NameArgs, delete_lab),
+    AiTool(
+        "delete_room",
+        "Describe what deleting a room would change. Deletes nothing yet.",
+        NameArgs,
+        delete_room,
+    ),
+    AiTool(
+        "delete_lab",
+        "Describe what deleting a lab would change. Deletes nothing yet.",
+        NameArgs,
+        delete_lab,
+    ),
     AiTool(
         "delete_course",
         "Describe what deleting a course section would change. Deletes nothing yet.",

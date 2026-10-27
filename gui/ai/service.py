@@ -36,7 +36,9 @@ logger = logging.getLogger("gui.ai")
 
 MAX_REQUEST_LENGTH = 2000
 EMPTY_MESSAGE = "Type a request first."
-TOO_LONG_MESSAGE = f"That request is too long. Keep it under {MAX_REQUEST_LENGTH} characters."
+TOO_LONG_MESSAGE = (
+    f"That request is too long. Keep it under {MAX_REQUEST_LENGTH} characters."
+)
 BUSY_MESSAGE = "Your previous request is still being processed. Wait for it to finish, then try again."
 SERVICE_FAILED = "The AI service couldn't finish that request. Try again in a moment."
 NO_ANSWER = "The AI didn't give an answer. Try asking in a different way."
@@ -142,20 +144,28 @@ def handle_request(request, text: str) -> Reply:
 
 def _run(request, text: str) -> Reply:
     limit = history_limit()
-    earlier = (list(getattr(get_session(request), HISTORY_ATTR, None) or []))[-limit:] if limit else []
+    earlier = (
+        (list(getattr(get_session(request), HISTORY_ATTR, None) or []))[-limit:]
+        if limit
+        else []
+    )
     toolbox = ToolBox(request, history=earlier)
     try:
         runner = get_runner()
         model_text = runner.run(text, toolbox)
     except NotConfigured as error:
         return Reply(ok=False, message=f"{error} Nothing was changed.")
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001
         # Only the error's type is logged: provider messages can echo request
         # details, and the API key must never reach a log.
         logger.warning("AI request failed: %s", type(error).__name__)
         if toolbox.results:
             reply = compose(toolbox.results)
-            return Reply(ok=False, message=f"{reply.message}\n{SERVICE_FAILED}", changed=reply.changed)
+            return Reply(
+                ok=False,
+                message=f"{reply.message}\n{SERVICE_FAILED}",
+                changed=reply.changed,
+            )
         return Reply(ok=False, message=f"{SERVICE_FAILED} {UNCHANGED_NOTE}")
     reply = compose(toolbox.results, model_text)
     _remember(request, text, reply, limit)

@@ -39,7 +39,9 @@ _FORM_FIELDS = [
 
 def _course_form(request, *args, course_index=None, **kwargs):
     """A CourseForm whose pickers list this configuration's rooms, labs, etc."""
-    return CourseForm(*args, **course_controller.form_choices(request, course_index), **kwargs)
+    return CourseForm(
+        *args, **course_controller.form_choices(request, course_index), **kwargs
+    )
 
 
 def courses(request):
@@ -60,11 +62,15 @@ def course_add(request):
             except ControllerError as error:
                 _attach_errors(form, error)
             else:
-                messages.success(request, f"Course '{form.cleaned_data['course_id']}' added.")
+                messages.success(
+                    request, f"Course '{form.cleaned_data['course_id']}' added."
+                )
                 _flash_warnings(request, notices)
                 return redirect("gui:courses")
     else:
-        form = _course_form(request, initial={"modality": "in_person", "reserve_room_during_lab": True})
+        form = _course_form(
+            request, initial={"modality": "in_person", "reserve_room_during_lab": True}
+        )
     return render(request, "gui/course_add.html", {"active": "config", "form": form})
 
 
@@ -88,7 +94,9 @@ def course_edit(request, course_index):
             except ControllerError as error:
                 _attach_errors(form, error)
             else:
-                messages.success(request, f"Course '{form.cleaned_data['course_id']}' updated.")
+                messages.success(
+                    request, f"Course '{form.cleaned_data['course_id']}' updated."
+                )
                 _flash_warnings(request, notices)
                 return redirect("gui:courses")
     else:
@@ -97,7 +105,11 @@ def course_edit(request, course_index):
             course_index=course_index,
             initial={name: course[name] for name in _FORM_FIELDS},
         )
-    return render(request, "gui/course_edit.html", {"active": "config", "form": form, "course": course})
+    return render(
+        request,
+        "gui/course_edit.html",
+        {"active": "config", "form": form, "course": course},
+    )
 
 
 def course_delete(request, course_index):

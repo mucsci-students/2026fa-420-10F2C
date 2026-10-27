@@ -32,7 +32,11 @@ def read_upload(uploaded_file, field: str, max_bytes: int = MAX_UPLOAD_BYTES) ->
         raw = uploaded_file.read()
     except OSError as error:
         raise ControllerError(
-            [FieldError(field, "The file could not be read. Check the file and try again.")]
+            [
+                FieldError(
+                    field, "The file could not be read. Check the file and try again."
+                )
+            ]
         ) from error
 
     if not raw or not raw.strip():

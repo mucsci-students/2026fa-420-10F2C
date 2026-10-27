@@ -59,11 +59,15 @@ def room_edit(request, room_name):
         form = RoomForm(request.POST)
         if form.is_valid():
             try:
-                notices = room_controller.update_room(request, room_name, form.cleaned_data)
+                notices = room_controller.update_room(
+                    request, room_name, form.cleaned_data
+                )
             except ControllerError as error:
                 _attach_errors(form, error)
             else:
-                messages.success(request, f"Room '{form.cleaned_data['name']}' updated.")
+                messages.success(
+                    request, f"Room '{form.cleaned_data['name']}' updated."
+                )
                 _flash_warnings(request, notices)
                 return redirect("gui:rooms")
     else:
@@ -75,7 +79,9 @@ def room_edit(request, room_name):
                 "times": availability_to_text(room["times"]),
             }
         )
-    return render(request, "gui/room_edit.html", {"active": "config", "form": form, "room": room})
+    return render(
+        request, "gui/room_edit.html", {"active": "config", "form": form, "room": room}
+    )
 
 
 def room_delete(request, room_name):

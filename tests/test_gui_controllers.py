@@ -103,7 +103,9 @@ class TestRoomAdd:
         rooms_ctrl.add_room(None, new_room(times=times))
         saved = rooms_ctrl.get_room(None, "Roddy 150")
         assert saved["times"] == times
-        assert saved["availability"] == [{"day": "MON", "name": "Monday", "ranges": "09:00-12:00"}]
+        assert saved["availability"] == [
+            {"day": "MON", "name": "Monday", "ranges": "09:00-12:00"}
+        ]
 
     def test_duplicate_name_is_rejected_on_the_name_field(self, session):
         before = room_names(session)
@@ -127,7 +129,9 @@ class TestRoomAdd:
             ({"times": ["MON"]}, "times"),
         ],
     )
-    def test_invalid_input_is_attached_to_the_right_field(self, session, overrides, field):
+    def test_invalid_input_is_attached_to_the_right_field(
+        self, session, overrides, field
+    ):
         before = room_names(session)
         with pytest.raises(ControllerError) as info:
             rooms_ctrl.add_room(None, new_room(**overrides))
@@ -149,7 +153,9 @@ class TestRoomAdd:
 class TestRoomUpdate:
     def test_updates_in_place_and_keeps_list_order(self, session):
         order = room_names(session)
-        rooms_ctrl.update_room(None, "Roddy 140", new_room(name="Roddy 140", capacity=35, features=""))
+        rooms_ctrl.update_room(
+            None, "Roddy 140", new_room(name="Roddy 140", capacity=35, features="")
+        )
         assert room_names(session) == order
         assert room(session, "Roddy 140").capacity == 35
         assert session.dirty is True
@@ -173,16 +179,30 @@ class TestRoomUpdate:
         assert notices and "Renamed 'Roddy 136' to 'Roddy 999'" in notices[0]
         assert "Roddy 999" in room_names(session)
         assert "Roddy 136" not in room_names(session)
-        assert all("Roddy 136" not in (course.room or []) for course in session.config.config.courses)
-        assert any("Roddy 999" in (course.room or []) for course in session.config.config.courses)
-        assert all("Roddy 136" not in (person.room_preferences or {}) for person in session.config.config.faculty)
-        assert any("Roddy 999" in (person.room_preferences or {}) for person in session.config.config.faculty)
+        assert all(
+            "Roddy 136" not in (course.room or [])
+            for course in session.config.config.courses
+        )
+        assert any(
+            "Roddy 999" in (course.room or [])
+            for course in session.config.config.courses
+        )
+        assert all(
+            "Roddy 136" not in (person.room_preferences or {})
+            for person in session.config.config.faculty
+        )
+        assert any(
+            "Roddy 999" in (person.room_preferences or {})
+            for person in session.config.config.faculty
+        )
         assert session.dirty is True
 
     def test_invalid_change_leaves_the_room_untouched(self, session):
         original = room(session, "Roddy 136").capacity
         with pytest.raises(ControllerError):
-            rooms_ctrl.update_room(None, "Roddy 136", new_room(name="Roddy 136", capacity=0))
+            rooms_ctrl.update_room(
+                None, "Roddy 136", new_room(name="Roddy 136", capacity=0)
+            )
         assert room(session, "Roddy 136").capacity == original
         assert session.dirty is False
 
@@ -200,25 +220,41 @@ class TestRoomDelete:
         assert "Roddy 150" not in room_names(session)
         assert session.dirty is True
 
-    def test_a_sections_only_room_goes_with_it_in_one_step_without_a_tick(self, session):
+    def test_a_sections_only_room_goes_with_it_in_one_step_without_a_tick(
+        self, session
+    ):
         sections = len(session.config.config.courses)
         notices = rooms_ctrl.delete_room(None, "Roddy 136")
         assert "Roddy 136" not in room_names(session)
         assert len(session.config.config.courses) == sections - 3
-        assert any(notice.startswith("Also deleted 3 course sections") for notice in notices)
+        assert any(
+            notice.startswith("Also deleted 3 course sections") for notice in notices
+        )
         assert session.dirty is True
 
-    def test_referenced_room_is_detached_everywhere_and_no_other_room_takes_its_place(self, session):
+    def test_referenced_room_is_detached_everywhere_and_no_other_room_takes_its_place(
+        self, session
+    ):
         before = [set(course.room or []) for course in session.config.config.courses]
         notices = rooms_ctrl.delete_room(None, "Roddy 136")
         assert "Roddy 136" not in room_names(session)
         assert any(notice.startswith("Removed 'Roddy 136'") for notice in notices)
         assert session.dirty is True
-        assert all("Roddy 136" not in (course.room or []) for course in session.config.config.courses)
-        assert all("Roddy 136" not in (person.room_preferences or {}) for person in session.config.config.faculty)
+        assert all(
+            "Roddy 136" not in (course.room or [])
+            for course in session.config.config.courses
+        )
+        assert all(
+            "Roddy 136" not in (person.room_preferences or {})
+            for person in session.config.config.faculty
+        )
         # the three sections that listed only this room are gone; the rest gained nothing
         after = [set(course.room or []) for course in session.config.config.courses]
-        assert after == [rooms - {"Roddy 136"} for i, rooms in enumerate(before) if i not in (3, 10, 16)]
+        assert after == [
+            rooms - {"Roddy 136"}
+            for i, rooms in enumerate(before)
+            if i not in (3, 10, 16)
+        ]
 
     def test_faculty_room_preferences_count_as_references(self, session):
         blockers = rooms_ctrl._references(session.config, "Roddy 147")
@@ -230,7 +266,9 @@ class TestRoomDelete:
 
 
 class TestRoomRollback:
-    def test_failed_whole_config_validation_is_reported_and_config_is_unchanged(self, session, monkeypatch):
+    def test_failed_whole_config_validation_is_reported_and_config_is_unchanged(
+        self, session, monkeypatch
+    ):
         def reject(session_, config, area, mutate, label=None):
             raise ValidationFailure(area, "simulated whole-config rejection")
 
@@ -250,7 +288,11 @@ class TestRoomDescribe:
     def test_lists_rooms_with_availability_and_references(self, session):
         data = rooms_ctrl.describe_rooms(None)
         assert data["has_config"] is True
-        assert [item["name"] for item in data["rooms"]] == ["Roddy 136", "Roddy 140", "Roddy 147"]
+        assert [item["name"] for item in data["rooms"]] == [
+            "Roddy 136",
+            "Roddy 140",
+            "Roddy 147",
+        ]
         first = data["rooms"][0]
         assert first["capacity"] == 28
         assert first["unrestricted"] is True and first["availability"] == []
@@ -258,7 +300,11 @@ class TestRoomDescribe:
 
     def test_new_room_can_be_deleted(self, session):
         rooms_ctrl.add_room(None, new_room())
-        added = next(item for item in rooms_ctrl.describe_rooms(None)["rooms"] if item["name"] == "Roddy 150")
+        added = next(
+            item
+            for item in rooms_ctrl.describe_rooms(None)["rooms"]
+            if item["name"] == "Roddy 150"
+        )
         assert added["can_delete"] is True and added["referenced_by"] == []
 
     def test_get_room_and_missing_room(self, session):
@@ -296,7 +342,9 @@ class TestLabAdd:
         labs_ctrl.add_lab(None, new_lab(times=times))
         saved = labs_ctrl.get_lab(None, "Windows")
         assert saved["times"] == times
-        assert saved["availability"] == [{"day": "TUE", "name": "Tuesday", "ranges": "13:00-17:00"}]
+        assert saved["availability"] == [
+            {"day": "TUE", "name": "Tuesday", "ranges": "13:00-17:00"}
+        ]
 
     def test_duplicate_name_is_rejected_on_the_name_field(self, session):
         before = lab_names(session)
@@ -320,7 +368,9 @@ class TestLabAdd:
             ({"times": ["MON"]}, "times"),
         ],
     )
-    def test_invalid_input_is_attached_to_the_right_field(self, session, overrides, field):
+    def test_invalid_input_is_attached_to_the_right_field(
+        self, session, overrides, field
+    ):
         before = lab_names(session)
         with pytest.raises(ControllerError) as info:
             labs_ctrl.add_lab(None, new_lab(**overrides))
@@ -342,7 +392,9 @@ class TestLabAdd:
 class TestLabUpdate:
     def test_updates_in_place_and_keeps_list_order(self, session):
         order = lab_names(session)
-        labs_ctrl.update_lab(None, "Linux", new_lab(name="Linux", capacity=32, features=""))
+        labs_ctrl.update_lab(
+            None, "Linux", new_lab(name="Linux", capacity=32, features="")
+        )
         assert lab_names(session) == order
         assert lab(session, "Linux").capacity == 32
         assert session.dirty is True
@@ -366,10 +418,21 @@ class TestLabUpdate:
         assert notices and "Renamed 'Linux' to 'Ubuntu'" in notices[0]
         assert "Ubuntu" in lab_names(session)
         assert "Linux" not in lab_names(session)
-        assert all("Linux" not in (course.lab or []) for course in session.config.config.courses)
-        assert any("Ubuntu" in (course.lab or []) for course in session.config.config.courses)
-        assert all("Linux" not in (person.lab_preferences or {}) for person in session.config.config.faculty)
-        assert any("Ubuntu" in (person.lab_preferences or {}) for person in session.config.config.faculty)
+        assert all(
+            "Linux" not in (course.lab or [])
+            for course in session.config.config.courses
+        )
+        assert any(
+            "Ubuntu" in (course.lab or []) for course in session.config.config.courses
+        )
+        assert all(
+            "Linux" not in (person.lab_preferences or {})
+            for person in session.config.config.faculty
+        )
+        assert any(
+            "Ubuntu" in (person.lab_preferences or {})
+            for person in session.config.config.faculty
+        )
         assert session.dirty is True
 
     def test_invalid_change_leaves_the_lab_untouched(self, session):
@@ -393,16 +456,23 @@ class TestLabDelete:
         assert "Windows" not in lab_names(session)
         assert session.dirty is True
 
-    def test_referenced_lab_is_detached_everywhere_and_no_other_lab_takes_its_place(self, session):
+    def test_referenced_lab_is_detached_everywhere_and_no_other_lab_takes_its_place(
+        self, session
+    ):
         before = [set(course.lab or []) for course in session.config.config.courses]
         notices = labs_ctrl.delete_lab(None, "Mac")
         assert "Mac" not in lab_names(session)
         assert any(notice.startswith("Removed 'Mac'") for notice in notices)
         assert session.dirty is True
-        assert all("Mac" not in (course.lab or []) for course in session.config.config.courses)
-        assert all("Mac" not in (person.lab_preferences or {}) for person in session.config.config.faculty)
+        assert all(
+            "Mac" not in (course.lab or []) for course in session.config.config.courses
+        )
+        assert all(
+            "Mac" not in (person.lab_preferences or {})
+            for person in session.config.config.faculty
+        )
         after = [set(course.lab or []) for course in session.config.config.courses]
-        assert after == [labs - {"Mac"} for labs in before]            # Linux took nobody's place
+        assert after == [labs - {"Mac"} for labs in before]  # Linux took nobody's place
 
     def test_faculty_lab_preferences_count_as_references(self, session):
         blockers = labs_ctrl._references(session.config, "Mac")
@@ -414,7 +484,9 @@ class TestLabDelete:
 
 
 class TestLabRollback:
-    def test_failed_whole_config_validation_is_reported_and_config_is_unchanged(self, session, monkeypatch):
+    def test_failed_whole_config_validation_is_reported_and_config_is_unchanged(
+        self, session, monkeypatch
+    ):
         def reject(session_, config, area, mutate, label=None):
             raise ValidationFailure(area, "simulated whole-config rejection")
 
@@ -442,7 +514,11 @@ class TestLabDescribe:
 
     def test_new_lab_can_be_deleted(self, session):
         labs_ctrl.add_lab(None, new_lab())
-        added = next(item for item in labs_ctrl.describe_labs(None)["labs"] if item["name"] == "Windows")
+        added = next(
+            item
+            for item in labs_ctrl.describe_labs(None)["labs"]
+            if item["name"] == "Windows"
+        )
         assert added["can_delete"] is True and added["referenced_by"] == []
 
     def test_get_lab_and_missing_lab(self, session):

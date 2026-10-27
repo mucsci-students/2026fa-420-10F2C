@@ -30,11 +30,20 @@ PAGE_URL = "/configuration/settings/"
 SAVE_URL = "/configuration/settings/save/"
 RESET_URL = "/configuration/settings/reset-limit/"
 
-EXAMPLE_FLAGS = ["faculty_course", "faculty_room", "faculty_lab", "same_room", "same_lab", "pack_rooms"]
+EXAMPLE_FLAGS = [
+    "faculty_course",
+    "faculty_room",
+    "faculty_lab",
+    "same_room",
+    "same_lab",
+    "pack_rooms",
+]
 
 
 def flag_names(session):
-    return [str(getattr(flag, "value", flag)) for flag in session.config.optimizer_flags]
+    return [
+        str(getattr(flag, "value", flag)) for flag in session.config.optimizer_flags
+    ]
 
 
 # ---------------------------------------------------------------------- #
@@ -78,7 +87,9 @@ class TestGenerationLimit:
 
     def test_reset_restores_the_default(self, session):
         ctrl.set_generation_limit(None, 25)
-        assert ctrl.reset_generation_limit(None) == ["Generation limit reset to default (10)."]
+        assert ctrl.reset_generation_limit(None) == [
+            "Generation limit reset to default (10)."
+        ]
         assert session.config.limit == 10
 
     def test_reset_when_already_default_changes_nothing(self, session):
@@ -90,22 +101,32 @@ class TestGenerationLimit:
 
 class TestOptimizerFlags:
     def test_enables_a_flag_and_keeps_the_others(self, session):
-        assert ctrl.enable_optimizer_flag(None, "pack_labs") == ["Optimizer flag 'pack_labs' added."]
+        assert ctrl.enable_optimizer_flag(None, "pack_labs") == [
+            "Optimizer flag 'pack_labs' added."
+        ]
         assert sorted(flag_names(session)) == sorted(EXAMPLE_FLAGS + ["pack_labs"])
         assert session.dirty is True
 
     def test_disables_a_flag_and_keeps_the_others(self, session):
-        assert ctrl.disable_optimizer_flag(None, "same_room") == ["Optimizer flag 'same_room' removed."]
+        assert ctrl.disable_optimizer_flag(None, "same_room") == [
+            "Optimizer flag 'same_room' removed."
+        ]
         assert "same_room" not in flag_names(session)
-        assert sorted(flag_names(session)) == sorted(f for f in EXAMPLE_FLAGS if f != "same_room")
+        assert sorted(flag_names(session)) == sorted(
+            f for f in EXAMPLE_FLAGS if f != "same_room"
+        )
 
-    def test_enabling_an_enabled_flag_or_disabling_a_disabled_one_changes_nothing(self, session):
+    def test_enabling_an_enabled_flag_or_disabling_a_disabled_one_changes_nothing(
+        self, session
+    ):
         assert ctrl.enable_optimizer_flag(None, "same_room") == []
         assert ctrl.disable_optimizer_flag(None, "pack_labs") == []
         assert session.dirty is False
         assert sorted(flag_names(session)) == sorted(EXAMPLE_FLAGS)
 
-    @pytest.mark.parametrize("call", [ctrl.enable_optimizer_flag, ctrl.disable_optimizer_flag])
+    @pytest.mark.parametrize(
+        "call", [ctrl.enable_optimizer_flag, ctrl.disable_optimizer_flag]
+    )
     def test_an_unknown_flag_is_rejected_and_nothing_changes(self, session, call):
         with pytest.raises(ControllerError) as info:
             call(None, "not_a_real_flag")
@@ -117,16 +138,30 @@ class TestOptimizerFlags:
 class TestUpdateSettings:
     def test_changes_the_limit_and_flags_together(self, session):
         messages = ctrl.update_settings(
-            None, {"limit": 40, "optimizer_flags": ["faculty_course", "faculty_room", "faculty_lab", "pack_labs"]}
+            None,
+            {
+                "limit": 40,
+                "optimizer_flags": [
+                    "faculty_course",
+                    "faculty_room",
+                    "faculty_lab",
+                    "pack_labs",
+                ],
+            },
         )
         assert "Generation limit set to 40." in messages
         assert "Optimizer flag 'pack_labs' added." in messages
         assert "Optimizer flag 'same_room' removed." in messages
         assert session.config.limit == 40
-        assert sorted(flag_names(session)) == sorted(["faculty_course", "faculty_room", "faculty_lab", "pack_labs"])
+        assert sorted(flag_names(session)) == sorted(
+            ["faculty_course", "faculty_room", "faculty_lab", "pack_labs"]
+        )
 
     def test_submitting_the_current_values_changes_nothing(self, session):
-        assert ctrl.update_settings(None, {"limit": 100, "optimizer_flags": EXAMPLE_FLAGS}) == []
+        assert (
+            ctrl.update_settings(None, {"limit": 100, "optimizer_flags": EXAMPLE_FLAGS})
+            == []
+        )
         assert session.dirty is False
 
     def test_a_bad_limit_leaves_both_settings_untouched(self, session):
@@ -199,7 +234,18 @@ def test_saving_changes_applies_them_and_reports_each_one(client):
     client.get(PAGE_URL)
     response = client.post(
         SAVE_URL,
-        {"limit": "50", "optimizer_flags": ["faculty_course", "faculty_room", "faculty_lab", "same_room", "same_lab", "pack_rooms", "pack_labs"]},
+        {
+            "limit": "50",
+            "optimizer_flags": [
+                "faculty_course",
+                "faculty_room",
+                "faculty_lab",
+                "same_room",
+                "same_lab",
+                "pack_rooms",
+                "pack_labs",
+            ],
+        },
         follow=True,
     )
     text = page(response)
@@ -213,14 +259,18 @@ def test_saving_changes_applies_them_and_reports_each_one(client):
 def test_unticking_a_flag_removes_it(client):
     client.get(PAGE_URL)
     flags = [f for f in EXAMPLE_FLAGS if f != "same_room"]
-    response = client.post(SAVE_URL, {"limit": "100", "optimizer_flags": flags}, follow=True)
+    response = client.post(
+        SAVE_URL, {"limit": "100", "optimizer_flags": flags}, follow=True
+    )
     assert "Optimizer flag &#x27;same_room&#x27; removed." in page(response)
     assert "same_room" not in flag_names(browser_session())
 
 
 def test_saving_without_changes_says_so(client):
     client.get(PAGE_URL)
-    response = client.post(SAVE_URL, {"limit": "100", "optimizer_flags": EXAMPLE_FLAGS}, follow=True)
+    response = client.post(
+        SAVE_URL, {"limit": "100", "optimizer_flags": EXAMPLE_FLAGS}, follow=True
+    )
     assert "No changes to save." in page(response)
     assert browser_session().dirty is False
 
@@ -236,7 +286,9 @@ def test_a_bad_limit_is_reported_on_the_form_and_changes_nothing(client, limit):
 
 def test_an_unknown_flag_is_rejected_by_the_form_and_changes_nothing(client):
     client.get(PAGE_URL)
-    response = client.post(SAVE_URL, {"limit": "100", "optimizer_flags": ["not_a_real_flag"]})
+    response = client.post(
+        SAVE_URL, {"limit": "100", "optimizer_flags": ["not_a_real_flag"]}
+    )
     assert "Error:" in page(response)
     assert sorted(flag_names(browser_session())) == sorted(EXAMPLE_FLAGS)
 
