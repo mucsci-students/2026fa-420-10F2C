@@ -33,9 +33,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 
 from app import schedule_io, schedule_ops
-from app.generation_job import STATE_FINISHED, GenerationJob
-from app.schedule_io import Assignment
 from app.commands.common import VALID_OPTIMIZER_FLAGS
+from app.generation_job import GenerationJob
+from app.schedule_io import Assignment
 from gui.controllers.common import require_config
 from gui.controllers.errors import ControllerError, FieldError
 from gui.controllers.uploads import read_upload
@@ -296,19 +296,14 @@ def is_generating(request) -> bool:
 # ---------------------------------------------------------------------- #
 def _validated_overrides(limit_override, optimizer_overrides):
     """Check a run's one-off overrides; return the flag list (or None)."""
-    if limit_override is not None:
-        if (
-            isinstance(limit_override, bool)
-            or not isinstance(limit_override, int)
-            or limit_override <= 0
-        ):
-            raise ControllerError(
-                [
-                    FieldError(
-                        "limit", "Generation limit must be a positive whole number."
-                    )
-                ]
-            )
+    if limit_override is not None and (
+        isinstance(limit_override, bool)
+        or not isinstance(limit_override, int)
+        or limit_override <= 0
+    ):
+        raise ControllerError(
+            [FieldError("limit", "Generation limit must be a positive whole number.")]
+        )
 
     if optimizer_overrides is not None:
         optimizer_overrides = list(optimizer_overrides)

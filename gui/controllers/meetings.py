@@ -158,7 +158,7 @@ def build_meeting(form_data, prefix: str = "") -> Meeting:
 
     try:
         return Meeting(
-            day=day,
+            day=day,  # ty: ignore[invalid-argument-type]
             duration=duration,
             lab=bool(read("lab")),
             delivery=read("delivery") or "in_person",

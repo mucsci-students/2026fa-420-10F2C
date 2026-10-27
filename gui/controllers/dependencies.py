@@ -58,6 +58,7 @@ configuration object it is given, so it needs no session.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from app.commands.courses import course_display_name
 from gui.controllers.errors import ControllerError
@@ -105,7 +106,7 @@ def _names(names, limit: int = 3) -> str:
     )
 
 
-def _sections(config) -> list[tuple[int, str, object]]:
+def _sections(config) -> list[tuple[int, str, Any]]:
     """(position, display name, course) for every section, in list order."""
     seen: dict[str, int] = {}
     return [
@@ -511,7 +512,7 @@ def _course_at(config, index):
     return courses[index]
 
 
-def _course_preferences(config, course_id: str) -> list[tuple[str, object]]:
+def _course_preferences(config, course_id: str) -> list[tuple[str, Any]]:
     """(faculty name, weight) for everyone who prefers the course id."""
     return [
         (person.name, person.course_preferences[course_id])
@@ -629,7 +630,7 @@ def _pattern_at(config, index):
     return patterns[index]
 
 
-def _pattern_dependents(config, index: int) -> list[tuple[int, str, object]]:
+def _pattern_dependents(config, index: int) -> list[tuple[int, str, Any]]:
     """Course sections that would have NO enabled pattern left with their credits."""
     pattern = _pattern_at(config, index)
     if getattr(pattern, "disabled", False):

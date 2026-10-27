@@ -102,7 +102,7 @@ def test_story_53_pack_rooms_tooltip_in_global_settings(client):
     box = checkbox(html, "pack_rooms")
     assert f'title="{text}"' in box  # hover
     assert "aria-describedby=" in box  # keyboard focus + screen readers
-    assert f'class="option-help"' in html and text in html  # also visible
+    assert 'class="option-help"' in html and text in html  # also visible
 
 
 @pytest.mark.parametrize("flag", sorted(VALID_OPTIMIZER_FLAGS))

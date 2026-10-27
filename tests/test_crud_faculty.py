@@ -33,11 +33,11 @@ happened.
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
-import app.commands as commands
-import app.crud as crud
+from app import commands, crud
 from app.session import Session
 
 _EXAMPLE_CONFIG = "app/examples/config_example.json"
@@ -123,11 +123,14 @@ class FakeCombinedConfig:
 
     def __init__(self, faculty=None, courses=None, rooms=None, labs=None, reject=False):
         """Initialize the test double with the supplied values."""
-        self.config = SimpleNamespace(
-            faculty=list(faculty or []),
-            courses=list(courses or []),
-            rooms=list(rooms or []),
-            labs=list(labs or []),
+        self.config = cast(
+            "Any",
+            SimpleNamespace(
+                faculty=list(faculty or []),
+                courses=list(courses or []),
+                rooms=list(rooms or []),
+                labs=list(labs or []),
+            ),
         )
         self.reject = reject
 
@@ -152,8 +155,11 @@ class FakeCombinedConfig:
 def make_session(faculty=None, courses=None, rooms=None, labs=None, reject=False):
     """Create an initialized session for a test."""
     session = Session()
-    session.config = FakeCombinedConfig(
-        faculty=faculty, courses=courses, rooms=rooms, labs=labs, reject=reject
+    session.config = cast(
+        "Any",
+        FakeCombinedConfig(
+            faculty=faculty, courses=courses, rooms=rooms, labs=labs, reject=reject
+        ),
     )
     return session
 
@@ -549,7 +555,7 @@ class TestFacultyCRUDLogic:
         """Verify that delete faculty ignores courses with faculty set to none."""
         existing = FakeFacultyConfig(name="Dr. Test")
         unassigned_course = FakeCourse(course_id="CMSC 140")
-        unassigned_course.faculty = None
+        unassigned_course.faculty = cast("Any", None)
         session = make_session(faculty=[existing], courses=[unassigned_course])
         feed_inputs(monkeypatch, ["Dr. Test", "y"])
 
@@ -755,7 +761,9 @@ class TestFacultyDayLimitsAgainstRealLibrary:
         reloaded.load(str(out_path))
 
         added = next(
-            f for f in reloaded.config.config.faculty if f.name == "Round Trip Faculty"
+            f
+            for f in reloaded.require_config().config.faculty
+            if f.name == "Round Trip Faculty"
         )
         assert set(added.mandatory_days) == {"TUE", "THU"}
         assert added.maximum_days == 2

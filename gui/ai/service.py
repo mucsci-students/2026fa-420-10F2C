@@ -155,7 +155,7 @@ def _run(request, text: str) -> Reply:
         model_text = runner.run(text, toolbox)
     except NotConfigured as error:
         return Reply(ok=False, message=f"{error} Nothing was changed.")
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001
         # Only the error's type is logged: provider messages can echo request
         # details, and the API key must never reach a log.
         logger.warning("AI request failed: %s", type(error).__name__)

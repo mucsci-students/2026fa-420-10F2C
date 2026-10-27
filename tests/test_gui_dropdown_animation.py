@@ -11,6 +11,7 @@ itself was checked in a real browser.
 
 import re
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -39,7 +40,7 @@ def page(response):
 
 
 def css_rules(css):
-    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
     return [
         (sel.strip(), body) for sel, body in re.findall(r"([^{}]+)\{([^}]*)\}", css)
     ]
@@ -117,7 +118,11 @@ def test_it_builds_no_html_and_runs_no_strings():
 
 
 def test_the_motion_is_short_enough_not_to_feel_slow():
-    duration = int(re.search(r"var DURATION\s*=\s*(\d+)\s*;", JS.read_text()).group(1))
+    duration = int(
+        cast(
+            "re.Match[str]", re.search(r"var DURATION\s*=\s*(\d+)\s*;", JS.read_text())
+        ).group(1)
+    )
     assert 150 <= duration <= 350
 
 
@@ -153,7 +158,7 @@ def test_the_script_marks_a_closing_dropdown_with_the_class_the_stylesheet_uses(
 
 
 def test_reduced_motion_turns_the_arrow_transition_off():
-    css = re.sub(r"/\*.*?\*/", "", CSS.read_text(), flags=re.S)
+    css = re.sub(r"/\*.*?\*/", "", CSS.read_text(), flags=re.DOTALL)
     assert re.search(
         r"@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[^@]*?\.usage__icon\s*\{[^}]*transition:\s*none",
         css,

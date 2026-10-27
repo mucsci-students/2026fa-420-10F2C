@@ -259,7 +259,8 @@ def test_story_3_two_threads_at_once_only_one_runs(monkeypatch):
     assert first["reply"].ok
     assert calls == [ADD_140]
     names = [
-        room.name for room in session_store.get_session(request).config.config.rooms
+        room.name
+        for room in session_store.get_session(request).require_config().config.rooms
     ]
     assert names.count("RODDY140") == 1
 

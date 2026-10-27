@@ -10,6 +10,7 @@ import io
 import json
 import sys
 import types
+from typing import Any, cast
 
 import pytest
 
@@ -184,9 +185,7 @@ def test_duration_wins_when_end_also_given():
 
 
 def test_leading_bom_is_accepted():
-    raw = "﻿".encode("utf-8") + schedule_io.schedules_to_json(_two_schedules()).encode(
-        "utf-8"
-    )
+    raw = "﻿".encode() + schedule_io.schedules_to_json(_two_schedules()).encode("utf-8")
     assert len(schedule_io.parse_schedule_file(raw)) == 2
 
 
@@ -464,7 +463,7 @@ def test_to_assignments_falls_back_to_library_json_writer(monkeypatch):
             with open(self.path, "w", encoding="utf-8") as f:
                 json.dump(self.schedules, f)
 
-    fake_writers = types.ModuleType("scheduler.writers")
+    fake_writers = cast("Any", types.ModuleType("scheduler.writers"))
     fake_writers.JSONWriter = FakeJSONWriter
     monkeypatch.setitem(sys.modules, "scheduler.writers", fake_writers)
 

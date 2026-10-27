@@ -11,6 +11,7 @@ unused room/lab first.
 
 import re
 from pathlib import Path
+from typing import cast
 from urllib.parse import quote
 
 import pytest
@@ -257,7 +258,7 @@ def test_list_page_summarises_usage_instead_of_listing_everything(client, kind):
 
 
 def usage_icons(text):
-    return re.findall(r'<svg class="usage__icon".*?</svg>', text, flags=re.S)
+    return re.findall(r'<svg class="usage__icon".*?</svg>', text, flags=re.DOTALL)
 
 
 def test_usage_toggle_is_a_small_dropdown_icon_not_a_details_link(client, kind):
@@ -279,7 +280,7 @@ def test_every_row_in_use_has_exactly_one_icon_after_its_last_chip(client, kind)
     rows = text.count('<details class="usage">')
     assert rows > 0 and len(usage_icons(text)) == rows
     summaries = re.findall(
-        r'<details class="usage">\s*<summary>(.*?)</summary>', text, flags=re.S
+        r'<details class="usage">\s*<summary>(.*?)</summary>', text, flags=re.DOTALL
     )
     assert len(summaries) == rows
     for summary in summaries:
@@ -295,7 +296,7 @@ def test_every_row_in_use_has_exactly_one_icon_after_its_last_chip(client, kind)
 def test_the_icon_is_small_even_before_the_stylesheet_loads(client, kind):
     icon = usage_icons(page(client.get(kind["base"])))[0]
     width, height = (
-        int(re.search(rf'{name}="(\d+)"', icon).group(1))
+        int(cast("re.Match[str]", re.search(rf'{name}="(\d+)"', icon)).group(1))
         for name in ("width", "height")
     )
     assert 6 <= width <= 12 and 6 <= height <= 12
@@ -371,7 +372,7 @@ def test_the_icon_styles_use_theme_colours_and_flip_when_open():
     css = Path("gui/static/gui/css/style.css").read_text()
     assert ".usage__icon" in css
     assert re.search(r"\.usage\[open\]\s+\.usage__icon\s*\{[^}]*rotate\(180deg\)", css)
-    block = re.search(r"\.usage__icon\s*\{[^}]*\}", css).group(0)
+    block = cast("re.Match[str]", re.search(r"\.usage__icon\s*\{[^}]*\}", css)).group(0)
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b", block) and "rgb" not in block
     markup = Path("gui/templates/gui/components/usage_icon.html").read_text()
     assert (
@@ -382,7 +383,7 @@ def test_the_icon_styles_use_theme_colours_and_flip_when_open():
 def css_block(css, selector):
     """The declarations of the rule(s) whose selector list contains `selector`."""
     css = re.sub(
-        r"/\*.*?\*/", "", css, flags=re.S
+        r"/\*.*?\*/", "", css, flags=re.DOTALL
     )  # a comment above a rule must not become part of its selector
     blocks = re.findall(r"([^{}]+)\{([^}]*)\}", css)
     return " ".join(
@@ -406,7 +407,9 @@ def test_the_tables_are_marked_for_centered_columns_and_other_tables_are_not(
 
 def test_headers_and_cells_share_one_center_line_in_both_tables(client, kind):
     text = page(client.get(kind["base"]))
-    head = re.search(r"<thead>(.*?)</thead>", text, flags=re.S).group(1)
+    head = cast(
+        "re.Match[str]", re.search(r"<thead>(.*?)</thead>", text, flags=re.DOTALL)
+    ).group(1)
     assert [h.strip() for h in re.findall(r"<th[^>]*>(.*?)</th>", head)] == [
         "Name",
         "Capacity",
@@ -415,8 +418,9 @@ def test_headers_and_cells_share_one_center_line_in_both_tables(client, kind):
         "Used by",
         "Actions",
     ]
-    row = re.search(
-        r"<tbody>\s*<tr data-filter-item>(.*?)</tr>", text, flags=re.S
+    row = cast(
+        "re.Match[str]",
+        re.search(r"<tbody>\s*<tr data-filter-item>(.*?)</tr>", text, flags=re.DOTALL),
     ).group(1)
     assert len(re.findall(r"<td[ >]", row)) == 6  # one cell under every heading
 

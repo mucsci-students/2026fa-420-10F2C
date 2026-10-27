@@ -20,7 +20,8 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
 from app import schedule_ops
-from gui.controllers import schedule_controller, settings as settings_controller
+from gui.controllers import schedule_controller
+from gui.controllers import settings as settings_controller
 from gui.controllers.errors import ControllerError
 from gui.forms import GenerationOverrideForm
 

@@ -7,6 +7,7 @@ and Labs, including blocked deletes when a course explicitly assigns faculty.
 
 import re
 from pathlib import Path
+from typing import cast
 
 import pytest
 from django.template.loader import render_to_string
@@ -375,9 +376,9 @@ class TestFacultyPages:
         self, client
     ):
         text = page(client.get(FACULTY_URL))
-        icons = re.findall(r'<svg class="usage__icon".*?</svg>', text, flags=re.S)
+        icons = re.findall(r'<svg class="usage__icon".*?</svg>', text, flags=re.DOTALL)
         summaries = re.findall(
-            r'<details class="usage">\s*<summary>(.*?)</summary>', text, flags=re.S
+            r'<details class="usage">\s*<summary>(.*?)</summary>', text, flags=re.DOTALL
         )
         assert summaries and len(icons) == len(summaries)
         for summary in summaries:
@@ -394,7 +395,7 @@ class TestFacultyPages:
         faculty = re.findall(
             r'<svg class="usage__icon".*?</svg>',
             page(client.get(FACULTY_URL)),
-            flags=re.S,
+            flags=re.DOTALL,
         )
         others = set()
         for base in ("/configuration/rooms/", "/configuration/labs/"):
@@ -402,7 +403,7 @@ class TestFacultyPages:
                 re.findall(
                     r'<svg class="usage__icon".*?</svg>',
                     page(client.get(base)),
-                    flags=re.S,
+                    flags=re.DOTALL,
                 )
             )
         assert faculty and len(set(faculty)) == 1
@@ -412,14 +413,17 @@ class TestFacultyPages:
         self, client
     ):
         text = page(client.get(FACULTY_URL))
-        assert 'aria-hidden="true"' in re.search(
-            r'<svg class="usage__icon".*?</svg>', text, flags=re.S
+        assert 'aria-hidden="true"' in cast(
+            "re.Match[str]",
+            re.search(r'<svg class="usage__icon".*?</svg>', text, flags=re.DOTALL),
         ).group(0)
         assert '<span class="visually-hidden"> (show details)</span>' in text
 
     def test_a_member_nobody_uses_shows_no_icon_and_no_note(self, client):
         client.get(FACULTY_URL)
-        browser_session().config  # the example's 'sam' is used by no course
+        assert (
+            browser_session().config is not None
+        )  # the example's 'sam' is used by no course
         text = page(client.get(FACULTY_URL))
         sam = text[text.index('<h3 class="item-card__title">sam</h3>') :]
         sam = sam[: sam.index("</article>")]
@@ -434,7 +438,7 @@ class TestFacultyPages:
 
     def test_the_icon_does_not_get_clipped_by_the_card_footer(self):
         css = Path("gui/static/gui/css/style.css").read_text()
-        blocks = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        blocks = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
         # the footer ELEMENT itself (not its descendants or pseudo-elements, which may clip their own box)
         footer = {".item-card__foot", ".item-card__foot--usage"}
         foot = " ".join(

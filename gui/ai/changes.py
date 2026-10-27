@@ -314,7 +314,7 @@ def _update_place(
 
 
 def update_room(request, args: UpdatePlaceArgs) -> str:
-    names = [room.name for room in get_session(request).config.config.rooms]
+    names = [room.name for room in get_session(request).require_config().config.rooms]
     return _update_place(
         request,
         args,
@@ -326,7 +326,7 @@ def update_room(request, args: UpdatePlaceArgs) -> str:
 
 
 def update_lab(request, args: UpdatePlaceArgs) -> str:
-    names = [lab.name for lab in get_session(request).config.config.labs]
+    names = [lab.name for lab in get_session(request).require_config().config.labs]
     return _update_place(
         request, args, kind="lab", names=names, get=labs.get_lab, update=labs.update_lab
     )
@@ -409,7 +409,7 @@ def _find_section(request, args: SectionArgs, what: str) -> dict:
 
 def update_course(request, args: UpdateCourseArgs) -> str:
     session = get_session(request)
-    entities = session.config.config
+    entities = session.require_config().config
     if not _asked(
         args.new_course_id, args.new_section_id, args.credits, args.capacity, args.modality, args.rooms,
         args.labs, args.faculty, args.conflicts, args.required_room_features, args.required_lab_features,
@@ -543,7 +543,7 @@ class UpdateFacultyArgs(BaseModel):
 
 def update_faculty(request, args: UpdateFacultyArgs) -> str:
     session = get_session(request)
-    entities = session.config.config
+    entities = session.require_config().config
     found = _existing(
         args.name, [person.name for person in entities.faculty], "faculty member"
     )
@@ -815,7 +815,7 @@ class UpdateMeetingArgs(MeetingRef):
 
 
 def _pattern_index(request, args: PatternRef) -> int:
-    count = len(get_session(request).config.time_slot_config.classes)
+    count = len(get_session(request).require_config().time_slot_config.classes)
     if not 0 <= args.pattern_number < count:
         raise ControllerError(
             f"There is no class pattern {args.pattern_number}. Patterns are numbered 0 to {count - 1}; "
@@ -826,7 +826,9 @@ def _pattern_index(request, args: PatternRef) -> int:
 
 def _meeting_index(request, args: MeetingRef) -> tuple[int, int]:
     pattern = _pattern_index(request, args)
-    count = len(get_session(request).config.time_slot_config.classes[pattern].meetings)
+    count = len(
+        get_session(request).require_config().time_slot_config.classes[pattern].meetings
+    )
     if not 1 <= args.meeting_number <= count:
         raise ControllerError(
             f"Pattern {pattern} has {_plural(count, 'meeting')}, numbered 1 to {count}."
@@ -1045,7 +1047,7 @@ def _stage_plan(
 def delete_room(request, args: NameArgs) -> str:
     name = _existing(
         args.name,
-        [room.name for room in get_session(request).config.config.rooms],
+        [room.name for room in get_session(request).require_config().config.rooms],
         "room",
     )
     return _stage_plan(
@@ -1059,7 +1061,9 @@ def delete_room(request, args: NameArgs) -> str:
 
 def delete_lab(request, args: NameArgs) -> str:
     name = _existing(
-        args.name, [lab.name for lab in get_session(request).config.config.labs], "lab"
+        args.name,
+        [lab.name for lab in get_session(request).require_config().config.labs],
+        "lab",
     )
     return _stage_plan(
         request, "lab", name, f"lab '{name}'", lambda req: labs.delete_lab(req, name)
@@ -1067,7 +1071,9 @@ def delete_lab(request, args: NameArgs) -> str:
 
 
 def delete_faculty(request, args: NameArgs) -> str:
-    people = [person.name for person in get_session(request).config.config.faculty]
+    people = [
+        person.name for person in get_session(request).require_config().config.faculty
+    ]
     name = _existing(args.name, people, "faculty member")
     return _stage_plan(
         request,
@@ -1122,7 +1128,9 @@ def delete_time_slot(request, args: TimeSlotRef) -> str:
 
 def delete_meeting(request, args: MeetingRef) -> str:
     pattern, meeting = _meeting_index(request, args)
-    count = len(get_session(request).config.time_slot_config.classes[pattern].meetings)
+    count = len(
+        get_session(request).require_config().time_slot_config.classes[pattern].meetings
+    )
     if count == 1:
         raise ControllerError(meetings.LAST_MEETING_MESSAGE)
     row = meetings.get_meeting(request, pattern, meeting)

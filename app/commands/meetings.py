@@ -23,7 +23,7 @@ def prompt_meeting():
         start_time = input("  > ").strip() or None
         try:
             return Meeting(
-                day=day,
+                day=day,  # ty: ignore[invalid-argument-type]
                 duration=duration,
                 lab=lab,
                 delivery=delivery,

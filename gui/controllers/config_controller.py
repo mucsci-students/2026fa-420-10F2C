@@ -133,7 +133,7 @@ def load_configuration(request, uploaded_file) -> str:
         session.remember_config(name)
     except ConfigError as error:
         raise ControllerError(_load_problems(error)) from error
-    except Exception as error:  # noqa: BLE001 -- last resort; never lose the user's configuration
+    except Exception as error:
         raise ControllerError(
             [
                 FieldError(

@@ -59,6 +59,7 @@ def blocking_runner(gate, schedules=("a", "b")):
     """A runner that reports one schedule found, then waits for `gate`."""
 
     def runner(config, limit, flags, on_progress=None, should_cancel=None):
+        assert on_progress is not None
         on_progress(1, limit)
         gate.wait(TIMEOUT)
         return GenerationResult(
@@ -71,6 +72,7 @@ def blocking_runner(gate, schedules=("a", "b")):
 
 
 def cancellable_runner(config, limit, flags, on_progress=None, should_cancel=None):
+    assert should_cancel is not None
     while not should_cancel():
         time.sleep(0.01)
     return GenerationResult(
@@ -188,6 +190,7 @@ def test_job_reports_progress_while_running_then_finishes():
         GenerationOutcome.SUCCESS,
         100,
     )
+    assert job.result is not None
     assert job.result.schedules == ["a", "b"]
 
 
@@ -220,6 +223,7 @@ def test_a_crashing_runner_becomes_a_runtime_error_result():
     job = GenerationJob(SimpleNamespace(limit=3), None, runner=runner)
     job.start()
     assert job.wait(TIMEOUT)
+    assert job.result is not None
     assert job.result.outcome == GenerationOutcome.RUNTIME_ERROR
     assert "boom" in job.result.message
 
@@ -309,7 +313,7 @@ def test_overrides_are_passed_to_the_runner(session, monkeypatch):
         return GenerationResult(GenerationOutcome.SUCCESS, "ok", ["a"])
 
     monkeypatch.setattr(schedule_ops, "generate_schedules", runner)
-    flag = sorted(ctrl.VALID_OPTIMIZER_FLAGS)[0]
+    flag = min(ctrl.VALID_OPTIMIZER_FLAGS)
     ctrl.start_generation(None, limit_override=7, optimizer_overrides=[flag])
     finish(session)
     assert seen == {"limit": 7, "flags": [flag]}
@@ -453,6 +457,7 @@ def poll_until_finished(client):
 
 def test_start_poll_and_collect_through_the_endpoints(client, monkeypatch):
     def runner(config, limit, flags, on_progress=None, should_cancel=None):
+        assert on_progress is not None
         on_progress(1, 1)
         return GenerationResult(
             GenerationOutcome.SUCCESS, "Generated 1 schedule(s).", []

@@ -35,7 +35,6 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from scheduler import Scheduler
 from scheduler.config import OptimizerFlags
@@ -64,7 +63,7 @@ class GenerationResult:
 
 def generate_schedules(
     config,
-    limit_override: Optional[int] = None,
+    limit_override: int | None = None,
     optimizer_overrides=None,
     on_progress=None,
     should_cancel=None,
@@ -152,7 +151,7 @@ def summarize_schedule(schedule) -> str:
 
 
 def export_schedule(
-    schedules: list, fmt: str, out_path: Optional[str], overwrite: bool = False
+    schedules: list, fmt: str, out_path: str | None, overwrite: bool = False
 ) -> Path:
     if fmt not in ("json", "csv"):
         raise ValueError(f"Unknown export format: {fmt!r} (expected 'json' or 'csv')")

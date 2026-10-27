@@ -41,7 +41,7 @@ def grid_classes(text, grid_id=None):
 
 def rules(css):
     """(selector list, declarations) pairs in source order, with comments removed."""
-    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
     return [
         (sel.strip(), body) for sel, body in re.findall(r"([^{}]+)\{([^}]*)\}", css)
     ]

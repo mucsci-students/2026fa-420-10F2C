@@ -1,7 +1,8 @@
 """Lab CRUD commands."""
 
-from app.crud import ReferenceError_, ValidationFailure, check_no_references
 from scheduler.config import LabConfig
+
+from app.crud import ReferenceError_, ValidationFailure, check_no_references
 
 from .common import (
     apply_session_edit,

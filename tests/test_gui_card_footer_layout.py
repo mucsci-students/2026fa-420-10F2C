@@ -10,6 +10,7 @@ wiring; the positions themselves were measured in a real browser (see the report
 
 import re
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -30,7 +31,7 @@ def fresh_session_store():
 
 
 def strip_comments(css):
-    return re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    return re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
 
 
 def inner_block(css, header):
@@ -161,14 +162,21 @@ def test_the_card_grows_and_shrinks_smoothly_with_the_browsers_own_transition(la
 def test_the_motion_is_the_same_length_as_the_scripted_dropdowns(layout):
     css_ms = (
         float(
-            re.search(
-                r"block-size\s+([\d.]+)s",
-                body_for(layout, f".{MODIFIER} > details.usage::details-content"),
+            cast(
+                "re.Match[str]",
+                re.search(
+                    r"block-size\s+([\d.]+)s",
+                    body_for(layout, f".{MODIFIER} > details.usage::details-content"),
+                ),
             ).group(1)
         )
         * 1000
     )
-    script_ms = int(re.search(r"var DURATION\s*=\s*(\d+)\s*;", JS.read_text()).group(1))
+    script_ms = int(
+        cast(
+            "re.Match[str]", re.search(r"var DURATION\s*=\s*(\d+)\s*;", JS.read_text())
+        ).group(1)
+    )
     assert css_ms == script_ms
 
 

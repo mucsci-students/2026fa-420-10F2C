@@ -1,9 +1,10 @@
 """Unit tests for room create, update, and delete commands."""
 
+from scheduler.config import RoomConfig
+
 from app import commands
 from app.crud import apply_edit
 from app.session import Session
-from scheduler.config import RoomConfig
 
 
 def make_session():

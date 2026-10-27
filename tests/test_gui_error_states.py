@@ -15,7 +15,6 @@ that the next request works normally.
 
 import logging
 
-import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import RequestFactory
 

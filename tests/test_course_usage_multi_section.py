@@ -18,6 +18,7 @@ import json
 import re
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 from django.template.loader import render_to_string
@@ -83,7 +84,9 @@ def raw_names(course_id):
 
 
 def weights_of(names):
-    return [int(re.search(r"\((\d+)\)$", n).group(1)) for n in names]
+    return [
+        int(cast("re.Match[str]", re.search(r"\((\d+)\)$", n)).group(1)) for n in names
+    ]
 
 
 MULTI_SECTION_IDS = sorted(
@@ -503,12 +506,12 @@ def test_the_partial_still_works_for_the_other_pages():
 #  The Courses page
 # ====================================================================== #
 def arrows(text):
-    return re.findall(r'<svg class="usage__icon".*?</svg>', text, flags=re.S)
+    return re.findall(r'<svg class="usage__icon".*?</svg>', text, flags=re.DOTALL)
 
 
 def summaries(text):
     return re.findall(
-        r'<details class="usage">\s*<summary>(.*?)</summary>', text, flags=re.S
+        r'<details class="usage">\s*<summary>(.*?)</summary>', text, flags=re.DOTALL
     )
 
 

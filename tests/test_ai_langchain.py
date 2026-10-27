@@ -16,10 +16,10 @@ import pytest
 pytest.importorskip("langchain_openai")
 httpx = pytest.importorskip("httpx")
 
-from gui import session_store  # noqa: E402
-from gui.ai import service  # noqa: E402
-from gui.ai.runner import MAX_RETRIES, MAX_STEPS, LangChainRunner  # noqa: E402
-from gui.ai.tools import TOOLS  # noqa: E402
+from gui import session_store
+from gui.ai import service
+from gui.ai.runner import MAX_RETRIES, MAX_STEPS, LangChainRunner
+from gui.ai.tools import TOOLS
 
 
 class FakeRequest:
@@ -104,7 +104,7 @@ def test_a_tool_call_is_carried_out_and_its_result_is_the_reply(monkeypatch):
     assert "Room 'RODDY150' added with capacity 35." in reply.message
     rooms = {
         room.name: room.capacity
-        for room in session_store.get_session(request).config.config.rooms
+        for room in session_store.get_session(request).require_config().config.rooms
     }
     assert rooms["RODDY150"] == 35
     assert len(requests) == 1  # tool results are the answer: no second model call
@@ -211,7 +211,7 @@ def test_the_model_can_look_first_and_then_act(monkeypatch):
     assert "Rooms (" not in reply.message  # the lookup was only for the model
     assert any(
         room.name == "Roddy 136"
-        for room in session_store.get_session(request).config.config.rooms
+        for room in session_store.get_session(request).require_config().config.rooms
     )
 
 
@@ -241,11 +241,13 @@ def test_looking_forever_is_stopped(monkeypatch):
 
     use(monkeypatch, respond)
     request = FakeRequest()
-    before = session_store.get_session(request).config.model_dump_json()
+    before = session_store.get_session(request).require_config().model_dump_json()
     reply = service.handle_request(request, "List rooms again and again")
     assert not reply.ok and "couldn't finish" in reply.message
     assert len(requests) <= 2 * MAX_STEPS
-    assert session_store.get_session(request).config.model_dump_json() == before
+    assert (
+        session_store.get_session(request).require_config().model_dump_json() == before
+    )
 
 
 def test_a_text_only_answer_changes_nothing(monkeypatch):
@@ -257,7 +259,8 @@ def test_a_text_only_answer_changes_nothing(monkeypatch):
     reply = service.handle_request(request, "Add a room named RODDY150")
     assert not reply.changed
     names = [
-        room.name for room in session_store.get_session(request).config.config.rooms
+        room.name
+        for room in session_store.get_session(request).require_config().config.rooms
     ]
     assert "RODDY150" not in names
 
@@ -274,7 +277,8 @@ def test_malformed_tool_arguments_are_reported_not_applied(monkeypatch):
     assert not reply.ok and not reply.changed
     assert "capacity" in reply.message
     names = [
-        room.name for room in session_store.get_session(request).config.config.rooms
+        room.name
+        for room in session_store.get_session(request).require_config().config.rooms
     ]
     assert "RODDY150" not in names
 
@@ -304,10 +308,12 @@ def test_service_errors_stop_after_a_fixed_number_of_attempts(monkeypatch):
 
     use(monkeypatch, respond)
     request = FakeRequest()
-    before = session_store.get_session(request).config.model_dump_json()
+    before = session_store.get_session(request).require_config().model_dump_json()
     reply = service.handle_request(request, "List all rooms")
 
     assert not reply.ok
     assert "couldn't finish" in reply.message and "not changed" in reply.message
     assert len(attempts) == 1 + MAX_RETRIES
-    assert session_store.get_session(request).config.model_dump_json() == before
+    assert (
+        session_store.get_session(request).require_config().model_dump_json() == before
+    )

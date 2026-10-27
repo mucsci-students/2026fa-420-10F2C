@@ -56,7 +56,7 @@ def friendly_error_response(
             {"reference": reference, "details": details},
             status=500,
         )
-    except Exception:  # the error page must not fail too
+    except Exception:  # noqa: BLE001  # the error page must not fail too
         ref = (
             f"<p>Reference: <code>{html.escape(reference)}</code></p>"
             if reference
@@ -73,7 +73,7 @@ def page_not_found(request, exception=None):
     """handler404: an unknown address or a missing item (Http404)."""
     try:
         return render(request, NOT_FOUND_TEMPLATE, {"path": request.path}, status=404)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return HttpResponse(
             "<!DOCTYPE html><title>Page not found</title><h1>Page not found</h1>"
             '<p>That page doesn\'t exist. Go to the <a href="/">home page</a>.</p>',

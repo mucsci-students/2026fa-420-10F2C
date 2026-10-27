@@ -16,6 +16,8 @@ tests fully control, so a failure can be simulated on demand without
 needing to know the real schema's exact rejection rules.
 """
 
+from typing import Any, cast
+
 import pytest
 
 import app.session as session_module
@@ -162,7 +164,7 @@ def test_load_success_swaps_in_new_config_and_resets_dirty(monkeypatch, tmp_path
 
     session.load(str(fake_file))
 
-    assert session.config.name == f"loaded-from-{fake_file}"
+    assert cast("Any", session.config).name == f"loaded-from-{fake_file}"
     assert session.config_path == fake_file
     assert session.dirty is False
     assert session.schedules == []

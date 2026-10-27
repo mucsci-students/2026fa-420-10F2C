@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import re
-from typing import Callable
+from collections.abc import Callable
+from typing import Any
 
 from app.crud import apply_edit
-
 
 VALID_DAYS = ("MON", "TUE", "WED", "THU", "FRI")
 VALID_OPTIMIZER_FLAGS = {
@@ -23,7 +23,7 @@ DAY_LABELS = {"MON": "Mon", "TUE": "Tue", "WED": "Wed", "THU": "Thu", "FRI": "Fr
 
 
 def apply_session_edit(
-    session, config, area, mutate_fn: Callable[[object], None], label=None
+    session, config, area, mutate_fn: Callable[[Any], None], label=None
 ):
     """Apply an atomic config edit, mark the active session dirty, and remember how to undo it.
 

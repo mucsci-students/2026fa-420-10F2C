@@ -1,7 +1,8 @@
 """Room CRUD commands."""
 
-from app.crud import ReferenceError_, ValidationFailure, check_no_references
 from scheduler.config import RoomConfig
+
+from app.crud import ReferenceError_, ValidationFailure, check_no_references
 
 from .common import (
     DAY_LABELS,

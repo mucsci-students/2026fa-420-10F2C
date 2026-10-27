@@ -206,6 +206,7 @@ def test_the_inline_undo_offer_is_given_once_after_an_edit():
     assert session.history.take_fresh() is None
     edit(session, "Add room 'B'", ["A", "B"])
     offer = session.history.take_fresh()
+    assert offer is not None
     assert (
         offer["label"] == "Add room 'B'" and offer["token"] == session.history.version
     )
@@ -231,6 +232,7 @@ def test_an_edit_without_a_label_is_named_after_what_it_changed():
     entry = session.history.record(
         None, before, False, after=session.config, area="room"
     )
+    assert entry is not None
     assert entry.label == "Added room B"
 
 
@@ -257,6 +259,7 @@ def test_a_very_long_description_is_shortened_for_the_label():
     session.config.config.courses = [course(f"CMSC {n}", credits=2) for n in range(40)]
     session.config.config.rooms = [room("B")]
     entry = session.history.record(None, before, False, after=session.config)
+    assert entry is not None
     assert len(entry.label) <= 70 and entry.summary.startswith("Removed room A")
 
 

@@ -16,12 +16,12 @@ from . import (
     settings,
     timeslots,
 )
-from .common import DAY_LABELS as _DAY_LABELS
-from .common import TIME_RANGE_RE as _TIME_RANGE_RE
-from .common import VALID_DAYS as _VALID_DAYS
-from .common import VALID_OPTIMIZER_FLAGS as _VALID_OPTIMIZER_FLAGS
-from .common import apply_session_edit as _apply_edit
-from .common import field_value as _field
+from .common import DAY_LABELS as _DAY_LABELS  # noqa: F401
+from .common import TIME_RANGE_RE as _TIME_RANGE_RE  # noqa: F401
+from .common import VALID_DAYS as _VALID_DAYS  # noqa: F401
+from .common import VALID_OPTIMIZER_FLAGS as _VALID_OPTIMIZER_FLAGS  # noqa: F401
+from .common import apply_session_edit as _apply_edit  # noqa: F401
+from .common import field_value as _field  # noqa: F401
 from .configuration import (
     load_config,
     new_config,

@@ -18,11 +18,11 @@ failure) rather than the real library's exact validation rules.
 import copy
 from contextlib import contextmanager
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
-import app.commands as commands
-import app.crud as crud
+from app import commands, crud
 from app.session import Session
 
 
@@ -93,7 +93,7 @@ def patch_library_types(monkeypatch):
 def make_session(classes=None, reject=False):
     """Create a session configured for the test scenario."""
     session = Session()
-    session.config = FakeCombinedConfig(classes=classes, reject=reject)
+    session.config = cast("Any", FakeCombinedConfig(classes=classes, reject=reject))
     return session
 
 

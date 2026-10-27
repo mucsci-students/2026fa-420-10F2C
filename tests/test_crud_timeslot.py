@@ -14,11 +14,11 @@ the last block on a day" guard, index validation, rollback-on-failure
 import copy
 from contextlib import contextmanager
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
-import app.commands as commands
-import app.crud as crud
+from app import commands, crud
 from app.session import Session
 
 
@@ -86,11 +86,14 @@ def patch_library_types(monkeypatch):
 def make_session(times=None, max_time_gap=30, min_time_overlap=45, reject=False):
     """Create a session configured for the test scenario."""
     session = Session()
-    session.config = FakeCombinedConfig(
-        times=times,
-        max_time_gap=max_time_gap,
-        min_time_overlap=min_time_overlap,
-        reject=reject,
+    session.config = cast(
+        "Any",
+        FakeCombinedConfig(
+            times=times,
+            max_time_gap=max_time_gap,
+            min_time_overlap=min_time_overlap,
+            reject=reject,
+        ),
     )
     return session
 

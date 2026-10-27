@@ -213,7 +213,7 @@ def test_a_lab_is_removed_and_its_sections_are_left_without_one(session):
 def test_the_only_room_cannot_be_deleted(session):
     fresh = Session()
     fresh.new_config()
-    name = fresh.config.config.rooms[0].name
+    name = fresh.require_config().config.rooms[0].name
     plan = deps.plan(fresh.config, "room", name)
     assert plan.blocked and "only room" in plan.blockers[0]
     with pytest.raises(ControllerError, match="only room"):
@@ -270,7 +270,7 @@ def test_a_member_nobody_depends_on_is_removed_without_a_tick(session):
 def test_the_only_faculty_member_cannot_be_deleted(session):
     fresh = Session()
     fresh.new_config()
-    name = fresh.config.config.faculty[0].name
+    name = fresh.require_config().config.faculty[0].name
     assert deps.plan(fresh.config, "faculty", name).blocked
 
 

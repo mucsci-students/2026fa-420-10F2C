@@ -1,6 +1,7 @@
 import argparse
-from app.session import Session, ConfigError
+
 from app import commands, schedule_ops
+from app.session import ConfigError, Session
 
 
 # Handles the interactive shell. Owns one Session for the whole run and
@@ -90,7 +91,7 @@ class SchedulerShell:
         p_flag_off = settings_subparsers.add_parser("disable-flag")
         p_flag_off.add_argument("flag")
 
-        help_parser = subparsers.add_parser("help", help="Display available commands")
+        subparsers.add_parser("help", help="Display available commands")
 
         schedule_parser = subparsers.add_parser("schedule")
         schedule_subparsers = schedule_parser.add_subparsers(
@@ -547,7 +548,11 @@ class SchedulerShell:
                         modify_fn(self.session)
                     case "3":
                         delete_fn(self.session)
-                    case selected if view_num is not None and selected == str(view_num):
+                    case selected if (
+                        view is not None
+                        and view_num is not None
+                        and selected == str(view_num)
+                    ):
                         view(self.session)
                     case selected if selected in extra_nums:
                         extra_nums[selected](self.session)
@@ -568,7 +573,7 @@ class SchedulerShell:
     # what "modify" re-prompts for, and delete-time reference checks
     # all differ per entity -- see commands.py for each one's real
     # behavior.
-    _ENTITY_HELP = {
+    _ENTITY_HELP = {  # noqa: RUF012
         "Faculty": "An instructor available to teach course sections.\n\n"
         "Records: credit load range (min/max), unique-course limit\n"
         '(a value of 1 or less shows as "Adjunct", otherwise\n'

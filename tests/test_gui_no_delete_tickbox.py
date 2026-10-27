@@ -19,6 +19,7 @@ import copy
 import inspect
 import re
 from pathlib import Path
+from typing import Any, cast
 from urllib.parse import quote
 
 import pytest
@@ -114,7 +115,7 @@ CASES = {
 
 @pytest.fixture(params=list(CASES))
 def case(request, client):
-    spec = CASES[request.param]
+    spec = cast("Any", CASES[request.param])
     return {
         "url": spec["prepare"](client),
         "gone": spec["gone"],
@@ -365,7 +366,10 @@ def test_no_trace_of_the_tick_box_is_left_in_the_gui_code_or_templates():
 
 def test_the_checkbox_style_that_only_the_tick_box_used_is_gone():
     css = re.sub(
-        r"/\*.*?\*/", "", Path("gui/static/gui/css/style.css").read_text(), flags=re.S
+        r"/\*.*?\*/",
+        "",
+        Path("gui/static/gui/css/style.css").read_text(),
+        flags=re.DOTALL,
     )
     assert not re.search(r"(^|[\s,}])\.checkbox\b", css)
     assert not any(

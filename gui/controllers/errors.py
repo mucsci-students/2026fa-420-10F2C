@@ -22,8 +22,8 @@ friendly messages to _friendly_message() as new library error types show up.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 from app.crud import ReferenceError_, ValidationFailure
 from app.session import ConfigError
@@ -96,7 +96,7 @@ def translate_validation_error(
     if callable(errors_method):
         try:
             raw_errors = list(errors_method())
-        except Exception:  # pragma: no cover - defensive, fall back to text
+        except Exception:  # noqa: BLE001  # pragma: no cover - defensive, fall back to text
             raw_errors = None
 
     if not raw_errors:
@@ -144,7 +144,7 @@ def describe_problems(exc: Exception, limit: int | None = None) -> list[str]:
     if callable(errors_method):
         try:
             raw_errors = list(errors_method())
-        except Exception:  # pragma: no cover - defensive, fall back to text
+        except Exception:  # noqa: BLE001  # pragma: no cover - defensive, fall back to text
             raw_errors = None
 
     if not raw_errors:

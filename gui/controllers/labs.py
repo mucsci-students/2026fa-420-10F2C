@@ -39,13 +39,13 @@ from app.commands.common import VALID_DAYS, apply_session_edit, field_value
 from app.crud import ValidationFailure
 from app.session import ConfigError
 from gui.constants import DAY_NAMES
+from gui.controllers import dependencies as deps
 from gui.controllers.errors import (
     ControllerError,
     FieldError,
     to_controller_error,
     translate_validation_error,
 )
-from gui.controllers import dependencies as deps
 from gui.session_store import get_session
 
 LAB_FIELDS = ("name", "capacity", "features", "times")

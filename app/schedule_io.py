@@ -47,9 +47,10 @@ import io
 import json
 import re
 import tempfile
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 FORMAT_NAME = "course-scheduler-schedules"
 FORMAT_VERSION = 1

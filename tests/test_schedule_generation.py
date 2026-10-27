@@ -22,16 +22,18 @@ requirements §12: "solver-exhaustiveness testing is not required").
 """
 
 from types import SimpleNamespace
+from typing import Any, cast
 
-import app.commands as commands
-from app import schedule_ops
+from app import commands, schedule_ops
 from app.session import Session
 
 
 def make_session():
     """Create a session configured for the test scenario."""
     session = Session()
-    session.config = SimpleNamespace()  # generate_schedule() just passes this through
+    session.config = cast(
+        "Any", SimpleNamespace()
+    )  # generate_schedule() just passes this through
     return session
 
 

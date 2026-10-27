@@ -17,11 +17,10 @@ import re
 
 from django.contrib import messages
 from django.http import Http404, HttpResponse
-
-from app import schedule_ops
 from django.shortcuts import redirect, render
 from django.urls import reverse
 
+from app import schedule_ops
 from gui.constants import (
     DAY_NAMES,
     NO_FACULTY_LABEL,
@@ -34,22 +33,23 @@ from gui.constants import (
 from gui.controllers import (
     config_controller,
     schedule_controller,
+)
+from gui.controllers import (
     settings as settings_controller,
 )
 from gui.controllers import timeslots as timeslot_controller
 from gui.controllers.errors import ControllerError
 from gui.forms import (
     AddTimeBlockForm,
-    ScheduleExportForm,
-    GenerationOverrideForm,
     ConfigLoadForm,
     ConfigNewForm,
+    GenerationOverrideForm,
     SavedConfigSelectionForm,
+    ScheduleExportForm,
     ScheduleImportForm,
     TimeBlockFieldsForm,
     TimingOptionsForm,
 )
-
 
 MINUTES_PER_HOUR = 60
 
@@ -530,7 +530,7 @@ def _assign_meeting_lanes(meetings):
     for meeting in meetings:
         start = _clock_minutes(meeting["start"])
         end = _clock_minutes(meeting["end"])
-        if group and start >= latest_end:
+        if group and latest_end is not None and start >= latest_end:
             _layout_overlap_group(group, cluster_id)
             cluster_id += 1
             group = []

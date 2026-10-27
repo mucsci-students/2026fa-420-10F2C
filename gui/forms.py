@@ -69,7 +69,7 @@ class AddTimeBlockForm(TimeBlockFieldsForm):
         label="Day",
         choices=[(code, f"{name} ({code})") for code, name in DAY_NAMES.items()],
     )
-    field_order = ["day", "start", "end", "spacing"]
+    field_order = ["day", "start", "end", "spacing"]  # noqa: RUF012
 
 
 class TimingOptionsForm(forms.Form):
@@ -110,6 +110,8 @@ class ConfirmReplaceMixin:
     """
 
     confirm_field = "confirm_replace"
+    fields: dict  # provided by django.forms.Form
+    cleaned_data: dict  # provided by django.forms.Form
 
     def require_confirmation(
         self, needed: bool, *, label: str, error: str, help_text: str = ""
@@ -546,112 +548,6 @@ COURSE_MODALITY_CHOICES = [
 ]
 
 
-class CourseForm(forms.Form):
-    """Add or edit one CourseConfig record.
-
-    The constructor receives names from the controller instead of reading
-    scheduler models in the view. That keeps the form responsible only for
-    user input shape while the controller owns cross-record validation.
-    """
-
-    course_id = forms.CharField(
-        label="Course ID",
-        help_text="Base identifier, such as CMSC 420. Repeated IDs create separate sections.",
-    )
-    section_id = forms.CharField(
-        label="Section ID",
-        required=False,
-        help_text="Optional suffix, such as 01. Leave blank to number by input order.",
-    )
-    credits = forms.IntegerField(
-        label="Credits", min_value=1, help_text="Credit hours for this section."
-    )
-    capacity = forms.IntegerField(
-        label="Expected enrollment",
-        min_value=1,
-        help_text="Students expected in this section; assigned rooms and labs must accommodate it.",
-    )
-    modality = forms.ChoiceField(
-        label="Modality",
-        choices=COURSE_MODALITY_CHOICES,
-        initial="in_person",
-        help_text="Required delivery composition for the selected class pattern.",
-    )
-    room = forms.MultipleChoiceField(
-        label="Candidate rooms",
-        required=False,
-        widget=forms.CheckboxSelectMultiple,
-        help_text="Rooms the scheduler may use for lecture meetings.",
-    )
-    lab = forms.MultipleChoiceField(
-        label="Candidate labs",
-        required=False,
-        widget=forms.CheckboxSelectMultiple,
-        help_text="Labs the scheduler may use. Leave blank when the section has no lab meeting.",
-    )
-    conflicts = forms.MultipleChoiceField(
-        label="Conflicting courses",
-        required=False,
-        widget=forms.CheckboxSelectMultiple,
-        help_text="Sections of these course IDs cannot overlap with this section.",
-    )
-    faculty = forms.MultipleChoiceField(
-        label="Faculty candidates",
-        required=False,
-        widget=forms.CheckboxSelectMultiple,
-        help_text="Leave blank to derive candidates from faculty course preferences.",
-    )
-    required_room_features = forms.CharField(
-        label="Required room features",
-        required=False,
-        help_text="Separate feature tags with commas. Leave blank when none are required.",
-    )
-    required_lab_features = forms.CharField(
-        label="Required lab features",
-        required=False,
-        help_text="Separate feature tags with commas. Leave blank when none are required.",
-    )
-    reserve_room_during_lab = forms.BooleanField(
-        label="Reserve the lecture room during lab meetings",
-        required=False,
-        initial=True,
-        help_text="Keep the selected lecture room occupied while this section's lab meets.",
-    )
-
-    def __init__(
-        self,
-        *args,
-        course_names=(),
-        room_names=(),
-        lab_names=(),
-        faculty_names=(),
-        **kwargs,
-    ):
-        """Populate checkbox choices from plain controller-provided names."""
-        super().__init__(*args, **kwargs)
-        self.fields["room"].choices = [(name, name) for name in sorted(set(room_names))]
-        self.fields["lab"].choices = [(name, name) for name in sorted(set(lab_names))]
-        self.fields["conflicts"].choices = [
-            (name, name) for name in sorted(set(course_names))
-        ]
-        self.fields["faculty"].choices = [
-            (name, name) for name in sorted(set(faculty_names))
-        ]
-
-    def clean_section_id(self):
-        """Use None for automatic section numbering, as required by CourseConfig."""
-        return self.cleaned_data["section_id"].strip() or None
-
-    def clean_faculty(self):
-        """An empty candidate list means the scheduler derives faculty choices."""
-        return self.cleaned_data["faculty"] or None
-
-
-# ---------------------------------------------------------------------- #
-#  Class Patterns and Meetings (Section 7). Forms only check shape (a whole
-#  number, a real time, a listed choice); the controllers
-#  (gui/controllers/patterns.py, meetings.py) and the scheduler library decide
-#  whether the values are acceptable.
 # ---------------------------------------------------------------------- #
 # The three delivery modes the scheduler's Meeting accepts (same list the
 # command-line shell offers in app/commands/meetings.py).
@@ -732,7 +628,7 @@ class AddMeetingForm(MeetingFieldsForm):
         choices=[],
         help_text="The meeting is added to this pattern.",
     )
-    field_order = ["pattern", "day", "duration", "lab", "delivery", "start_time"]
+    field_order = ["pattern", "day", "duration", "lab", "delivery", "start_time"]  # noqa: RUF012
 
     def __init__(self, *args, pattern_choices=(), **kwargs):
         super().__init__(*args, **kwargs)
@@ -775,7 +671,7 @@ class AddClassPatternForm(ClassPatternFieldsForm):
         "First meeting: fixed start time", _MEETING_START_HELP
     )
 
-    field_order = [
+    field_order = [  # noqa: RUF012
         "credits",
         "start_time",
         "enabled",

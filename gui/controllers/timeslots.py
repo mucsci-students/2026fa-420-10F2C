@@ -135,9 +135,11 @@ def _fit_warnings(config, day: str) -> list[str]:
         return []
     durations = ", ".join(str(value) for value in sorted(too_long))
     return [
-        f"{day}: enabled class patterns have meetings of {durations} minutes that do not fit "
-        f"in any {day} time block. The change is valid, but schedules that need those "
-        f"meetings may not be feasible."
+        (
+            f"{day}: enabled class patterns have meetings of {durations} minutes that do not fit "
+            f"in any {day} time block. The change is valid, but schedules that need those "
+            f"meetings may not be feasible."
+        )
     ]
 
 

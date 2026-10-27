@@ -34,8 +34,8 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 from copy import deepcopy
-from typing import Callable, Optional
 
 from app import schedule_ops
 from app.schedule_ops import GenerationOutcome, GenerationResult
@@ -48,11 +48,11 @@ class GenerationJob:
     def __init__(
         self,
         config,
-        limit_override: Optional[int] = None,
+        limit_override: int | None = None,
         optimizer_overrides=None,
         *,
-        on_finish: Optional[Callable[["GenerationJob", GenerationResult], None]] = None,
-        runner: Optional[Callable] = None,
+        on_finish: Callable[[GenerationJob, GenerationResult], None] | None = None,
+        runner: Callable | None = None,
     ) -> None:
         self._config = deepcopy(config)
         self._limit_override = limit_override
@@ -67,7 +67,7 @@ class GenerationJob:
         self._lock = threading.Lock()
         self._cancel = threading.Event()
         self._done = threading.Event()
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
 
         self._found = 0
         self._limit = (
@@ -75,9 +75,9 @@ class GenerationJob:
             if limit_override is not None
             else getattr(config, "limit", None)
         )
-        self._started_at: Optional[float] = None
-        self._finished_at: Optional[float] = None
-        self._result: Optional[GenerationResult] = None
+        self._started_at: float | None = None
+        self._finished_at: float | None = None
+        self._result: GenerationResult | None = None
 
     # ------------------------------------------------------------------ #
     #  Control
@@ -96,7 +96,7 @@ class GenerationJob:
         """Ask the run to stop. A no-op once the job has finished."""
         self._cancel.set()
 
-    def wait(self, timeout: Optional[float] = None) -> bool:
+    def wait(self, timeout: float | None = None) -> bool:
         """Block until the job finishes; True if it did, False on timeout."""
         return self._done.wait(timeout)
 
@@ -112,7 +112,7 @@ class GenerationJob:
         return self._cancel.is_set()
 
     @property
-    def result(self) -> Optional[GenerationResult]:
+    def result(self) -> GenerationResult | None:
         with self._lock:
             return self._result
 

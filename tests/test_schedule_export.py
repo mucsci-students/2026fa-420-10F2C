@@ -1,7 +1,6 @@
 """Unit tests for exporting generated schedules to JSON and CSV."""
 
 import pytest
-from pathlib import Path
 
 from app import schedule_ops
 

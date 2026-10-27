@@ -71,7 +71,9 @@ def test_go_to_returns_the_labels_it_moved_over(session):
 def test_restore_previous_names_what_came_back(session):
     first_name = session.config_name
     session.new_config()
-    assert ctrl.describe_previous(None)["name"] == first_name
+    previous = ctrl.describe_previous(None)
+    assert previous is not None
+    assert previous["name"] == first_name
     assert ctrl.restore_previous(None) == first_name
 
 
