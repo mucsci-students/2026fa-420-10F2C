@@ -402,12 +402,18 @@ MVC (above) is one of the patterns used. The others are described here as they a
 
 ## Running the tests
 
+Run the same checks as CI from the repository root:
+
 ```bash
-uv run pytest            # whole suite
-uv run pytest tests/test_gui_rooms_labs.py -q   # one file
+uv sync --locked
+uv build
+uv run ruff check .
+uv run ruff format --check .
+uv run ty check
+uv run pytest --cov --cov-report=xml
 ```
 
-The tests live in `tests/`: `test_crud_*` and `test_schedule_*` cover the model and CLI layer, `test_gui_*` cover the controllers and pages through Django's test client.
+Coverage measures the Model package in `app/` and fails below 80%. The Codecov upload is performed by CI; no OpenAI secret is needed for routine tests. The tests live in `tests/`: `test_crud_*` and `test_schedule_*` cover the model and CLI layer, `test_gui_*` cover the controllers and pages through Django's test client.
 
 ## Command-line shell (Sprint 1)
 

@@ -11,6 +11,7 @@ itself was checked in a real browser.
 
 import re
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -18,7 +19,12 @@ from gui import session_store
 
 JS = Path("gui/static/gui/js/dropdowns.js")
 CSS = Path("gui/static/gui/css/style.css")
-PAGES = ["/configuration/courses/", "/configuration/labs/", "/configuration/rooms/", "/configuration/faculty/"]
+PAGES = [
+    "/configuration/courses/",
+    "/configuration/labs/",
+    "/configuration/rooms/",
+    "/configuration/faculty/",
+]
 SCRIPT_TAG = '<script src="/static/gui/js/dropdowns.js" defer></script>'
 
 
@@ -34,8 +40,10 @@ def page(response):
 
 
 def css_rules(css):
-    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
-    return [(sel.strip(), body) for sel, body in re.findall(r"([^{}]+)\{([^}]*)\}", css)]
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    return [
+        (sel.strip(), body) for sel, body in re.findall(r"([^{}]+)\{([^}]*)\}", css)
+    ]
 
 
 # ---------------------------------------------------------------------- #
@@ -65,14 +73,18 @@ def test_it_animates_exactly_the_two_kinds_of_dropdown():
     js = JS.read_text()
     assert "details.usage > summary" in js
     assert "details.item-card__more > summary" in js
-    assert "add-panel" not in js and "timing-options" not in js  # other dropdowns are left alone
+    assert (
+        "add-panel" not in js and "timing-options" not in js
+    )  # other dropdowns are left alone
 
 
 def test_without_support_or_with_reduced_motion_it_does_nothing_so_the_browser_toggles_instantly():
     js = JS.read_text()
     assert "prefers-reduced-motion: reduce" in js
     assert "typeof Element.prototype.animate" in js
-    assert re.search(r"if\s*\(\s*!canAnimate\(\)\s*\)\s*\{?\s*return", js)  # bail out BEFORE preventDefault
+    assert re.search(
+        r"if\s*\(\s*!canAnimate\(\)\s*\)\s*\{?\s*return", js
+    )  # bail out BEFORE preventDefault
 
 
 def test_it_only_takes_over_the_click_after_deciding_it_can_animate():
@@ -95,7 +107,9 @@ def test_it_never_leaves_the_dropdown_stuck_open_or_clipped_afterwards():
 def test_it_does_not_clip_the_arrow_that_hangs_beside_the_last_chip():
     js = JS.read_text()
     assert "overflow" not in js
-    assert re.search(r'clipPath\s*=\s*"inset\(-?\d+px -\d+(rem|px) 0 -\d+(rem|px)\)"', js)
+    assert re.search(
+        r'clipPath\s*=\s*"inset\(-?\d+px -\d+(rem|px) 0 -\d+(rem|px)\)"', js
+    )
 
 
 def test_it_builds_no_html_and_runs_no_strings():
@@ -104,7 +118,11 @@ def test_it_builds_no_html_and_runs_no_strings():
 
 
 def test_the_motion_is_short_enough_not_to_feel_slow():
-    duration = int(re.search(r"var DURATION\s*=\s*(\d+)\s*;", JS.read_text()).group(1))
+    duration = int(
+        cast(
+            "re.Match[str]", re.search(r"var DURATION\s*=\s*(\d+)\s*;", JS.read_text())
+        ).group(1)
+    )
     assert 150 <= duration <= 350
 
 
@@ -112,16 +130,26 @@ def test_the_motion_is_short_enough_not_to_feel_slow():
 #  The arrow turns in step with the motion
 # ---------------------------------------------------------------------- #
 def test_the_arrow_turns_smoothly():
-    icon = next(body for sel, body in css_rules(CSS.read_text()) if sel == ".usage__icon")
+    icon = next(
+        body for sel, body in css_rules(CSS.read_text()) if sel == ".usage__icon"
+    )
     assert re.search(r"transition:\s*transform\s+[\d.]+m?s", icon)
 
 
 def test_the_arrow_flips_back_at_the_start_of_closing_not_at_the_end():
     selectors = [sel for sel, _ in css_rules(CSS.read_text())]
-    assert ".usage[open] .usage__icon" in selectors  # opening: turns as soon as it opens
+    assert (
+        ".usage[open] .usage__icon" in selectors
+    )  # opening: turns as soon as it opens
     assert ".usage.is-closing .usage__icon" in selectors
-    assert selectors.index(".usage.is-closing .usage__icon") > selectors.index(".usage[open] .usage__icon")
-    body = next(b for s, b in css_rules(CSS.read_text()) if s == ".usage.is-closing .usage__icon")
+    assert selectors.index(".usage.is-closing .usage__icon") > selectors.index(
+        ".usage[open] .usage__icon"
+    )
+    body = next(
+        b
+        for s, b in css_rules(CSS.read_text())
+        if s == ".usage.is-closing .usage__icon"
+    )
     assert re.search(r"transform:\s*none", body)
 
 
@@ -130,9 +158,10 @@ def test_the_script_marks_a_closing_dropdown_with_the_class_the_stylesheet_uses(
 
 
 def test_reduced_motion_turns_the_arrow_transition_off():
-    css = re.sub(r"/\*.*?\*/", "", CSS.read_text(), flags=re.S)
+    css = re.sub(r"/\*.*?\*/", "", CSS.read_text(), flags=re.DOTALL)
     assert re.search(
-        r"@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[^@]*?\.usage__icon\s*\{[^}]*transition:\s*none", css
+        r"@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[^@]*?\.usage__icon\s*\{[^}]*transition:\s*none",
+        css,
     )
 
 

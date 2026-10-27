@@ -89,7 +89,10 @@ def ask(request, text):
 
 
 def lines(request):
-    return [(message["kind"], message["text"]) for message in chats.state(session(request))["messages"]]
+    return [
+        (message["kind"], message["text"])
+        for message in chats.state(session(request))["messages"]
+    ]
 
 
 # ---------------------------------------------------------------------- #
@@ -97,7 +100,9 @@ def lines(request):
 # ---------------------------------------------------------------------- #
 def test_a_browser_starts_with_one_empty_chat(request_):
     state = chats.state(session(request_))
-    assert len(state["chats"]) == 1 and state["messages"] == [] and state["busy"] is False
+    assert (
+        len(state["chats"]) == 1 and state["messages"] == [] and state["busy"] is False
+    )
     first = state["chats"][0]
     assert {key: first[key] for key in ("id", "title", "count", "active")} == {
         "id": state["active"],
@@ -105,19 +110,32 @@ def test_a_browser_starts_with_one_empty_chat(request_):
         "count": 0,
         "active": True,
     }
-    assert isinstance(first["updated"], int) and first["updated"] > 0  # when it was last used: the sidebar groups by day
+    assert (
+        isinstance(first["updated"], int) and first["updated"] > 0
+    )  # when it was last used: the sidebar groups by day
 
 
 def test_lines_are_kept_in_order_and_the_first_message_gives_the_title(request_):
-    chats.record(session(request_), "user", "Add a room called Roddy 150 with room for 40 students please")
-    chats.record(session(request_), "assistant", "Done.", suggestions=["Cancel"], generated=True)
+    chats.record(
+        session(request_),
+        "user",
+        "Add a room called Roddy 150 with room for 40 students please",
+    )
+    chats.record(
+        session(request_), "assistant", "Done.", suggestions=["Cancel"], generated=True
+    )
     state = chats.state(session(request_))
     assert state["chats"][0]["title"] == "Add a room called Roddy 150 with room f…"
     assert len(state["chats"][0]["title"]) <= chats.TITLE_LENGTH
     assert [m["kind"] for m in state["messages"]] == ["user", "assistant"]
-    assert state["messages"][1]["suggestions"] == ["Cancel"] and state["messages"][1]["generated"] is True
+    assert (
+        state["messages"][1]["suggestions"] == ["Cancel"]
+        and state["messages"][1]["generated"] is True
+    )
     chats.record(session(request_), "user", "A later message")
-    assert chats.state(session(request_))["chats"][0]["title"].startswith("Add a room")  # the title stays
+    assert chats.state(session(request_))["chats"][0]["title"].startswith(
+        "Add a room"
+    )  # the title stays
 
 
 def test_new_chat_keeps_the_old_one_and_starts_empty(request_):
@@ -126,7 +144,10 @@ def test_new_chat_keeps_the_old_one_and_starts_empty(request_):
     fresh = chats.new_chat(session(request_))
     state = chats.state(session(request_))
     assert state["active"] == fresh["id"] != first and state["messages"] == []
-    assert [chat["id"] for chat in state["chats"]] == [fresh["id"], first]  # newest first
+    assert [chat["id"] for chat in state["chats"]] == [
+        fresh["id"],
+        first,
+    ]  # newest first
     assert [chat["count"] for chat in state["chats"]] == [0, 1]
 
 
@@ -160,7 +181,9 @@ def test_each_chat_has_its_own_memory_for_the_ai(request_):
 
 
 def test_a_new_chat_or_switch_forgets_anything_that_was_waiting_for_a_yes(request_):
-    ToolBox(request_).call("prepare_schedule_generation")  # (preparing drops a waiting delete, so this goes first)
+    ToolBox(request_).call(
+        "prepare_schedule_generation"
+    )  # (preparing drops a waiting delete, so this goes first)
     ToolBox(FakeRequest(request_.session)).call("delete_room", {"name": "Roddy 136"})
     assert getattr(session(request_), generation._PLAN_ATTR) is not None
     assert getattr(session(request_), changes._PENDING_ATTR) is not None
@@ -169,7 +192,9 @@ def test_a_new_chat_or_switch_forgets_anything_that_was_waiting_for_a_yes(reques
     assert getattr(session(request_), changes._PENDING_ATTR) is None
     assert getattr(session(request_), generation._PLAN_ATTR) is None
     result = ToolBox(FakeRequest(request_.session)).call("confirm_delete")
-    assert not result.ok and any(room.name == "Roddy 136" for room in session(request_).config.config.rooms)
+    assert not result.ok and any(
+        room.name == "Roddy 136" for room in session(request_).config.config.rooms
+    )
 
 
 def test_deleting_the_open_chat_opens_the_newest_other_one_or_a_blank_one(request_):
@@ -182,7 +207,11 @@ def test_deleting_the_open_chat_opens_the_newest_other_one_or_a_blank_one(reques
     assert chats.state(session(request_))["active"] == oldest
     assert chats.delete_chat(session(request_), oldest) is True
     state = chats.state(session(request_))
-    assert len(state["chats"]) == 1 and state["messages"] == [] and session(request_).ai_history == []
+    assert (
+        len(state["chats"]) == 1
+        and state["messages"] == []
+        and session(request_).ai_history == []
+    )
     assert chats.delete_chat(session(request_), "nope") is False
 
 
@@ -201,13 +230,20 @@ def test_the_number_of_chats_and_of_lines_is_bounded(request_):
         chats.new_chat(session(request_))
     state = chats.state(session(request_))
     assert len(state["chats"]) <= chats.MAX_CHATS
-    assert all(chat["title"] != "chat 0" for chat in state["chats"])  # the oldest went first
+    assert all(
+        chat["title"] != "chat 0" for chat in state["chats"]
+    )  # the oldest went first
     for number in range(chats.MAX_MESSAGES + 10):
         chats.record(session(request_), "user", f"line {number}")
     messages = chats.state(session(request_))["messages"]
-    assert len(messages) == chats.MAX_MESSAGES and messages[-1]["text"] == f"line {chats.MAX_MESSAGES + 9}"
+    assert (
+        len(messages) == chats.MAX_MESSAGES
+        and messages[-1]["text"] == f"line {chats.MAX_MESSAGES + 9}"
+    )
     chats.record(session(request_), "assistant", "x" * (chats.TEXT_LIMIT + 50))
-    assert len(chats.state(session(request_))["messages"][-1]["text"]) == chats.TEXT_LIMIT
+    assert (
+        len(chats.state(session(request_))["messages"][-1]["text"]) == chats.TEXT_LIMIT
+    )
 
 
 def test_chats_belong_to_one_browser(request_):
@@ -221,15 +257,23 @@ def test_chats_belong_to_one_browser(request_):
 # ---------------------------------------------------------------------- #
 def test_a_request_and_its_reply_are_kept(request_, runner):
     reply = ask(request_, "add a room")
-    assert reply.ok and lines(request_) == [("user", "add a room"), ("assistant", reply.message)]
+    assert reply.ok and lines(request_) == [
+        ("user", "add a room"),
+        ("assistant", reply.message),
+    ]
     assert "RODDY150" in reply.message
 
 
 def test_a_failed_request_is_kept_as_a_problem(request_, monkeypatch):
-    failing = ScriptedRunner({"bad": [("add_room", {"name": "RODDY150", "capacity": "lots"})]})
+    failing = ScriptedRunner(
+        {"bad": [("add_room", {"name": "RODDY150", "capacity": "lots"})]}
+    )
     monkeypatch.setattr(service, "get_runner", lambda: failing)
     reply = ask(request_, "bad")
-    assert not reply.ok and lines(request_) == [("user", "bad"), ("error", reply.message)]
+    assert not reply.ok and lines(request_) == [
+        ("user", "bad"),
+        ("error", reply.message),
+    ]
 
 
 def test_empty_too_long_and_refused_requests_are_not_kept(request_, runner):
@@ -241,7 +285,9 @@ def test_empty_too_long_and_refused_requests_are_not_kept(request_, runner):
     assert refused.busy and lines(request_) == []
 
 
-def test_the_question_is_kept_before_the_answer_and_the_request_shows_as_running(request_, monkeypatch):
+def test_the_question_is_kept_before_the_answer_and_the_request_shows_as_running(
+    request_, monkeypatch
+):
     seen = {}
 
     def during(toolbox):
@@ -254,7 +300,9 @@ def test_the_question_is_kept_before_the_answer_and_the_request_shows_as_running
     assert service.is_busy(request_) is False and len(lines(request_)) == 2
 
 
-def test_a_generated_reply_is_marked_so_the_viewer_link_comes_back(request_, runner, monkeypatch):
+def test_a_generated_reply_is_marked_so_the_viewer_link_comes_back(
+    request_, runner, monkeypatch
+):
     from app import schedule_ops
     from app.schedule_io import Assignment, MeetingTime
 
@@ -263,26 +311,45 @@ def test_a_generated_reply_is_marked_so_the_viewer_link_comes_back(request_, run
             pass
 
         def get_models(self):
-            yield [Assignment("CMSC 140.01", "Hogg", "Roddy 136", None, (MeetingTime("MON", "09:00", "09:50", 50),))]
+            yield [
+                Assignment(
+                    "CMSC 140.01",
+                    "Hogg",
+                    "Roddy 136",
+                    None,
+                    (MeetingTime("MON", "09:00", "09:50", 50),),
+                )
+            ]
 
     monkeypatch.setattr(schedule_ops, "Scheduler", FakeScheduler)
     runner.script["go"] = [("confirm_schedule_generation", {})]
     ask(request_, "generate")
-    assert chats.state(session(request_))["messages"][-1]["suggestions"] == ["Go ahead and generate", "Cancel"]
+    assert chats.state(session(request_))["messages"][-1]["suggestions"] == [
+        "Go ahead and generate",
+        "Cancel",
+    ]
     ask(FakeRequest(request_.session), "go")
     last = chats.state(session(request_))["messages"][-1]
-    assert last["generated"] is True and last["text"].startswith("Generated 1 schedule.") and last["suggestions"] == []
+    assert (
+        last["generated"] is True
+        and last["text"].startswith("Generated 1 schedule.")
+        and last["suggestions"] == []
+    )
 
 
 def test_a_new_chat_gets_none_of_the_old_chats_messages_as_memory(request_, runner):
     ask(request_, "add a room")
     chats.new_chat(session(request_))
     ask(FakeRequest(request_.session), "What can you do?")
-    assert runner.seen[0] == [] and runner.seen[1] == []  # the AI saw no earlier messages in the new chat
+    assert (
+        runner.seen[0] == [] and runner.seen[1] == []
+    )  # the AI saw no earlier messages in the new chat
     first = chats.state(session(request_))["chats"][1]["id"]
     chats.switch_chat(session(request_), first)
     ask(FakeRequest(request_.session), "and one more")
-    assert any("add a room" in str(message) for message in runner.seen[2])  # the old chat has its own back
+    assert any(
+        "add a room" in str(message) for message in runner.seen[2]
+    )  # the old chat has its own back
 
 
 # ---------------------------------------------------------------------- #
@@ -303,8 +370,13 @@ def test_the_panel_can_load_the_saved_chat_on_any_page(client, runner):
     for path in ("/", "/rooms/", "/schedules/"):
         client.get(path)  # a page change
         body = client.get(CHAT_URL).json()
-        assert [m["kind"] for m in body["messages"]] == ["user", "assistant"] and body["busy"] is False
-        assert body["chats"][0]["active"] is True and body["chats"][0]["title"] == "add a room"
+        assert [m["kind"] for m in body["messages"]] == ["user", "assistant"] and body[
+            "busy"
+        ] is False
+        assert (
+            body["chats"][0]["active"] is True
+            and body["chats"][0]["title"] == "add a room"
+        )
         assert set(body["messages"][0]) == {"kind", "text", "suggestions", "generated"}
 
 
@@ -314,15 +386,28 @@ def test_new_switch_and_delete_through_the_endpoints(client, runner):
     first = client.get(CHAT_URL).json()["active"]
 
     status, body = post(client, NEW_URL)
-    assert status == 200 and body["messages"] == [] and body["active"] != first and len(body["chats"]) == 2
+    assert (
+        status == 200
+        and body["messages"] == []
+        and body["active"] != first
+        and len(body["chats"]) == 2
+    )
     second = body["active"]
 
     client.post(ASK_URL, {"message": "What can you do?"})
     status, body = post(client, SWITCH_URL, id=first)
-    assert status == 200 and body["active"] == first and body["messages"][0]["text"] == "add a room"
+    assert (
+        status == 200
+        and body["active"] == first
+        and body["messages"][0]["text"] == "add a room"
+    )
 
     status, body = post(client, DELETE_URL, id=first)
-    assert status == 200 and body["active"] == second and [c["id"] for c in body["chats"]] == [second]
+    assert (
+        status == 200
+        and body["active"] == second
+        and [c["id"] for c in body["chats"]] == [second]
+    )
 
 
 def test_an_unknown_chat_is_a_404_with_the_current_state(client):
@@ -338,9 +423,17 @@ def test_the_chats_cannot_change_while_a_request_is_running(client, runner):
     first = client.get(CHAT_URL).json()["active"]
     service._BUSY.add(id(browser_session()))
     assert client.get(CHAT_URL).json()["busy"] is True
-    for url, data in ((NEW_URL, {}), (SWITCH_URL, {"id": first}), (DELETE_URL, {"id": first})):
+    for url, data in (
+        (NEW_URL, {}),
+        (SWITCH_URL, {"id": first}),
+        (DELETE_URL, {"id": first}),
+    ):
         status, body = post(client, url, **data)
-        assert status == 409 and "still running" in body["error"] and body["active"] == first
+        assert (
+            status == 409
+            and "still running" in body["error"]
+            and body["active"] == first
+        )
     service._BUSY.discard(id(browser_session()))
     assert post(client, NEW_URL)[0] == 200
 
@@ -375,8 +468,13 @@ def test_every_page_has_the_history_sidebar_and_where_the_chats_live(client, pat
         "data-chat-scrim",
     ):
         assert needed in text, needed
-    assert "data-chat-sidebar hidden" in text  # shown by the script, so no-JavaScript pages stay clean
-    assert "data-chat-toolbar" not in text and "<select" not in text.split('id="chat-panel"')[1].split("chat-dock")[0]
+    assert (
+        "data-chat-sidebar hidden" in text
+    )  # shown by the script, so no-JavaScript pages stay clean
+    assert (
+        "data-chat-toolbar" not in text
+        and "<select" not in text.split('id="chat-panel"')[1].split("chat-dock")[0]
+    )
 
 
 def read(path):
@@ -401,26 +499,40 @@ def test_the_chat_script_restores_chats_and_updates_the_page_in_place():
         "sessionStorage",
     ):
         assert needed in script, needed
-    assert "innerHTML" not in script  # replies and swapped content are inserted as nodes, never as HTML strings
+    assert (
+        "innerHTML" not in script
+    )  # replies and swapped content are inserted as nodes, never as HTML strings
     assert "window.confirm" not in script  # no pop-up: the history row asks in place
 
 
 def test_the_page_scripts_wire_the_new_content_after_an_in_place_update():
     for name in ("app.js", "schedule_viewer.js", "generation_progress.js"):
-        assert 'addEventListener("scheduler:content-updated"' in read(f"gui/static/gui/js/{name}"), name
+        assert 'addEventListener("scheduler:content-updated"' in read(
+            f"gui/static/gui/js/{name}"
+        ), name
     assert "innerHTML" not in read("gui/static/gui/js/schedule_viewer.js")
 
 
 def test_the_sidebar_has_light_and_dark_styles():
     css = read("gui/static/gui/css/style.css")
-    for needed in (".chat-sidebar", ".chat-history__row", ".chat-icon-button", "@media (max-width: 40rem)"):
+    for needed in (
+        ".chat-sidebar",
+        ".chat-history__row",
+        ".chat-icon-button",
+        "@media (max-width: 40rem)",
+    ):
         assert needed in css, needed
-    for needed in ('html[data-theme="dark"] .chat-sidebar', 'html[data-theme="dark"] .chat-history__row'):
+    for needed in (
+        'html[data-theme="dark"] .chat-sidebar',
+        'html[data-theme="dark"] .chat-history__row',
+    ):
         assert needed in css, needed
     assert ".chat-toolbar" not in css and ".chat-picker" not in css
 
 
-def test_the_stylesheet_and_chat_script_are_versioned_so_a_browser_never_mixes_old_and_new(client):
+def test_the_stylesheet_and_chat_script_are_versioned_so_a_browser_never_mixes_old_and_new(
+    client,
+):
     text = client.get("/").content.decode()
     assert re.search(r'href="/static/gui/css/style\.css\?v=\d+"', text)
     assert re.search(r'src="/static/gui/js/chat\.js\?v=\d+"', text)

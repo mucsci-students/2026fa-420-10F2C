@@ -15,7 +15,6 @@ loading a configuration are not part of it, exactly as on the History page.
 
 from __future__ import annotations
 
-
 from pydantic import BaseModel, Field
 
 from gui.ai.base import _NOISE, UNDO_CHIP, AiTool, NoArgs, Outcome, _plural, _tokens
@@ -30,7 +29,12 @@ GENERATE_CHIP = "Generate schedules"
 
 
 class UndoArgs(BaseModel):
-    count: int = Field(default=1, ge=1, le=MAX_STEPS, description="How many of the newest changes to undo")
+    count: int = Field(
+        default=1,
+        ge=1,
+        le=MAX_STEPS,
+        description="How many of the newest changes to undo",
+    )
     containing: str | None = Field(
         default=None,
         description=(
@@ -42,7 +46,12 @@ class UndoArgs(BaseModel):
 
 
 class RedoArgs(BaseModel):
-    count: int = Field(default=1, ge=1, le=MAX_STEPS, description="How many undone changes to bring back")
+    count: int = Field(
+        default=1,
+        ge=1,
+        le=MAX_STEPS,
+        description="How many undone changes to bring back",
+    )
 
 
 def _stem(word: str) -> str:
@@ -60,18 +69,48 @@ def _words(text: str) -> set[str]:
 
 
 # Words around the name of a change ("the room I deleted", "that last one") that are not part of its label.
-_FILLER = frozenset("i my we me you that this it its last just recent recently of did made was were had earlier".split())
+_FILLER = frozenset(
+    [
+        "i",
+        "my",
+        "we",
+        "me",
+        "you",
+        "that",
+        "this",
+        "it",
+        "its",
+        "last",
+        "just",
+        "recent",
+        "recently",
+        "of",
+        "did",
+        "made",
+        "was",
+        "were",
+        "had",
+        "earlier",
+    ]
+)
 
 
 def _matches(entry: dict, wanted: str) -> bool:
-    typed = {_stem(token) for token in _tokens(wanted) if token not in _NOISE and token not in _FILLER}
+    typed = {
+        _stem(token)
+        for token in _tokens(wanted)
+        if token not in _NOISE and token not in _FILLER
+    }
     if not typed:
         return False
     return typed <= _words(f"{entry['label']} {entry.get('summary', '')}")
 
 
 def _recent(entries: list[dict], limit: int = SHOWN) -> str:
-    return "\n".join(f"{number}. {row['label']} ({row['when']})" for number, row in enumerate(entries[:limit], 1))
+    return "\n".join(
+        f"{number}. {row['label']} ({row['when']})"
+        for number, row in enumerate(entries[:limit], 1)
+    )
 
 
 def show_change_history(request, args: NoArgs) -> str:
@@ -87,7 +126,9 @@ def show_change_history(request, args: NoArgs) -> str:
         lines.append(f"Changes that can be undone, newest first ({len(undo)}):")
         lines.append(_recent(undo))
     if redo:
-        lines.append(f"Changes that were undone and can be redone, next one first ({len(redo)}):")
+        lines.append(
+            f"Changes that were undone and can be redone, next one first ({len(redo)}):"
+        )
         lines.append(_recent(redo))
     return "\n".join(lines)
 
@@ -101,7 +142,9 @@ def undo_changes(request, args: UndoArgs) -> Outcome:
         hit = next((row for row in entries if _matches(row, wanted)), None)
         if hit is None:
             if any(_matches(row, wanted) for row in state["redo_entries"]):
-                raise ControllerError('That change is already undone. Say "redo" to bring it back.')
+                raise ControllerError(
+                    'That change is already undone. Say "redo" to bring it back.'
+                )
             if not entries:
                 raise ControllerError("There is nothing to undo.")
             raise ControllerError(
@@ -115,12 +158,16 @@ def undo_changes(request, args: UndoArgs) -> Outcome:
     if steps == 1:
         text = f"Undid: {labels[0]}."
     else:
-        text = f"Undid {_plural(steps, 'change')}, newest first: " + "; ".join(labels) + "."
+        text = (
+            f"Undid {_plural(steps, 'change')}, newest first: "
+            + "; ".join(labels)
+            + "."
+        )
     if wanted and steps > 1:
         text += f" ({_plural(steps - 1, 'later change')} had to be undone with it.)"
     if labels[-1].lower().startswith("delete"):
         text += " It is back, together with everything that was removed with it."
-    text += " Say \"redo\" to bring it back."
+    text += ' Say "redo" to bring it back.'
     return Outcome(text, (REDO_CHIP, GENERATE_CHIP), edited=True, note=False)
 
 
@@ -130,15 +177,24 @@ def redo_changes(request, args: RedoArgs) -> Outcome:
         raise ControllerError("There is nothing to redo.")
     steps = min(args.count, len(state["redo_entries"]))
     labels = [history_controller.redo(request) for _ in range(steps)]
-    text = f"Redid: {labels[0]}." if steps == 1 else f"Redid {_plural(steps, 'change')}: " + "; ".join(labels) + "."
+    text = (
+        f"Redid: {labels[0]}."
+        if steps == 1
+        else f"Redid {_plural(steps, 'change')}: " + "; ".join(labels) + "."
+    )
     return Outcome(text, (UNDO_CHIP, GENERATE_CHIP), edited=True, note=False)
 
 
 def recent_changes(request, limit: int = 3) -> list[str]:
     """Labels of the newest changes that can be undone (for explaining a failed run)."""
     try:
-        return [row["label"] for row in history_controller.describe_history(request)["undo_entries"][:limit]]
-    except Exception:  # explaining must never be the thing that fails
+        return [
+            row["label"]
+            for row in history_controller.describe_history(request)["undo_entries"][
+                :limit
+            ]
+        ]
+    except Exception:  # noqa: BLE001 - explaining must never be the thing that fails
         return []
 
 

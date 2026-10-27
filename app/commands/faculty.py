@@ -4,7 +4,13 @@ from scheduler.config import FacultyConfig
 
 from app.crud import ReferenceError_, ValidationFailure, check_no_references
 
-from .common import DAY_LABELS, TIME_RANGE_RE, VALID_DAYS, apply_session_edit, field_value
+from .common import (
+    DAY_LABELS,
+    TIME_RANGE_RE,
+    VALID_DAYS,
+    apply_session_edit,
+    field_value,
+)
 
 
 def prompt_faculty_times():
@@ -22,7 +28,9 @@ def prompt_faculty_times():
             times[day] = [{"start": "09:00", "end": "17:00"}]
             continue
         if not TIME_RANGE_RE.match(raw):
-            print(f"  '{raw}' isn't a valid HH:MM-HH:MM range -- treating {day} as unavailable.")
+            print(
+                f"  '{raw}' isn't a valid HH:MM-HH:MM range -- treating {day} as unavailable."
+            )
             continue
         start, end = raw.split("-")
         times[day] = [{"start": start, "end": end}]
@@ -35,14 +43,18 @@ def prompt_weighted_preferences(label, valid_names, ask_weight=True, max_weight=
     if valid_names:
         print(f"  Existing {label}s: {', '.join(sorted(valid_names))}")
     else:
-        print(f"  (no {label}s defined yet -- add one first if you want a {label} preference)")
+        print(
+            f"  (no {label}s defined yet -- add one first if you want a {label} preference)"
+        )
     print(f"  Add {label} preferences (blank name to stop):")
     while True:
         name = input(f"  {label.capitalize()} name: ").strip()
         if not name:
             break
         if valid_names and name not in valid_names:
-            print(f"  '{name}' isn't a known {label} -- pick from: {', '.join(sorted(valid_names))}")
+            print(
+                f"  '{name}' isn't a known {label} -- pick from: {', '.join(sorted(valid_names))}"
+            )
             continue
         if not ask_weight:
             prefs[name] = 5
@@ -51,7 +63,9 @@ def prompt_weighted_preferences(label, valid_names, ask_weight=True, max_weight=
         if weight_raw.isdigit() and 0 <= int(weight_raw) <= max_weight:
             weight = int(weight_raw)
         else:
-            print(f"  '{weight_raw}' isn't 0-{max_weight} -- using the default weight of 5.")
+            print(
+                f"  '{weight_raw}' isn't 0-{max_weight} -- using the default weight of 5."
+            )
             weight = 5
         prefs[name] = weight
     return prefs
@@ -64,7 +78,9 @@ def prompt_mandatory_days(times):
         print("  No available days set -- skipping mandatory days.")
         return None
 
-    print(f"  Mandatory days (must be scheduled every term) -- choose from: {', '.join(available_days)}")
+    print(
+        f"  Mandatory days (must be scheduled every term) -- choose from: {', '.join(available_days)}"
+    )
     print("  Comma-separated, or blank for none:")
     raw = input("  > ").strip()
     if not raw:
@@ -76,7 +92,9 @@ def prompt_mandatory_days(times):
         if not day:
             continue
         if day not in available_days:
-            print(f"  Skipping '{day}' -- not one of this faculty member's available days.")
+            print(
+                f"  Skipping '{day}' -- not one of this faculty member's available days."
+            )
             continue
         if day not in days:
             days.append(day)
@@ -167,7 +185,10 @@ def modify_faculty(session):
     config = session.require_config()
     print("What is the name of the faculty you'd like to edit?")
     target_name = input().strip()
-    existing = next((faculty for faculty in config.config.faculty if faculty.name == target_name), None)
+    existing = next(
+        (faculty for faculty in config.config.faculty if faculty.name == target_name),
+        None,
+    )
     if existing is None:
         print("Faculty does not exist!")
         return
@@ -191,7 +212,9 @@ def delete_faculty(session):
     config = session.require_config()
     print("What is the name of the faculty you want to remove?")
     name = input().strip()
-    existing = next((faculty for faculty in config.config.faculty if faculty.name == name), None)
+    existing = next(
+        (faculty for faculty in config.config.faculty if faculty.name == name), None
+    )
     if existing is None:
         print("Faculty does not exist!")
         return
@@ -204,7 +227,9 @@ def delete_faculty(session):
     try:
         check_no_references(name, referencing_courses)
     except ReferenceError_ as error:
-        print(f"{error} -- remove or reassign those first, or add a --cascade option if you want one.")
+        print(
+            f"{error} -- remove or reassign those first, or add a --cascade option if you want one."
+        )
         return
 
     print("Are you sure you want to delete this faculty? This cannot be undone. (y/n)")
@@ -240,7 +265,10 @@ def format_faculty(faculty):
         blocks = field_value(faculty.times, day)
         if not blocks:
             continue
-        ranges = ", ".join(f"{field_value(block, 'start')}-{field_value(block, 'end')}" for block in blocks)
+        ranges = ", ".join(
+            f"{field_value(block, 'start')}-{field_value(block, 'end')}"
+            for block in blocks
+        )
         availability_lines.append(f"    {DAY_LABELS[day]}  {ranges}")
     lines.append("  Availability:")
     lines.extend(availability_lines if availability_lines else ["    (none set)"])
@@ -251,7 +279,9 @@ def format_faculty(faculty):
         ("Lab preferences", faculty.lab_preferences),
     ):
         if preferences:
-            formatted = ", ".join(f"{name} ({weight})" for name, weight in preferences.items())
+            formatted = ", ".join(
+                f"{name} ({weight})" for name, weight in preferences.items()
+            )
             lines.append(f"  {label}: {formatted}")
     return "\n".join(lines)
 

@@ -39,7 +39,9 @@ logger = logging.getLogger("gui.ai")
 
 MAX_REQUEST_LENGTH = 2000
 EMPTY_MESSAGE = "Type a request first."
-TOO_LONG_MESSAGE = f"That request is too long. Keep it under {MAX_REQUEST_LENGTH} characters."
+TOO_LONG_MESSAGE = (
+    f"That request is too long. Keep it under {MAX_REQUEST_LENGTH} characters."
+)
 BUSY_MESSAGE = "Your previous request is still being processed. Wait for it to finish, then try again."
 SERVICE_FAILED = "The AI service couldn't finish that request. Try again in a moment."
 NO_ANSWER = "The AI didn't give an answer. Try asking in a different way."
@@ -65,7 +67,9 @@ class Reply:
     changed: bool = False
     busy: bool = False
     results: list[ToolResult] = field(default_factory=list)
-    schedules_changed: bool = False  # the schedules in the Schedule Viewer were replaced or cleared
+    schedules_changed: bool = (
+        False  # the schedules in the Schedule Viewer were replaced or cleared
+    )
     refresh: bool = False  # the page behind the chat is out of date (a different configuration or schedules)
     suggestions: tuple[str, ...] = ()  # short replies the chat offers as buttons
 
@@ -90,10 +94,17 @@ def compose(results: list[ToolResult], model_text: str = "") -> Reply:
     offer quick replies, and say whether the schedules or configuration behind the page were replaced."""
     reply = _compose(results, model_text)
     shown = [result for result in results if result.final] or list(results)
-    offered = next((result.suggestions for result in reversed(shown) if result.suggestions), ())
+    offered = next(
+        (result.suggestions for result in reversed(shown) if result.suggestions), ()
+    )
     schedules_changed = any(result.schedules_changed for result in results)
     replaced = any(result.config_replaced for result in results)
-    return replace(reply, schedules_changed=schedules_changed, refresh=schedules_changed or replaced, suggestions=offered)
+    return replace(
+        reply,
+        schedules_changed=schedules_changed,
+        refresh=schedules_changed or replaced,
+        suggestions=offered,
+    )
 
 
 def _compose(results: list[ToolResult], model_text: str = "") -> Reply:
@@ -111,7 +122,9 @@ def _compose(results: list[ToolResult], model_text: str = "") -> Reply:
     lines = [result.message for result in shown]
     changed = [result for result in shown if result.changed]
     failed_writes = [result for result in shown if result.write and not result.ok]
-    unsaved = [result for result in changed if result.note]  # undo and redo say what they did themselves
+    unsaved = [
+        result for result in changed if result.note
+    ]  # undo and redo say what they did themselves
     if unsaved and failed_writes:
         lines.append(PARTLY_SAVED_NOTE)
     elif unsaved:
@@ -158,7 +171,9 @@ def handle_request(request, text: str) -> Reply:
         _BUSY.add(key)
     try:
         session = get_session(request)
-        chats.record(session, "user", text)  # kept at once, so a page change while it runs still shows it
+        chats.record(
+            session, "user", text
+        )  # kept at once, so a page change while it runs still shows it
         reply = _run(request, text)
         chats.record(
             session,
@@ -175,20 +190,26 @@ def handle_request(request, text: str) -> Reply:
 
 def _run(request, text: str) -> Reply:
     limit = history_limit()
-    earlier = (list(getattr(get_session(request), HISTORY_ATTR, None) or []))[-limit:] if limit else []
+    earlier = (
+        (list(getattr(get_session(request), HISTORY_ATTR, None) or []))[-limit:]
+        if limit
+        else []
+    )
     toolbox = ToolBox(request, history=earlier)
     try:
         runner = get_runner()
         model_text = runner.run(text, toolbox)
     except NotConfigured as error:
         return Reply(ok=False, message=f"{error} Nothing was changed.")
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001
         # Only the error's type is logged: provider messages can echo request
         # details, and the API key must never reach a log.
         logger.warning("AI request failed: %s", type(error).__name__)
         if toolbox.results:
             reply = compose(toolbox.results)
-            return replace(reply, ok=False, message=f"{reply.message}\n{SERVICE_FAILED}")
+            return replace(
+                reply, ok=False, message=f"{reply.message}\n{SERVICE_FAILED}"
+            )
         return Reply(ok=False, message=f"{SERVICE_FAILED} {UNCHANGED_NOTE}")
     reply = compose(toolbox.results, model_text)
     _remember(request, text, reply, limit)

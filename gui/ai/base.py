@@ -44,9 +44,15 @@ class ToolResult:
     changed: bool = False  # True only when the configuration was edited
     write: bool = False  # True for tools that try to edit the configuration
     final: bool = True  # False for plain lookups: the AI sees them and goes on; they are not the answer
-    suggestions: tuple[str, ...] = ()  # short replies the chat offers as buttons (see Outcome)
-    schedules_changed: bool = False  # True when the schedules in the Schedule Viewer were replaced or cleared
-    config_replaced: bool = False  # True when a different configuration was opened (new, load)
+    suggestions: tuple[
+        str, ...
+    ] = ()  # short replies the chat offers as buttons (see Outcome)
+    schedules_changed: bool = (
+        False  # True when the schedules in the Schedule Viewer were replaced or cleared
+    )
+    config_replaced: bool = (
+        False  # True when a different configuration was opened (new, load)
+    )
     note: bool = True  # False: do not add "not yet saved to a file" (undo and redo say what they did themselves)
 
 
@@ -63,7 +69,13 @@ class Outcome(str):
     edited: bool
     note: bool
 
-    def __new__(cls, text: str, suggestions: Iterable[str] = (), edited: bool = False, note: bool = True):
+    def __new__(
+        cls,
+        text: str,
+        suggestions: Iterable[str] = (),
+        edited: bool = False,
+        note: bool = True,
+    ):
         item = super().__new__(cls, text)
         item.suggestions = tuple(suggestions)
         item.edited = edited  # a tool that is not a write tool but did change the configuration (undo, redo)
@@ -109,13 +121,41 @@ def _key(name: str) -> str:
 
 
 def _without_title(name: str) -> str:
-    return re.sub(r"^(dr|prof|professor|mr|mrs|ms)\.?\s+", "", str(name).strip(), flags=re.IGNORECASE)
+    return re.sub(
+        r"^(dr|prof|professor|mr|mrs|ms)\.?\s+",
+        "",
+        str(name).strip(),
+        flags=re.IGNORECASE,
+    )
 
 
 # Words that only say what kind of thing a name is ("room 136", "professor Hogg"); they are not part of it.
 _NOISE = frozenset(
-    "room rooms lab labs course courses section sections class faculty professor prof dr mr mrs ms instructor teacher "
-    "the a an called named".split()
+    [
+        "room",
+        "rooms",
+        "lab",
+        "labs",
+        "course",
+        "courses",
+        "section",
+        "sections",
+        "class",
+        "faculty",
+        "professor",
+        "prof",
+        "dr",
+        "mr",
+        "mrs",
+        "ms",
+        "instructor",
+        "teacher",
+        "the",
+        "a",
+        "an",
+        "called",
+        "named",
+    ]
 )
 
 
@@ -126,7 +166,9 @@ def _tokens(text: str) -> list[str]:
 
 def _ask_which(wanted: str, fits: list[str]) -> ControllerError:
     # Never guess between two real items (e.g. "RODDY140" and "Roddy 140").
-    return ControllerError(f"'{wanted}' could mean {_join(fits)}. Say which one you mean.")
+    return ControllerError(
+        f"'{wanted}' could mean {_join(fits)}. Say which one you mean."
+    )
 
 
 def find_name(wanted: str, names: Iterable[str]) -> str | None:
@@ -165,7 +207,9 @@ def find_name(wanted: str, names: Iterable[str]) -> str | None:
         by_start = [
             name
             for name in names
-            if all(any(word.startswith(token) for word in _tokens(name)) for token in typed)
+            if all(
+                any(word.startswith(token) for word in _tokens(name)) for token in typed
+            )
         ]
         if len(by_start) == 1:
             return by_start[0]
@@ -192,7 +236,7 @@ def suggest(wanted: str, names: Iterable[str], limit: int = 3) -> list[str]:
 
 
 def not_found(label: str, wanted: str, names: Iterable[str]) -> str:
-    """"No room named 'X' exists." plus a "Did you mean ...?" when something looks close."""
+    """ "No room named 'X' exists." plus a "Did you mean ...?" when something looks close."""
     text = f"No {label} named '{str(wanted).strip()}' exists."
     close = suggest(wanted, names)
     if close:
@@ -244,7 +288,10 @@ def _place(item: dict) -> str:
     if item.get("features"):
         parts.append(f"features: {_join(item['features'])}")
     if item.get("availability"):
-        parts.append("available " + "; ".join(f"{row['day']} {row['ranges']}" for row in item["availability"]))
+        parts.append(
+            "available "
+            + "; ".join(f"{row['day']} {row['ranges']}" for row in item["availability"])
+        )
     return ", ".join(parts)
 
 

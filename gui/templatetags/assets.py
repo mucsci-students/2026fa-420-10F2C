@@ -25,6 +25,6 @@ def versioned(path: str) -> str:
             found = found[0] if found else None
         if found:
             return f"{url}?v={int(os.path.getmtime(found))}"
-    except (OSError, ValueError):
+    except OSError, ValueError:
         pass
     return url

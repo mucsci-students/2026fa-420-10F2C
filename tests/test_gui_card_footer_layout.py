@@ -10,6 +10,7 @@ wiring; the positions themselves were measured in a real browser (see the report
 
 import re
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -30,7 +31,7 @@ def fresh_session_store():
 
 
 def strip_comments(css):
-    return re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    return re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
 
 
 def inner_block(css, header):
@@ -50,11 +51,15 @@ def inner_block(css, header):
 
 
 def rules_in(text):
-    return [(sel.strip(), body) for sel, body in re.findall(r"([^{}]+)\{([^}]*)\}", text)]
+    return [
+        (sel.strip(), body) for sel, body in re.findall(r"([^{}]+)\{([^}]*)\}", text)
+    ]
 
 
 def body_for(rules, selector):
-    return " ".join(body for sel, body in rules if selector in [s.strip() for s in sel.split(",")])
+    return " ".join(
+        body for sel, body in rules if selector in [s.strip() for s in sel.split(",")]
+    )
 
 
 SUPPORTS = "@supports selector(details::details-content)"
@@ -89,7 +94,10 @@ def test_class_pattern_footers_are_left_as_they_were(client):
 
 def test_the_markup_the_layout_relies_on_is_unchanged(client):
     text = client.get("/configuration/faculty/").content.decode()
-    assert re.search(r'<footer class="item-card__foot item-card__foot--usage">\s*<a class="btn" href="[^"]+">Edit</a>\s*<a class="btn btn-danger"', text)
+    assert re.search(
+        r'<footer class="item-card__foot item-card__foot--usage">\s*<a class="btn" href="[^"]+">Edit</a>\s*<a class="btn btn-danger"',
+        text,
+    )
     assert '<details class="usage">' in text and "<summary>" in text
 
 
@@ -109,36 +117,66 @@ def test_every_rule_in_the_guarded_block_is_scoped_to_the_modifier(layout):
 def test_the_footer_is_a_grid_with_the_buttons_then_the_chips(layout):
     footer = body_for(layout, f".{MODIFIER}")
     assert re.search(r"display:\s*grid", footer)
-    assert re.search(r"grid-template-columns:\s*auto\s+auto\s+minmax\(0,\s*1fr\)", footer)
+    assert re.search(
+        r"grid-template-columns:\s*auto\s+auto\s+minmax\(0,\s*1fr\)", footer
+    )
     assert re.search(r"align-items:\s*center", footer)
 
 
 def test_the_details_has_no_box_so_its_summary_and_list_join_the_footer_grid(layout):
-    assert re.search(r"display:\s*contents", body_for(layout, f".{MODIFIER} > details.usage"))
+    assert re.search(
+        r"display:\s*contents", body_for(layout, f".{MODIFIER} > details.usage")
+    )
 
 
 def test_the_chips_sit_in_the_first_row_beside_the_buttons(layout):
     summary = body_for(layout, f".{MODIFIER} > details.usage > summary")
-    assert re.search(r"grid-column:\s*3", summary) and re.search(r"grid-row:\s*1", summary)
+    assert re.search(r"grid-column:\s*3", summary) and re.search(
+        r"grid-row:\s*1", summary
+    )
 
 
 def test_the_opened_list_spans_the_footer_in_the_row_below(layout):
     content = body_for(layout, f".{MODIFIER} > details.usage::details-content")
-    assert re.search(r"grid-column:\s*1\s*/\s*-1", content) and re.search(r"grid-row:\s*2", content)
+    assert re.search(r"grid-column:\s*1\s*/\s*-1", content) and re.search(
+        r"grid-row:\s*2", content
+    )
 
 
 def test_the_card_grows_and_shrinks_smoothly_with_the_browsers_own_transition(layout):
     closed = body_for(layout, f".{MODIFIER} > details.usage::details-content")
-    assert re.search(r"block-size:\s*0", closed) and re.search(r"overflow:\s*clip", closed)
+    assert re.search(r"block-size:\s*0", closed) and re.search(
+        r"overflow:\s*clip", closed
+    )
     assert re.search(r"transition:[^;]*block-size[^;]*;", closed)
     assert re.search(r"content-visibility\s+[\d.]+m?s\s+allow-discrete", closed)
-    assert re.search(r"block-size:\s*auto", body_for(layout, f".{MODIFIER} > details.usage[open]::details-content"))
-    assert re.search(r"interpolate-size:\s*allow-keywords", body_for(layout, f".{MODIFIER}"))
+    assert re.search(
+        r"block-size:\s*auto",
+        body_for(layout, f".{MODIFIER} > details.usage[open]::details-content"),
+    )
+    assert re.search(
+        r"interpolate-size:\s*allow-keywords", body_for(layout, f".{MODIFIER}")
+    )
 
 
 def test_the_motion_is_the_same_length_as_the_scripted_dropdowns(layout):
-    css_ms = float(re.search(r"block-size\s+([\d.]+)s", body_for(layout, f".{MODIFIER} > details.usage::details-content")).group(1)) * 1000
-    script_ms = int(re.search(r"var DURATION\s*=\s*(\d+)\s*;", JS.read_text()).group(1))
+    css_ms = (
+        float(
+            cast(
+                "re.Match[str]",
+                re.search(
+                    r"block-size\s+([\d.]+)s",
+                    body_for(layout, f".{MODIFIER} > details.usage::details-content"),
+                ),
+            ).group(1)
+        )
+        * 1000
+    )
+    script_ms = int(
+        cast(
+            "re.Match[str]", re.search(r"var DURATION\s*=\s*(\d+)\s*;", JS.read_text())
+        ).group(1)
+    )
     assert css_ms == script_ms
 
 
@@ -149,18 +187,25 @@ def test_reduced_motion_removes_the_transition(layout):
     block = inner_block(CSS.read_text(), SUPPORTS)
     assert re.search(r"@media\s*\(prefers-reduced-motion:\s*reduce\)", block)
     inside = inner_block(block, "@media (prefers-reduced-motion: reduce)")
-    assert re.search(r"transition:\s*none", inside) and "details.usage::details-content" in inside
+    assert (
+        re.search(r"transition:\s*none", inside)
+        and "details.usage::details-content" in inside
+    )
 
 
 def test_no_hard_coded_colours_in_the_new_rules(layout):
-    assert not any(re.search(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(", body) for _, body in layout)
+    assert not any(
+        re.search(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(", body) for _, body in layout
+    )
 
 
 def test_the_old_flex_footer_is_still_there_for_browsers_that_need_it():
     css = strip_comments(CSS.read_text())
     outside = css.replace(inner_block(CSS.read_text(), SUPPORTS), "")
     footer = body_for(rules_in(outside), ".item-card__foot")
-    assert re.search(r"display:\s*flex", footer) and re.search(r"flex-wrap:\s*wrap", footer)
+    assert re.search(r"display:\s*flex", footer) and re.search(
+        r"flex-wrap:\s*wrap", footer
+    )
 
 
 # ---------------------------------------------------------------------- #
@@ -170,7 +215,9 @@ def test_the_height_animation_script_leaves_boxless_dropdowns_to_the_stylesheet(
     js = JS.read_text()
     assert 'getComputedStyle(summary.parentNode).display === "contents"' in js
     check = js.index('display === "contents"')
-    assert js.index("canAnimate()") < js.index("preventDefault") and check < js.index("preventDefault")
+    assert js.index("canAnimate()") < js.index("preventDefault") and check < js.index(
+        "preventDefault"
+    )
 
 
 def test_the_other_dropdowns_are_still_animated_by_the_script():

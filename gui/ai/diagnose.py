@@ -36,8 +36,14 @@ def _few(items: list[str]) -> str:
 def find_problems(request) -> list[str]:
     """Plain sentences, most likely cause first. Empty when nothing obvious is wrong."""
     rows = courses.describe_courses(request).get("courses", [])
-    room_size = {item["name"]: item["capacity"] for item in rooms.describe_rooms(request).get("rooms", [])}
-    lab_size = {item["name"]: item["capacity"] for item in labs.describe_labs(request).get("labs", [])}
+    room_size = {
+        item["name"]: item["capacity"]
+        for item in rooms.describe_rooms(request).get("rooms", [])
+    }
+    lab_size = {
+        item["name"]: item["capacity"]
+        for item in labs.describe_labs(request).get("labs", [])
+    }
     people = faculty.describe_faculty(request).get("faculty", [])
     problems: list[str] = []
 
@@ -57,7 +63,11 @@ def find_problems(request) -> list[str]:
         )
 
     # Courses nobody can teach.
-    untaught = [row["display"] for row in rows if row["faculty"] is None and not row["derived_faculty"]]
+    untaught = [
+        row["display"]
+        for row in rows
+        if row["faculty"] is None and not row["derived_faculty"]
+    ]
     if untaught:
         problems.append(
             f"Nobody can teach {_few(untaught)}: no teacher is listed and no faculty member prefers "
@@ -70,7 +80,9 @@ def find_problems(request) -> list[str]:
         sizes = [room_size[name] for name in row["rooms"] if name in room_size]
         sizes = sizes or [lab_size[name] for name in row["labs"] if name in lab_size]
         if sizes and max(sizes) < row["capacity"]:
-            crowded.append(f"{row['display']} needs {row['capacity']} seats but its rooms hold at most {max(sizes)}")
+            crowded.append(
+                f"{row['display']} needs {row['capacity']} seats but its rooms hold at most {max(sizes)}"
+            )
     if crowded:
         more = "; and more." if len(crowded) > MAX_EXAMPLES else "."
         problems.append("Too small: " + "; ".join(crowded[:MAX_EXAMPLES]) + more)
@@ -91,7 +103,7 @@ def explain_no_feasible(request) -> str:
     """The text added to "No feasible schedule was found": what was found, and what changed lately."""
     try:
         problems: list[str] | None = find_problems(request)
-    except Exception:  # an explanation must never hide the real result, and must not claim a clean check either
+    except Exception:  # noqa: BLE001 - an explanation must never hide the real result, and must not claim a clean check either
         problems = None
     if problems:
         text = f" What I found: {' '.join(problems)} Other common causes are {OTHER_CAUSES}."
@@ -108,8 +120,9 @@ def explain_no_feasible(request) -> str:
 def diagnose_configuration(request, args: NoArgs) -> Outcome:
     problems = find_problems(request)
     if problems:
-        text = "I checked the configuration for the usual reasons a run finds no schedule:\n" + "\n".join(
-            f"- {problem}" for problem in problems
+        text = (
+            "I checked the configuration for the usual reasons a run finds no schedule:\n"
+            + "\n".join(f"- {problem}" for problem in problems)
         )
     else:
         text = (

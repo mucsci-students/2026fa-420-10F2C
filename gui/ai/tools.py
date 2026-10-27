@@ -87,36 +87,62 @@ DEFAULT_FACULTY_HOURS = ("09:00", "17:00")  # same default as the CLI's faculty 
 # ---------------------------------------------------------------------- #
 class AddPlaceArgs(BaseModel):
     name: str = Field(description="The new name, exactly as the user wrote it")
-    capacity: int = Field(description="How many students it holds (a positive whole number)")
-    features: list[str] = Field(default_factory=list, description="Features it provides, if the user named any")
+    capacity: int = Field(
+        description="How many students it holds (a positive whole number)"
+    )
+    features: list[str] = Field(
+        default_factory=list, description="Features it provides, if the user named any"
+    )
 
 
 class AddCourseArgs(BaseModel):
     course_id: str = Field(description='The course ID, e.g. "CMSC 421"')
-    credits: int = Field(description="Credit hours; an enabled class pattern must have this many credits")
+    credits: int = Field(
+        description="Credit hours; an enabled class pattern must have this many credits"
+    )
     capacity: int | None = Field(
         default=None,
         description="Enrollment capacity. Leave out if the user did not say; the smallest listed room's "
         "capacity is used, and if there is no room the tool asks for it",
     )
-    rooms: list[str] = Field(default_factory=list, description="Names of existing rooms the course may use")
-    labs: list[str] = Field(default_factory=list, description="Names of existing labs the course may use")
+    rooms: list[str] = Field(
+        default_factory=list, description="Names of existing rooms the course may use"
+    )
+    labs: list[str] = Field(
+        default_factory=list, description="Names of existing labs the course may use"
+    )
     faculty: list[str] = Field(
         default_factory=list,
         description="Names of existing faculty who teach it. Ask the user if not given; leave empty only "
         "when some faculty already prefer this course",
     )
-    conflicts: list[str] = Field(default_factory=list, description="Course IDs it must not overlap with")
-    section_id: str | None = Field(default=None, description="Section ID, only if the user gave one")
-    modality: str = Field(default="in_person", description="in_person, online, or hybrid")
+    conflicts: list[str] = Field(
+        default_factory=list, description="Course IDs it must not overlap with"
+    )
+    section_id: str | None = Field(
+        default=None, description="Section ID, only if the user gave one"
+    )
+    modality: str = Field(
+        default="in_person", description="in_person, online, or hybrid"
+    )
 
 
 class AddFacultyArgs(BaseModel):
-    name: str = Field(description="The faculty member's name, exactly as the user wrote it")
-    maximum_credits: int = Field(default=12, description="Most credits they can teach (default 12)")
-    minimum_credits: int = Field(default=0, description="Fewest credits they must teach (default 0)")
-    unique_course_limit: int = Field(default=2, description="Most different courses they can teach (default 2)")
-    maximum_days: int = Field(default=5, description="Most teaching days per week (default 5)")
+    name: str = Field(
+        description="The faculty member's name, exactly as the user wrote it"
+    )
+    maximum_credits: int = Field(
+        default=12, description="Most credits they can teach (default 12)"
+    )
+    minimum_credits: int = Field(
+        default=0, description="Fewest credits they must teach (default 0)"
+    )
+    unique_course_limit: int = Field(
+        default=2, description="Most different courses they can teach (default 2)"
+    )
+    maximum_days: int = Field(
+        default=5, description="Most teaching days per week (default 5)"
+    )
     availability: list[AvailabilityArgs] = Field(
         default_factory=list,
         description="When they can teach. Leave empty for the default, every weekday 09:00-17:00",
@@ -127,7 +153,10 @@ class AddTimeSlotArgs(BaseModel):
     day: str = Field(description="Weekday: MON, TUE, WED, THU or FRI")
     start: str = Field(description='24-hour start time, e.g. "09:00"')
     end: str = Field(description='24-hour end time, e.g. "17:00"')
-    spacing: int = Field(default=60, description="Minutes between possible class start times (default 60)")
+    spacing: int = Field(
+        default=60,
+        description="Minutes between possible class start times (default 60)",
+    )
 
     @field_validator("day")
     @classmethod
@@ -138,9 +167,15 @@ class AddTimeSlotArgs(BaseModel):
 class MeetingArgs(BaseModel):
     day: str = Field(description="Weekday: MON, TUE, WED, THU or FRI")
     duration: int = Field(description="Length of the meeting in minutes")
-    lab: bool = Field(default=False, description="True if this meeting is held in a lab")
-    delivery: str = Field(default="in_person", description="in_person, online, or hybrid")
-    start_time: str | None = Field(default=None, description="Fixed 24-hour start time, only if the user gave one")
+    lab: bool = Field(
+        default=False, description="True if this meeting is held in a lab"
+    )
+    delivery: str = Field(
+        default="in_person", description="in_person, online, or hybrid"
+    )
+    start_time: str | None = Field(
+        default=None, description="Fixed 24-hour start time, only if the user gave one"
+    )
 
     @field_validator("day")
     @classmethod
@@ -150,8 +185,12 @@ class MeetingArgs(BaseModel):
 
 class AddPatternArgs(BaseModel):
     credits: int = Field(description="Credit hours of courses that use this pattern")
-    meetings: list[MeetingArgs] = Field(min_length=1, description="The weekly meetings, at least one")
-    start_time: str | None = Field(default=None, description="Fixed 24-hour start time, only if the user gave one")
+    meetings: list[MeetingArgs] = Field(
+        min_length=1, description="The weekly meetings, at least one"
+    )
+    start_time: str | None = Field(
+        default=None, description="Fixed 24-hour start time, only if the user gave one"
+    )
 
 
 # ---------------------------------------------------------------------- #
@@ -176,7 +215,9 @@ def show_configuration(request, args) -> str:
         ("meetings", "meeting"),
     ):
         lines.append(f"- {_plural(counts.get(key) or 0, label)}")
-    lines.append("It has unsaved changes." if data["dirty"] else "It has no unsaved changes.")
+    lines.append(
+        "It has unsaved changes." if data["dirty"] else "It has no unsaved changes."
+    )
     return "\n".join(lines)
 
 
@@ -184,7 +225,10 @@ def list_rooms(request, args) -> str:
     items = _require(rooms.describe_rooms(request))["rooms"]
     if not items:
         return "There are no rooms in the configuration."
-    return "\n".join([f"Rooms ({len(items)}):"] + [f"- {room['name']}: {_place(room)}" for room in items])
+    return "\n".join(
+        [f"Rooms ({len(items)}):"]
+        + [f"- {room['name']}: {_place(room)}" for room in items]
+    )
 
 
 def get_room(request, args: NameArgs) -> str:
@@ -201,7 +245,9 @@ def list_labs(request, args) -> str:
     items = _require(labs.describe_labs(request))["labs"]
     if not items:
         return "There are no labs in the configuration."
-    return "\n".join([f"Labs ({len(items)}):"] + [f"- {lab['name']}: {_place(lab)}" for lab in items])
+    return "\n".join(
+        [f"Labs ({len(items)}):"] + [f"- {lab['name']}: {_place(lab)}" for lab in items]
+    )
 
 
 def get_lab(request, args: NameArgs) -> str:
@@ -219,7 +265,10 @@ def list_courses(request, args) -> str:
     if not rows:
         return "There are no courses in the configuration."
     lines = [f"Course sections ({len(rows)}):"]
-    lines += [f"- {row['display']}: {row['credits']} credits, capacity {row['capacity']}" for row in rows]
+    lines += [
+        f"- {row['display']}: {row['credits']} credits, capacity {row['capacity']}"
+        for row in rows
+    ]
     return "\n".join(lines)
 
 
@@ -242,7 +291,8 @@ def list_faculty(request, args) -> str:
         return "There are no faculty in the configuration."
     lines = [f"Faculty ({len(people)}):"]
     lines += [
-        f"- {person['name']}: {person['minimum_credits']}-{person['maximum_credits']} credits" for person in people
+        f"- {person['name']}: {person['minimum_credits']}-{person['maximum_credits']} credits"
+        for person in people
     ]
     return "\n".join(lines)
 
@@ -251,19 +301,33 @@ def get_faculty(request, args: NameArgs) -> str:
     people = _require(faculty.describe_faculty(request))["faculty"]
     found = find_name(args.name, [person["name"] for person in people])
     if found is None:
-        return not_found("faculty member", args.name, [person["name"] for person in people])
+        return not_found(
+            "faculty member", args.name, [person["name"] for person in people]
+        )
     person = next(person for person in people if person["name"] == found)
-    available = "; ".join(f"{row['day']} {row['ranges']}" for row in person["availability"]) or "never"
+    available = (
+        "; ".join(f"{row['day']} {row['ranges']}" for row in person["availability"])
+        or "never"
+    )
     preferences = "; ".join(
-        f"{group['label']}: " + _join(f"{entry['name']} ({entry['weight']})" for entry in group["entries"])
+        f"{group['label']}: "
+        + _join(f"{entry['name']} ({entry['weight']})" for entry in group["entries"])
         for group in person["preferences"]
         if group["entries"]
     )
     limit, days = person["unique_course_limit"], person["maximum_days"]
     lines = [
         f"Faculty member {person['name']}: {person['minimum_credits']}-{person['maximum_credits']} credits, "
-        + (f"at most {_plural(limit, 'different course')}, " if limit is not None else "")
-        + (f"at most {_plural(days, 'teaching day')} a week." if days is not None else "no limit on teaching days."),
+        + (
+            f"at most {_plural(limit, 'different course')}, "
+            if limit is not None
+            else ""
+        )
+        + (
+            f"at most {_plural(days, 'teaching day')} a week."
+            if days is not None
+            else "no limit on teaching days."
+        ),
         f"Available: {available}.",
         f"Mandatory days: {_join(person['mandatory_days'])}.",
         f"Preferences: {preferences or 'none'}.",
@@ -277,9 +341,13 @@ def list_time_slots(request, args) -> str:
     data = _require(timeslots.describe_timeslots(request))
     lines = ["Time slots:"]
     for day in data["days"]:
-        blocks = [f"{b['start']}-{b['end']} (every {b['spacing']} min)" for b in day["blocks"]]
+        blocks = [
+            f"{b['start']}-{b['end']} (every {b['spacing']} min)" for b in day["blocks"]
+        ]
         lines.append(f"- {day['day']}: {_join(blocks)}")
-    lines.append(f"Max time gap: {data['max_time_gap']} min. Min time overlap: {data['min_time_overlap']} min.")
+    lines.append(
+        f"Max time gap: {data['max_time_gap']} min. Min time overlap: {data['min_time_overlap']} min."
+    )
     return "\n".join(lines)
 
 
@@ -292,7 +360,9 @@ def list_class_patterns(request, args) -> str:
         extra = "" if row["enabled"] else " (disabled)"
         if row["start_time"]:
             extra += f", starts at {row['start_time']}"
-        lines.append(f"- Pattern {row['index']}: {row['credits']} credits{extra}: {row['summary']}")
+        lines.append(
+            f"- Pattern {row['index']}: {row['credits']} credits{extra}: {row['summary']}"
+        )
     return "\n".join(lines)
 
 
@@ -300,11 +370,16 @@ def list_meetings(request, args) -> str:
     rows = _require(meetings.describe_meetings(request))["patterns"]
     if not rows:
         return "There are no class patterns, so there are no meetings."
-    lines = ["Meetings, by class pattern (meetings are numbered from 1 within their pattern):"]
+    lines = [
+        "Meetings, by class pattern (meetings are numbered from 1 within their pattern):"
+    ]
     for row in rows:
         extra = "" if row["enabled"] else ", disabled"
         lines.append(f"- Pattern {row['index']} ({row['credits']} credits{extra}):")
-        lines += [f"  {number}. {meeting['summary']}" for number, meeting in enumerate(row["meetings"], start=1)]
+        lines += [
+            f"  {number}. {meeting['summary']}"
+            for number, meeting in enumerate(row["meetings"], start=1)
+        ]
     return "\n".join(lines)
 
 
@@ -323,12 +398,18 @@ def get_global_settings(request, args) -> str:
 #  Add tools (story 9) -- the same controller calls as the Add forms
 # ---------------------------------------------------------------------- #
 def add_room(request, args: AddPlaceArgs) -> str:
-    rooms.add_room(request, {"name": args.name, "capacity": args.capacity, "features": args.features})
+    rooms.add_room(
+        request,
+        {"name": args.name, "capacity": args.capacity, "features": args.features},
+    )
     return f"Room '{args.name.strip()}' added with capacity {args.capacity}."
 
 
 def add_lab(request, args: AddPlaceArgs) -> str:
-    labs.add_lab(request, {"name": args.name, "capacity": args.capacity, "features": args.features})
+    labs.add_lab(
+        request,
+        {"name": args.name, "capacity": args.capacity, "features": args.features},
+    )
     return f"Lab '{args.name.strip()}' added with capacity {args.capacity}."
 
 
@@ -336,7 +417,9 @@ def _someone_prefers(people, course_id: str) -> bool:
     """True when some faculty member already has a preference for this course (the library can
     then work out who teaches it, so the user does not have to name a teacher)."""
     wanted = _key(course_id)
-    return any(_key(name) == wanted for person in people for name in person.course_preferences)
+    return any(
+        _key(name) == wanted for person in people for name in person.course_preferences
+    )
 
 
 def add_course(request, args: AddCourseArgs) -> str:
@@ -344,26 +427,35 @@ def add_course(request, args: AddCourseArgs) -> str:
     room_names = _resolve(args.rooms, [room.name for room in entities.rooms])
     lab_names = _resolve(args.labs, [lab.name for lab in entities.labs])
     teachers = _resolve(args.faculty, [person.name for person in entities.faculty])
-    conflicts = _resolve(args.conflicts, sorted({course.course_id for course in entities.courses}))
+    conflicts = _resolve(
+        args.conflicts, sorted({course.course_id for course in entities.courses})
+    )
 
     # Guard rail: a course needs these before it can exist. Ask for ALL that are missing at once,
     # instead of trying and failing one library error at a time (or letting the AI guess).
     capacity, capacity_note = args.capacity, ""
-    sizes = {room.name: room.capacity for room in entities.rooms if room.name in room_names}
+    sizes = {
+        room.name: room.capacity for room in entities.rooms if room.name in room_names
+    }
     missing = []
     if capacity is None:
         if sizes:
             smallest = min(sizes, key=lambda name: sizes[name])
             capacity, capacity_note = sizes[smallest], f" (from room {smallest})"
         else:
-            missing.append("Capacity is required. Say how many students the course holds.")
+            missing.append(
+                "Capacity is required. Say how many students the course holds."
+            )
     if not teachers and not _someone_prefers(entities.faculty, args.course_id):
         missing.append(
             "Faculty is required. Say which faculty member teaches it (they must already exist; "
             "otherwise add the faculty member first)."
         )
     if missing:
-        raise ControllerError(f"I need a bit more before I can add {args.course_id.strip()}. " + " ".join(missing))
+        raise ControllerError(
+            f"I need a bit more before I can add {args.course_id.strip()}. "
+            + " ".join(missing)
+        )
 
     notices = courses.add_course(
         request,
@@ -382,7 +474,8 @@ def add_course(request, args: AddCourseArgs) -> str:
     taught = _join(teachers, "chosen from faculty preferences")
     return (
         f"Course '{args.course_id.strip()}' added: {args.credits} credits, capacity {capacity}{capacity_note}, "
-        f"rooms: {_join(room_names)}, labs: {_join(lab_names)}, faculty: {taught}." + _notes(notices)
+        f"rooms: {_join(room_names)}, labs: {_join(lab_names)}, faculty: {taught}."
+        + _notes(notices)
     )
 
 
@@ -416,7 +509,9 @@ def add_faculty(request, args: AddFacultyArgs) -> str:
 
 def add_time_slot(request, args: AddTimeSlotArgs) -> str:
     warnings = timeslots.add_timeslot(
-        request, args.day, {"start": args.start, "end": args.end, "spacing": args.spacing}
+        request,
+        args.day,
+        {"start": args.start, "end": args.end, "spacing": args.spacing},
     )
     return (
         f"Time slot added on {DAY_NAMES[args.day]}: {args.start}-{args.end}, "
@@ -427,10 +522,21 @@ def add_time_slot(request, args: AddTimeSlotArgs) -> str:
 def add_class_pattern(request, args: AddPatternArgs) -> str:
     meetings = [meeting.model_dump() for meeting in args.meetings]
     warnings = patterns.add_pattern(
-        request, {"credits": args.credits, "start_time": args.start_time, "enabled": True, "meetings": meetings}
+        request,
+        {
+            "credits": args.credits,
+            "start_time": args.start_time,
+            "enabled": True,
+            "meetings": meetings,
+        },
     )
-    summary = ", ".join(f"{DAY_NAMES[m.day]} {m.duration} min" + (" (lab)" if m.lab else "") for m in args.meetings)
-    return f"Class pattern added: {args.credits} credits, meeting {summary}." + _notes(warnings)
+    summary = ", ".join(
+        f"{DAY_NAMES[m.day]} {m.duration} min" + (" (lab)" if m.lab else "")
+        for m in args.meetings
+    )
+    return f"Class pattern added: {args.credits} credits, meeting {summary}." + _notes(
+        warnings
+    )
 
 
 # ---------------------------------------------------------------------- #
@@ -451,24 +557,49 @@ TOOLS: tuple[AiTool, ...] = (
         show_configuration,
     ),
     AiTool("list_rooms", "List every room with its capacity.", NoArgs, list_rooms),
-    AiTool("get_room", "Show one room: capacity, features, availability, what uses it.", NameArgs, get_room),
+    AiTool(
+        "get_room",
+        "Show one room: capacity, features, availability, what uses it.",
+        NameArgs,
+        get_room,
+    ),
     AiTool("list_labs", "List every lab with its capacity.", NoArgs, list_labs),
-    AiTool("get_lab", "Show one lab: capacity, features, availability, what uses it.", NameArgs, get_lab),
-    AiTool("list_courses", "List every course section with credits and capacity.", NoArgs, list_courses),
+    AiTool(
+        "get_lab",
+        "Show one lab: capacity, features, availability, what uses it.",
+        NameArgs,
+        get_lab,
+    ),
+    AiTool(
+        "list_courses",
+        "List every course section with credits and capacity.",
+        NoArgs,
+        list_courses,
+    ),
     AiTool(
         "get_course",
         "Show one course: credits, capacity, rooms, labs, faculty, conflicts (all of its sections).",
         CourseArgs,
         get_course,
     ),
-    AiTool("list_faculty", "List every faculty member with their credit range.", NoArgs, list_faculty),
+    AiTool(
+        "list_faculty",
+        "List every faculty member with their credit range.",
+        NoArgs,
+        list_faculty,
+    ),
     AiTool(
         "get_faculty",
         "Show one faculty member: credits, availability, preferences, assigned courses.",
         NameArgs,
         get_faculty,
     ),
-    AiTool("list_time_slots", "List the time slots (time blocks) for each weekday.", NoArgs, list_time_slots),
+    AiTool(
+        "list_time_slots",
+        "List the time slots (time blocks) for each weekday.",
+        NoArgs,
+        list_time_slots,
+    ),
     AiTool(
         "list_class_patterns",
         "List the class patterns and the meetings each one has.",
@@ -496,8 +627,20 @@ TOOLS: tuple[AiTool, ...] = (
         add_course,
         write=True,
     ),
-    AiTool("add_faculty", "Add a new faculty member.", AddFacultyArgs, add_faculty, write=True),
-    AiTool("add_time_slot", "Add a time slot (time block) to one weekday.", AddTimeSlotArgs, add_time_slot, write=True),
+    AiTool(
+        "add_faculty",
+        "Add a new faculty member.",
+        AddFacultyArgs,
+        add_faculty,
+        write=True,
+    ),
+    AiTool(
+        "add_time_slot",
+        "Add a time slot (time block) to one weekday.",
+        AddTimeSlotArgs,
+        add_time_slot,
+        write=True,
+    ),
     AiTool(
         "add_class_pattern",
         "Add a class pattern: a credit amount and its weekly meetings.",
@@ -536,7 +679,9 @@ class ToolBox:
     from real outcomes.
     """
 
-    def __init__(self, request, tools: Iterable[AiTool] = TOOLS, history: Iterable[dict] = ()):
+    def __init__(
+        self, request, tools: Iterable[AiTool] = TOOLS, history: Iterable[dict] = ()
+    ):
         self.request = request
         self.tools = {tool.name: tool for tool in tools}
         self.results: list[ToolResult] = []
@@ -561,39 +706,69 @@ class ToolBox:
             now is not then for now, then in zip(schedules, schedules_before)
         )
         if replaced or schedules_changed:
-            result = replace(result, config_replaced=replaced, schedules_changed=schedules_changed)
+            result = replace(
+                result, config_replaced=replaced, schedules_changed=schedules_changed
+            )
             self.results[-1] = result  # _call recorded exactly one result
         return result
 
     def _call(self, name: str, arguments: dict | None = None) -> ToolResult:
         tool = self.tools.get(name)
         if tool is None:
-            return self._record(ToolResult(name, False, f"There is no '{name}' action."))
+            return self._record(
+                ToolResult(name, False, f"There is no '{name}' action.")
+            )
         try:
             args = tool.args.model_validate(arguments or {})
         except ValidationError as error:
             reason = f"the request had invalid values ({_argument_problems(error)})."
-            return self._record(ToolResult(name, False, _failure(tool, reason), write=tool.write))
+            return self._record(
+                ToolResult(name, False, _failure(tool, reason), write=tool.write)
+            )
 
         if tool.needs_config and get_session(self.request).config is None:
-            return self._record(ToolResult(name, False, NO_CONFIG_MESSAGE, write=tool.write))
+            return self._record(
+                ToolResult(name, False, NO_CONFIG_MESSAGE, write=tool.write)
+            )
         try:
             message = tool.handler(self.request, args)
         except ControllerError as error:
-            advice = tuple(getattr(error, "suggestions", ()))  # quick replies a failure can offer ("Undo the last change")
+            advice = tuple(
+                getattr(error, "suggestions", ())
+            )  # quick replies a failure can offer ("Undo the last change")
             return self._record(
-                ToolResult(name, False, _failure(tool, error.message), write=tool.write, suggestions=advice)
+                ToolResult(
+                    name,
+                    False,
+                    _failure(tool, error.message),
+                    write=tool.write,
+                    suggestions=advice,
+                )
             )
         except Exception:
             logger.exception("AI tool %s failed unexpectedly", name)
-            return self._record(ToolResult(name, False, UNEXPECTED_MESSAGE, write=tool.write))
-        edited = (tool.write and not isinstance(message, Unchanged)) or bool(getattr(message, "edited", False))
+            return self._record(
+                ToolResult(name, False, UNEXPECTED_MESSAGE, write=tool.write)
+            )
+        edited = (tool.write and not isinstance(message, Unchanged)) or bool(
+            getattr(message, "edited", False)
+        )
         suggestions = tuple(getattr(message, "suggestions", ()))
         if edited and not suggestions:
-            suggestions = (UNDO_CHIP,)  # every real change can be taken back with one click
+            suggestions = (
+                UNDO_CHIP,
+            )  # every real change can be taken back with one click
         note = bool(getattr(message, "note", True))
         return self._record(
-            ToolResult(name, True, message, changed=edited, write=tool.write, suggestions=suggestions, note=note)
+            ToolResult(
+                name,
+                True,
+                message,
+                changed=edited,
+                write=tool.write,
+                suggestions=suggestions,
+                note=note,
+            )
         )
 
     def invalid(self, name: str, error: Exception) -> ToolResult:
@@ -601,10 +776,17 @@ class ToolBox:
         tool = self.tools.get(name)
         if tool is None or not isinstance(error, ValidationError):
             return self._record(
-                ToolResult(name, False, "The request had invalid values.", write=bool(tool and tool.write))
+                ToolResult(
+                    name,
+                    False,
+                    "The request had invalid values.",
+                    write=bool(tool and tool.write),
+                )
             )
         reason = f"the request had invalid values ({_argument_problems(error)})."
-        return self._record(ToolResult(name, False, _failure(tool, reason), write=tool.write))
+        return self._record(
+            ToolResult(name, False, _failure(tool, reason), write=tool.write)
+        )
 
     def _record(self, result: ToolResult) -> ToolResult:
         tool = self.tools.get(result.tool)

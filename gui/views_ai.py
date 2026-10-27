@@ -72,7 +72,9 @@ def assistant_chat(request):
 
 def _refuse_while_busy(request):
     if service.is_busy(request):
-        return _chat_state(request, 409, "A request is still running. Wait for it to finish.")
+        return _chat_state(
+            request, 409, "A request is still running. Wait for it to finish."
+        )
     return None
 
 

@@ -11,7 +11,13 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 
 from app import schedule_io
 from app.schedule_io import Assignment, MeetingTime
-from gui.constants import NO_FACULTY_LABEL, NO_LOCATION_LABEL, VIEW_COURSES, VIEW_FACULTY, VIEW_ROOMS
+from gui.constants import (
+    NO_FACULTY_LABEL,
+    NO_LOCATION_LABEL,
+    VIEW_COURSES,
+    VIEW_FACULTY,
+    VIEW_ROOMS,
+)
 from gui.views import _block_detail, _schedule_grid
 
 VIEWER_URL = "/schedules/"
@@ -24,11 +30,27 @@ FACULTY_TITLE = 'title="Monday 09:00-09:50: Hogg"'
 
 def sample_schedule():
     return [
-        Assignment("CMSC 140.01", "Hogg", "Roddy 136", None, (MeetingTime("MON", "09:00", "09:50", 50),)),
         Assignment(
-            "CMSC 162.01", "Killen", None, "Roddy 147", (MeetingTime("MON", "10:00", "11:50", 110, lab=True),)
+            "CMSC 140.01",
+            "Hogg",
+            "Roddy 136",
+            None,
+            (MeetingTime("MON", "09:00", "09:50", 50),),
         ),
-        Assignment("CMSC 201.01", "Zoppetti", "Roddy 140", None, (MeetingTime("MON", "13:00", "13:50", 50),)),
+        Assignment(
+            "CMSC 162.01",
+            "Killen",
+            None,
+            "Roddy 147",
+            (MeetingTime("MON", "10:00", "11:50", 110, lab=True),),
+        ),
+        Assignment(
+            "CMSC 201.01",
+            "Zoppetti",
+            "Roddy 140",
+            None,
+            (MeetingTime("MON", "13:00", "13:50", 50),),
+        ),
     ]
 
 
@@ -43,7 +65,11 @@ def load(client, *schedules):
 # ---------------------------------------------------------------------- #
 def test_courses_view_labels_blocks_with_course_names():
     monday = _schedule_grid(sample_schedule(), VIEW_COURSES)["days"][0]["meetings"]
-    assert [row["label"] for row in monday] == ["CMSC 140.01", "CMSC 162.01", "CMSC 201.01"]
+    assert [row["label"] for row in monday] == [
+        "CMSC 140.01",
+        "CMSC 162.01",
+        "CMSC 201.01",
+    ]
 
 
 def test_rooms_view_labels_blocks_with_room_or_lab_names():
@@ -60,7 +86,9 @@ def test_rooms_view_uses_the_lab_for_lab_meetings_and_keeps_the_course_as_data()
 
 
 def test_rooms_view_labels_meetings_without_a_location():
-    assignments = [Assignment("CMSC 390.01", meetings=(MeetingTime("MON", "09:00", "09:50", 50),))]
+    assignments = [
+        Assignment("CMSC 390.01", meetings=(MeetingTime("MON", "09:00", "09:50", 50),))
+    ]
     monday = _schedule_grid(assignments, VIEW_ROOMS)["days"][0]["meetings"]
     assert monday[0]["label"] == NO_LOCATION_LABEL
 
@@ -71,16 +99,34 @@ def test_faculty_view_labels_blocks_with_faculty_names():
 
 
 def test_faculty_view_labels_meetings_without_a_faculty_member():
-    assignments = [Assignment("CMSC 390.01", room="Roddy 136", meetings=(MeetingTime("MON", "09:00", "09:50", 50),))]
+    assignments = [
+        Assignment(
+            "CMSC 390.01",
+            room="Roddy 136",
+            meetings=(MeetingTime("MON", "09:00", "09:50", 50),),
+        )
+    ]
     monday = _schedule_grid(assignments, VIEW_FACULTY)["days"][0]["meetings"]
     assert monday[0]["label"] == NO_FACULTY_LABEL
 
 
 def test_rooms_view_keeps_dense_overlaps_as_separate_blocks_labelled_by_room():
     assignments = [
-        Assignment("CMSC 140.01", room="Roddy 136", meetings=(MeetingTime("MON", "09:00", "10:00", 60),)),
-        Assignment("CMSC 140.02", room="Roddy 140", meetings=(MeetingTime("MON", "09:00", "10:00", 60),)),
-        Assignment("CMSC 140.03", room="Roddy 144", meetings=(MeetingTime("MON", "09:30", "10:30", 60),)),
+        Assignment(
+            "CMSC 140.01",
+            room="Roddy 136",
+            meetings=(MeetingTime("MON", "09:00", "10:00", 60),),
+        ),
+        Assignment(
+            "CMSC 140.02",
+            room="Roddy 140",
+            meetings=(MeetingTime("MON", "09:00", "10:00", 60),),
+        ),
+        Assignment(
+            "CMSC 140.03",
+            room="Roddy 144",
+            meetings=(MeetingTime("MON", "09:30", "10:30", 60),),
+        ),
     ]
 
     monday = _schedule_grid(assignments, VIEW_ROOMS)["days"][0]["meetings"]
@@ -126,16 +172,24 @@ def test_view_toggle_marks_the_active_view(client):
     load(client, sample_schedule())
 
     courses_html = client.get(VIEWER_URL, {"schedule": "1"}).content.decode()
-    assert 'href="?schedule=1&amp;view=courses" aria-current="true">Courses</a>' in courses_html
+    assert (
+        'href="?schedule=1&amp;view=courses" aria-current="true">Courses</a>'
+        in courses_html
+    )
     assert 'href="?schedule=1&amp;view=rooms">Rooms</a>' in courses_html
     assert 'href="?schedule=1&amp;view=faculty">Faculty</a>' in courses_html
 
     rooms_html = client.get(VIEWER_URL, {"view": "rooms"}).content.decode()
-    assert 'href="?schedule=1&amp;view=rooms" aria-current="true">Rooms</a>' in rooms_html
+    assert (
+        'href="?schedule=1&amp;view=rooms" aria-current="true">Rooms</a>' in rooms_html
+    )
     assert 'href="?schedule=1&amp;view=courses">Courses</a>' in rooms_html
 
     faculty_html = client.get(VIEWER_URL, {"view": "faculty"}).content.decode()
-    assert 'href="?schedule=1&amp;view=faculty" aria-current="true">Faculty</a>' in faculty_html
+    assert (
+        'href="?schedule=1&amp;view=faculty" aria-current="true">Faculty</a>'
+        in faculty_html
+    )
 
 
 def test_pager_keeps_the_room_view(client):
@@ -155,10 +209,20 @@ def test_pager_links_stay_plain_in_the_courses_view(client):
     html = client.get(VIEWER_URL, {"schedule": "2"}).content.decode()
     assert 'href="?schedule=1">Previous</a>' in html
 
+
 def test_block_detail_shows_the_facts_the_label_does_not():
-    assert _block_detail(VIEW_COURSES, "CMSC 140.01", "Roddy 136", "Hogg") == "Roddy 136 · Hogg"
-    assert _block_detail(VIEW_ROOMS, "CMSC 140.01", "Roddy 136", "Hogg") == "CMSC 140.01 · Hogg"
-    assert _block_detail(VIEW_FACULTY, "CMSC 140.01", "Roddy 136", "Hogg") == "CMSC 140.01 · Roddy 136"
+    assert (
+        _block_detail(VIEW_COURSES, "CMSC 140.01", "Roddy 136", "Hogg")
+        == "Roddy 136 · Hogg"
+    )
+    assert (
+        _block_detail(VIEW_ROOMS, "CMSC 140.01", "Roddy 136", "Hogg")
+        == "CMSC 140.01 · Hogg"
+    )
+    assert (
+        _block_detail(VIEW_FACULTY, "CMSC 140.01", "Roddy 136", "Hogg")
+        == "CMSC 140.01 · Roddy 136"
+    )
 
 
 def test_block_detail_skips_missing_values():
@@ -169,7 +233,15 @@ def test_block_detail_skips_missing_values():
 
 def test_rows_expose_duration_and_detail():
     [row] = _schedule_grid(
-        [Assignment("CMSC 140.01", "Hogg", "Roddy 136", None, (MeetingTime("MON", "09:00", "09:50", 50),))],
+        [
+            Assignment(
+                "CMSC 140.01",
+                "Hogg",
+                "Roddy 136",
+                None,
+                (MeetingTime("MON", "09:00", "09:50", 50),),
+            )
+        ],
         VIEW_FACULTY,
     )["days"][0]["meetings"]
     assert row["duration"] == 50
@@ -179,8 +251,16 @@ def test_rows_expose_duration_and_detail():
 def test_color_follows_the_active_view_label():
     # Same course, two rooms: one color per course, two colors per room.
     assignments = [
-        Assignment("CMSC 140.01", room="Roddy 136", meetings=(MeetingTime("MON", "09:00", "09:50", 50),)),
-        Assignment("CMSC 140.01", room="Roddy 140", meetings=(MeetingTime("TUE", "09:00", "09:50", 50),)),
+        Assignment(
+            "CMSC 140.01",
+            room="Roddy 136",
+            meetings=(MeetingTime("MON", "09:00", "09:50", 50),),
+        ),
+        Assignment(
+            "CMSC 140.01",
+            room="Roddy 140",
+            meetings=(MeetingTime("TUE", "09:00", "09:50", 50),),
+        ),
     ]
 
     def colors(view):

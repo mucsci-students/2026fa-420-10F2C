@@ -29,7 +29,9 @@ from gui.ai.generation import _forget_waiting
 
 CHATS_ATTR = "ai_chats"
 ACTIVE_ATTR = "ai_active_chat"
-HISTORY_ATTR = "ai_history"  # the AI's memory of the ACTIVE chat (see gui/ai/service.py)
+HISTORY_ATTR = (
+    "ai_history"  # the AI's memory of the ACTIVE chat (see gui/ai/service.py)
+)
 
 MAX_CHATS = 20
 MAX_MESSAGES = 200
@@ -37,7 +39,9 @@ TITLE_LENGTH = 40
 TEXT_LIMIT = 4000
 EMPTY_TITLE = "New chat"
 
-_LOCK = threading.RLock()  # the dev server is threaded; the panel and a request can touch this together
+_LOCK = (
+    threading.RLock()
+)  # the dev server is threaded; the panel and a request can touch this together
 
 
 def _chats(session) -> list[dict]:
@@ -49,7 +53,13 @@ def _chats(session) -> list[dict]:
 
 
 def _make() -> dict:
-    return {"id": uuid.uuid4().hex[:12], "title": EMPTY_TITLE, "messages": [], "history": [], "updated": time.time()}
+    return {
+        "id": uuid.uuid4().hex[:12],
+        "title": EMPTY_TITLE,
+        "messages": [],
+        "history": [],
+        "updated": time.time(),
+    }
 
 
 def _find(session, chat_id) -> dict | None:
@@ -72,14 +82,20 @@ def active(session) -> dict:
 
 def _title(text: str) -> str:
     line = " ".join(text.split())
-    return line if len(line) <= TITLE_LENGTH else line[: TITLE_LENGTH - 1].rstrip() + "…"
+    return (
+        line if len(line) <= TITLE_LENGTH else line[: TITLE_LENGTH - 1].rstrip() + "…"
+    )
 
 
-def record(session, kind: str, text: str, suggestions=(), generated: bool = False) -> None:
+def record(
+    session, kind: str, text: str, suggestions=(), generated: bool = False
+) -> None:
     """Add one line to the active chat. kind: "user", "assistant" or "error"."""
     with _LOCK:
         chat = active(session)
-        if kind == "user" and not any(message["kind"] == "user" for message in chat["messages"]):
+        if kind == "user" and not any(
+            message["kind"] == "user" for message in chat["messages"]
+        ):
             chat["title"] = _title(text)
         chat["messages"].append(
             {
@@ -156,6 +172,15 @@ def active_after_empty(session) -> dict:
     return fresh
 
 
+def _newest_first(session) -> list[dict]:
+    """Most recent activity first; chats with the same time keep newest-created first."""
+    chats = _chats(session)
+    ranked = sorted(
+        enumerate(chats), key=lambda pair: (-pair[1].get("updated", 0), -pair[0])
+    )
+    return [chat for _, chat in ranked]
+
+
 def state(session, busy: bool = False) -> dict:
     """Everything the panel draws: the chat list (newest first) and the open chat's lines."""
     with _LOCK:
@@ -169,10 +194,11 @@ def state(session, busy: bool = False) -> dict:
                     "title": chat["title"],
                     "count": len(chat["messages"]),
                     "active": chat["id"] == current["id"],
-                    "updated": int(chat.get("updated", 0)),  # seconds since 1970; the page groups by day
+                    "updated": int(
+                        chat.get("updated", 0)
+                    ),  # seconds since 1970; the page groups by day
                 }
-                # Most recent activity first; chats with the same time keep newest-created first.
-                for chat in sorted(reversed(_chats(session)), key=lambda chat: -chat.get("updated", 0))
+                for chat in _newest_first(session)
             ],
             "messages": [dict(message) for message in current["messages"]],
         }

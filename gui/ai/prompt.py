@@ -38,7 +38,7 @@ CAPABILITIES = (
     "the History page. Changes are applied to the configuration you have open, but they are not "
     "saved to a file until you save it.\n"
     "I can't save the configuration to a file; use the Configuration Editor for that.\n"
-    "You can say things the way you would to a person: part of a name is enough (\"room 136\" finds Roddy 136), "
+    'You can say things the way you would to a person: part of a name is enough ("room 136" finds Roddy 136), '
     "and you can ask for several things in one message.\n"
     'Try: "List all rooms", "How many credits is CMSC 420?", "Add a room named RODDY150 with capacity 35", '
     '"Change the capacity of Roddy 140 to 40", "Undo that", or "Generate 5 schedules".'

@@ -17,7 +17,9 @@ SECRET_KEY = "django-insecure-change-me-before-any-real-deployment"
 
 DEBUG = True
 
-ALLOWED_HOSTS: list[str] = ["*"]  # course project, no production deployment (Section 25)
+ALLOWED_HOSTS: list[str] = [
+    "*"
+]  # course project, no production deployment (Section 25)
 
 INSTALLED_APPS = [
     "django.contrib.staticfiles",
@@ -42,7 +44,9 @@ LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "handlers": {"console": {"class": "logging.StreamHandler"}},
-    "loggers": {"gui.errors": {"handlers": ["console"], "level": "ERROR", "propagate": True}},
+    "loggers": {
+        "gui.errors": {"handlers": ["console"], "level": "ERROR", "propagate": True}
+    },
 }
 
 # Flash messages ("Time Slot Added Successfully", ...) are kept in a cookie

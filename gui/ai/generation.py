@@ -53,7 +53,9 @@ from gui.controllers.errors import ControllerError
 from gui.session_store import get_session
 
 PLAN_SECONDS = 600  # reviewed settings stop being confirmable after this long
-WAIT_ENV = "AI_GENERATION_WAIT_SECONDS"  # how long one chat request waits for the solver
+WAIT_ENV = (
+    "AI_GENERATION_WAIT_SECONDS"  # how long one chat request waits for the solver
+)
 DEFAULT_WAIT_SECONDS = 600
 MAX_WAIT_SECONDS = 3600
 _PLAN_ATTR = "ai_generation_plan"  # where the reviewed settings wait, on the browser's own Session
@@ -63,7 +65,9 @@ CANCEL = "Cancel"
 GENERATE = "Generate schedules"
 CREATE_NEW = "Create a new configuration"
 
-_now: Callable[[], float] = time.monotonic  # tests replace this to age the reviewed settings
+_now: Callable[[], float] = (
+    time.monotonic
+)  # tests replace this to age the reviewed settings
 
 
 # ---------------------------------------------------------------------- #
@@ -84,7 +88,9 @@ class PrepareArgs(BaseModel):
 
 
 class LoadArgs(BaseModel):
-    name: str = Field(description="The name of the configuration to load, as the user wrote it")
+    name: str = Field(
+        description="The name of the configuration to load, as the user wrote it"
+    )
     continue_to_generation: bool = Field(
         default=False,
         description="True when the user's goal was to generate schedules and they are loading a "
@@ -143,7 +149,9 @@ def _check_flags(wanted: list[str]) -> tuple[str, ...]:
     for item in wanted:
         flag = find_name(str(item).strip(), known)
         if flag is None:
-            raise ControllerError(f"'{item}' is not a valid optimizer flag. The valid flags are: {_join(known)}.")
+            raise ControllerError(
+                f"'{item}' is not a valid optimizer flag. The valid flags are: {_join(known)}."
+            )
         found.append(flag)
     return _in_known_order(found)
 
@@ -165,7 +173,11 @@ def _require_valid(request, refusal: str) -> None:
 def _fresh_plan(session) -> _Plan | None:
     """The reviewed settings, if they are still current: the same configuration, unchanged, recent."""
     plan = getattr(session, _PLAN_ATTR, None)
-    if plan is None or plan.config is not session.config or plan.version != session.history.version:
+    if (
+        plan is None
+        or plan.config is not session.config
+        or plan.version != session.history.version
+    ):
         return None
     return plan if _now() - plan.created <= PLAN_SECONDS else None
 
@@ -194,14 +206,22 @@ def _no_configuration(request, wanted: str) -> Outcome:
     """No configuration is open: say so, and offer both ways forward."""
     names = _saved_names(request)
     lines = [
-        f"No configuration is loaded, so I can't {wanted} yet. A configuration has to be created or loaded first. "
-        "You can:",
+        (
+            f"No configuration is loaded, so I can't {wanted} yet. A configuration has to be created or loaded first. "
+            "You can:"
+        ),
         '- Create a new one: say "create a new configuration".',
     ]
     if names:
-        lines.append(f'- Load one that is available in this session ({_join(names)}): say "load {names[0]}".')
-    lines.append("- Load a file from your computer: use Load Configuration in the Configuration Editor, then ask me again.")
-    lines.append("When one is open and valid, I'll show you the generation settings before generating.")
+        lines.append(
+            f'- Load one that is available in this session ({_join(names)}): say "load {names[0]}".'
+        )
+    lines.append(
+        "- Load a file from your computer: use Load Configuration in the Configuration Editor, then ask me again."
+    )
+    lines.append(
+        "When one is open and valid, I'll show you the generation settings before generating."
+    )
     suggestions = [CREATE_NEW] + [f"Load {name}" for name in names[:3]]
     return Outcome("\n".join(lines), suggestions)
 
@@ -219,7 +239,11 @@ def prepare_schedule_generation(request, args: PrepareArgs) -> str:
 
     saved = settings.describe_settings(request)
     current = _fresh_plan(session)
-    limit = args.limit if args.limit is not None else (current.limit if current else saved["limit"])
+    limit = (
+        args.limit
+        if args.limit is not None
+        else (current.limit if current else saved["limit"])
+    )
     flags = (
         _check_flags(args.optimizer_flags)
         if args.optimizer_flags is not None
@@ -228,11 +252,30 @@ def prepare_schedule_generation(request, args: PrepareArgs) -> str:
     limit = _check_limit(limit)
 
     setattr(session, DELETE_SLOT, None)  # only one thing waits for a "yes" at a time
-    setattr(session, _PLAN_ATTR, _Plan(limit, flags, _token(request), _now(), session.history.version, session.config))
+    setattr(
+        session,
+        _PLAN_ATTR,
+        _Plan(
+            limit,
+            flags,
+            _token(request),
+            _now(),
+            session.history.version,
+            session.config,
+        ),
+    )
 
     saved_flags = _in_known_order(saved["enabled_flags"])
-    limit_note = "the saved limit" if limit == saved["limit"] else f"this run only; the saved limit is {saved['limit']}"
-    flags_note = "the saved flags" if flags == saved_flags else f"this run only; saved: {_join(saved_flags, 'none')}"
+    limit_note = (
+        "the saved limit"
+        if limit == saved["limit"]
+        else f"this run only; the saved limit is {saved['limit']}"
+    )
+    flags_note = (
+        "the saved flags"
+        if flags == saved_flags
+        else f"this run only; saved: {_join(saved_flags, 'none')}"
+    )
     name = getattr(session, "config_name", None)
     lines = [
         f"Ready to generate schedules from {name or 'the open configuration'}. I checked it and it is valid.",
@@ -242,7 +285,9 @@ def prepare_schedule_generation(request, args: PrepareArgs) -> str:
         "These apply to this run only. Your saved settings and your configuration are not changed.",
     ]
     if session.schedules:
-        lines.append(f"{_plural(len(session.schedules), 'schedule')} loaded now will be replaced if this succeeds.")
+        lines.append(
+            f"{_plural(len(session.schedules), 'schedule')} loaded now will be replaced if this succeeds."
+        )
     lines.append(
         'Reply "go ahead" to generate, or tell me a different limit or optimizer flags. '
         f"Optimizer flags you can use: {_join(settings.known_flags())}."
@@ -282,7 +327,9 @@ def confirm_schedule_generation(request, args: NoArgs) -> str:
 
     setattr(session, _PLAN_ATTR, None)  # used up, whatever happens next
     if _now() - plan.created > PLAN_SECONDS:
-        raise ControllerError("Those generation settings were shown too long ago. Ask me to generate again.")
+        raise ControllerError(
+            "Those generation settings were shown too long ago. Ask me to generate again."
+        )
     if plan.config is not session.config or plan.version != session.history.version:
         raise ControllerError(
             "The configuration changed after I showed you the generation settings, so I did not start. "
@@ -291,7 +338,9 @@ def confirm_schedule_generation(request, args: NoArgs) -> str:
     _require_valid(request, "so I did not start. Nothing was generated:")
 
     before = schedule_controller.schedule_count(request)
-    schedule_controller.start_generation(request, limit_override=plan.limit, optimizer_overrides=list(plan.flags))
+    schedule_controller.start_generation(
+        request, limit_override=plan.limit, optimizer_overrides=list(plan.flags)
+    )
     job = getattr(session, "generation_job", None)
     if job is not None and not job.wait(wait_seconds()):
         return (
@@ -314,7 +363,9 @@ def _report(request, *, before: int | None, limit: int | None) -> str:
     outcome = schedule_ops.GenerationOutcome
     if result.outcome == outcome.SUCCESS:
         count = len(result.schedules)
-        lines = [f"Generated {_plural(count, 'schedule')}. {'It is' if count == 1 else 'They are'} now in the Schedule Viewer."]
+        lines = [
+            f"Generated {_plural(count, 'schedule')}. {'It is' if count == 1 else 'They are'} now in the Schedule Viewer."
+        ]
         if limit and count < limit:
             lines.append(
                 f"The limit was {limit}, but the solver found only {count}: that is every schedule that "
@@ -332,7 +383,10 @@ def _report(request, *, before: int | None, limit: int | None) -> str:
             text += f" The {_plural(before, 'schedule')} loaded before {'was' if before == 1 else 'were'} cleared."
         text += diagnose.explain_no_feasible(request)
         error = ControllerError(_short(text, 1200))
-        error.suggestions = (diagnose.CHECK_CHIP, *((UNDO_CHIP,) if recent_changes(request, 1) else ()))
+        error.suggestions = (
+            diagnose.CHECK_CHIP,
+            *((UNDO_CHIP,) if recent_changes(request, 1) else ()),
+        )
         raise error
     text += " Nothing was added to the Schedule Viewer, and your previous schedules were kept."
     raise ControllerError(_short(text))
@@ -360,7 +414,11 @@ def check_generation_status(request, args: NoArgs) -> str:
     status = schedule_controller.generation_status(request)
     if status["state"] == "idle":
         count = schedule_controller.schedule_count(request)
-        have = f"{_plural(count, 'schedule')} {'is' if count == 1 else 'are'} in the Schedule Viewer." if count else "There are no schedules yet."
+        have = (
+            f"{_plural(count, 'schedule')} {'is' if count == 1 else 'are'} in the Schedule Viewer."
+            if count
+            else "There are no schedules yet."
+        )
         return f"No schedule generation is running. {have}"
     if status["state"] == "running":
         found, limit = status["found"], status["limit"]
@@ -391,12 +449,18 @@ def list_saved_configurations(request, args: NoArgs) -> str:
     if session.config is None:
         lines = ["No configuration is open now."]
     else:
-        lines = [f"Open now: {getattr(session, 'config_name', None) or 'a configuration that has not been saved'}."]
+        lines = [
+            f"Open now: {getattr(session, 'config_name', None) or 'a configuration that has not been saved'}."
+        ]
     if names:
-        lines.append(f"Configurations available to load in this session: {_join(names)}.")
+        lines.append(
+            f"Configurations available to load in this session: {_join(names)}."
+        )
     else:
         lines.append("No other configuration is available to load in this session.")
-    lines.append("A file from the user's computer can only be loaded with Load Configuration in the Configuration Editor.")
+    lines.append(
+        "A file from the user's computer can only be loaded with Load Configuration in the Configuration Editor."
+    )
     return "\n".join(lines)
 
 
@@ -408,13 +472,21 @@ def load_saved_configuration(request, args: LoadArgs) -> str:
     if found is None and not wanted.lower().endswith(".json"):
         found = find_name(f"{wanted}.json", names)  # "load spring" finds spring.json
     if found is None:
-        available = f"Available: {_join(names)}." if names else "None is available in this session."
-        raise ControllerError(f"No configuration named '{args.name.strip()}' can be loaded. {available}")
+        available = (
+            f"Available: {_join(names)}."
+            if names
+            else "None is available in this session."
+        )
+        raise ControllerError(
+            f"No configuration named '{args.name.strip()}' can be loaded. {available}"
+        )
     _refuse_if_it_would_discard(request, f"Loading {found}", "Load Configuration")
     try:
         config_controller.select_saved_configuration(request, found)
     except ControllerError as error:
-        raise ControllerError(f"{error.message} The configuration that was open was not changed.") from error
+        raise ControllerError(
+            f"{error.message} The configuration that was open was not changed."
+        ) from error
     _forget_waiting(session)
     problems = config_controller.validate_configuration(request)
     if problems:
@@ -424,23 +496,30 @@ def load_saved_configuration(request, args: LoadArgs) -> str:
         )
     done = f"Loaded '{found}'. I checked it and it is valid."
     if not args.continue_to_generation:
-        return Outcome(f'{done} Ask me to generate schedules when you are ready; I will show you the settings first.', (GENERATE,))
+        return Outcome(
+            f"{done} Ask me to generate schedules when you are ready; I will show you the settings first.",
+            (GENERATE,),
+        )
     try:
         review = prepare_schedule_generation(request, PrepareArgs())
     except ControllerError as error:
-        raise ControllerError(f"{done} But I can't generate yet: {error.message}") from error
+        raise ControllerError(
+            f"{done} But I can't generate yet: {error.message}"
+        ) from error
     return Outcome(f"{done}\n{review}", getattr(review, "suggestions", ()))
 
 
 def create_new_configuration(request, args: NoArgs) -> str:
     session = get_session(request)
-    _refuse_if_it_would_discard(request, "Creating a new configuration", "New Configuration")
+    _refuse_if_it_would_discard(
+        request, "Creating a new configuration", "New Configuration"
+    )
     config_controller.new_configuration(request)
     _forget_waiting(session)
     return Outcome(
         "Started a new configuration. It holds a placeholder room, course, faculty member, time slots and class "
         "pattern so that it is valid, but it is not useful yet. Add your own rooms, labs, courses, faculty, time "
-        "slots and class patterns (ask me, or use the Configuration Editor), say \"validate the configuration\" "
+        'slots and class patterns (ask me, or use the Configuration Editor), say "validate the configuration" '
         "when you are done, then ask me to generate schedules.",
         ("Validate the configuration", "What can you do?"),
     )

@@ -26,11 +26,21 @@ IMPORT_URL = "/schedules/import/"
 
 
 def schedule(faculty):
-    return [Assignment("CMSC 140.01", faculty, "Roddy 136", None, (MeetingTime("MON", "09:00", "09:50", 50),))]
+    return [
+        Assignment(
+            "CMSC 140.01",
+            faculty,
+            "Roddy 136",
+            None,
+            (MeetingTime("MON", "09:00", "09:50", 50),),
+        )
+    ]
 
 
 def schedule_file_bytes(*faculty):
-    return schedule_io.schedules_to_json([schedule(name) for name in faculty]).encode("utf-8")
+    return schedule_io.schedules_to_json([schedule(name) for name in faculty]).encode(
+        "utf-8"
+    )
 
 
 def upload(raw, name="fall.json"):
@@ -49,7 +59,9 @@ def session(monkeypatch):
 
 class TestLoadScheduleJson:
     def test_loads_a_schedule_set(self, session):
-        count = ctrl.load_schedule_json(None, io.BytesIO(schedule_file_bytes("A", "B", "C")))
+        count = ctrl.load_schedule_json(
+            None, io.BytesIO(schedule_file_bytes("A", "B", "C"))
+        )
         assert count == 3
         assert [s[0].faculty for s in session.schedules] == ["A", "B", "C"]
 
@@ -75,11 +87,16 @@ class TestLoadScheduleJson:
         "raw, fragment",
         [
             (b"{not json", "not valid JSON"),
-            (b'{"config": {}, "time_slot_config": {}}', "looks like a configuration file"),
+            (
+                b'{"config": {}, "time_slot_config": {}}',
+                "looks like a configuration file",
+            ),
             (b'[[{"faculty": "x"}]]', "missing or invalid"),
         ],
     )
-    def test_bad_file_is_rejected_and_existing_schedules_are_kept(self, session, raw, fragment):
+    def test_bad_file_is_rejected_and_existing_schedules_are_kept(
+        self, session, raw, fragment
+    ):
         existing = [schedule("Keep me")]
         session.schedules = existing
         with pytest.raises(ControllerError) as info:
@@ -99,12 +116,23 @@ class TestLoadScheduleJson:
         assert session.schedules is existing
 
     def test_specific_problems_are_listed_separately(self, session):
-        bad = json.dumps([[{"course": "CMSC 140.01", "meetings": [{"day": "SAT", "start": "09:00", "duration": 50}]}]])
+        bad = json.dumps(
+            [
+                [
+                    {
+                        "course": "CMSC 140.01",
+                        "meetings": [{"day": "SAT", "start": "09:00", "duration": 50}],
+                    }
+                ]
+            ]
+        )
         with pytest.raises(ControllerError) as info:
             ctrl.load_schedule_json(None, io.BytesIO(bad.encode()))
         messages = [item.message for item in info.value.errors]
         assert len(messages) == 2
-        assert "not a weekday" in messages[1] and messages[1].startswith("Schedule 1, assignment 1")
+        assert "not a weekday" in messages[1] and messages[1].startswith(
+            "Schedule 1, assignment 1"
+        )
 
 
 # ---------------------------------------------------------------------- #
@@ -134,7 +162,10 @@ def test_loading_a_file_shows_success_and_the_schedule_count(client):
 
 def test_loaded_schedules_persist_to_the_next_page_load(client):
     load(client, schedule_file_bytes("A", "B", "C"))
-    assert "<strong>3</strong> schedules available." in client.get(VIEWER_URL).content.decode()
+    assert (
+        "<strong>3</strong> schedules available."
+        in client.get(VIEWER_URL).content.decode()
+    )
 
 
 def test_bad_file_shows_errors_on_the_form_and_keeps_schedules(client):
@@ -142,7 +173,9 @@ def test_bad_file_shows_errors_on_the_form_and_keeps_schedules(client):
     response = load(client, b"{not json", "bad.json", confirm_replace="on")
     html = response.content.decode()
 
-    assert response.status_code == 200 and not response.redirect_chain  # re-rendered, not redirected
+    assert (
+        response.status_code == 200 and not response.redirect_chain
+    )  # re-rendered, not redirected
     assert "field--error" in html and "<strong>Error:</strong>" in html
     assert "not valid JSON" in html and "Your current schedules were kept." in html
     assert "<strong>2</strong> schedules available." in html
@@ -150,13 +183,24 @@ def test_bad_file_shows_errors_on_the_form_and_keeps_schedules(client):
 
 
 def test_config_file_gets_a_specific_hint(client):
-    config_like = json.dumps({"config": {}, "time_slot_config": {}, "limit": 10}).encode()
+    config_like = json.dumps(
+        {"config": {}, "time_slot_config": {}, "limit": 10}
+    ).encode()
     html = load(client, config_like, "config_example.json").content.decode()
     assert "looks like a configuration file" in html
 
 
 def test_problem_list_is_shown(client):
-    bad = json.dumps([[{"course": "CMSC 140.01", "meetings": [{"day": "SAT", "start": "09:00", "duration": 50}]}]])
+    bad = json.dumps(
+        [
+            [
+                {
+                    "course": "CMSC 140.01",
+                    "meetings": [{"day": "SAT", "start": "09:00", "duration": 50}],
+                }
+            ]
+        ]
+    )
     html = load(client, bad.encode()).content.decode()
     assert "not a weekday" in html
 
@@ -169,7 +213,9 @@ def test_replacing_schedules_requires_confirmation(client):
     assert "Tick this box to confirm replacing" in html
     assert "<strong>1</strong> schedule available." in html  # unchanged
 
-    html = load(client, schedule_file_bytes("B", "C"), confirm_replace="on").content.decode()
+    html = load(
+        client, schedule_file_bytes("B", "C"), confirm_replace="on"
+    ).content.decode()
     assert "Loaded 2 schedules" in html
 
 
@@ -191,26 +237,40 @@ def test_story_45_malformed_json_keeps_the_3_schedules(client):
     before = client.get(VIEWER_URL).content.decode()
     assert "<strong>3</strong> schedules available." in before
 
-    html = load(client, b'{"schedules": [ oops', "broken.json", confirm_replace="on").content.decode()
+    html = load(
+        client, b'{"schedules": [ oops', "broken.json", confirm_replace="on"
+    ).content.decode()
 
     assert "<strong>Error:</strong>" in html and "not valid JSON" in html
     assert "Your current schedules were kept." in html
     assert "<strong>3</strong> schedules available." in html
-    exported = json.loads(client.get("/schedules/export/", {"schedule": "all"}).content.decode("utf-8"))
-    assert [s[0]["faculty"] for s in exported["schedules"]] == ["A", "B", "C"]  # the same 3, untouched
+    exported = json.loads(
+        client.get("/schedules/export/", {"schedule": "all"}).content.decode("utf-8")
+    )
+    assert [s[0]["faculty"] for s in exported["schedules"]] == [
+        "A",
+        "B",
+        "C",
+    ]  # the same 3, untouched
 
 
-def test_story_45_config_file_is_not_a_supported_schedule_format_and_nothing_is_replaced(client):
+def test_story_45_config_file_is_not_a_supported_schedule_format_and_nothing_is_replaced(
+    client,
+):
     load(client, schedule_file_bytes("A", "B", "C"))
     with open("app/examples/config_example.json", "rb") as handle:
         config_file = handle.read()
 
-    html = load(client, config_file, "config_example.json", confirm_replace="on").content.decode()
+    html = load(
+        client, config_file, "config_example.json", confirm_replace="on"
+    ).content.decode()
 
     assert "not a supported schedule format" in html
     assert "Load it from the Configuration Editor instead." in html
     assert "<strong>3</strong> schedules available." in html
-    exported = json.loads(client.get("/schedules/export/", {"schedule": "all"}).content.decode("utf-8"))
+    exported = json.loads(
+        client.get("/schedules/export/", {"schedule": "all"}).content.decode("utf-8")
+    )
     assert [s[0]["faculty"] for s in exported["schedules"]] == ["A", "B", "C"]
 
 

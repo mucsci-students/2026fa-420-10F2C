@@ -114,7 +114,9 @@ def test_a_post_from_another_site_is_refused():
 
 def test_the_separate_assistant_page_is_gone(client):
     assert client.get("/assistant/").status_code == 404
-    assert "AI Assistant</a>" not in client.get("/").content.decode()  # no tab; the button replaces it
+    assert (
+        "AI Assistant</a>" not in client.get("/").content.decode()
+    )  # no tab; the button replaces it
 
 
 def test_the_page_never_contains_the_api_key(client, monkeypatch, fake):
@@ -152,7 +154,9 @@ def test_story_2_the_next_request_is_accepted_after_a_failure(client, fake):
     assert fake.requests == [ADD_140, ADD_140, ADD_141]
 
 
-def test_story_2_the_next_request_is_accepted_after_the_ai_service_fails(client, monkeypatch):
+def test_story_2_the_next_request_is_accepted_after_the_ai_service_fails(
+    client, monkeypatch
+):
     class Broken:
         def run(self, text, toolbox):
             raise ConnectionError("network down")
@@ -180,7 +184,9 @@ def test_the_script_shows_working_status_and_guards_resubmits():
     pieces the tests in this file cannot run are really there."""
     from pathlib import Path
 
-    script = (Path(__file__).resolve().parent.parent / "gui/static/gui/js/chat.js").read_text()
+    script = (
+        Path(__file__).resolve().parent.parent / "gui/static/gui/js/chat.js"
+    ).read_text()
     assert "Working on it" in script
     assert "if (pending) {" in script
     assert "sendButton.classList.toggle" in script
@@ -236,17 +242,26 @@ def test_story_3_two_threads_at_once_only_one_runs(monkeypatch):
     monkeypatch.setattr(service, "get_runner", lambda: Slow())
     request = FakeRequest()
     first = {}
-    worker = threading.Thread(target=lambda: first.setdefault("reply", service.handle_request(request, ADD_140)))
+    worker = threading.Thread(
+        target=lambda: first.setdefault(
+            "reply", service.handle_request(request, ADD_140)
+        )
+    )
     worker.start()
     assert started.wait(5)
-    again = service.handle_request(request, ADD_140)  # same browser, while the first is running
+    again = service.handle_request(
+        request, ADD_140
+    )  # same browser, while the first is running
     release.set()
     worker.join(5)
 
     assert again.busy
     assert first["reply"].ok
     assert calls == [ADD_140]
-    names = [room.name for room in session_store.get_session(request).config.config.rooms]
+    names = [
+        room.name
+        for room in session_store.get_session(request).require_config().config.rooms
+    ]
     assert names.count("RODDY140") == 1
 
 
@@ -332,7 +347,9 @@ def test_missing_api_key_explains_how_to_set_it(client, monkeypatch):
     _, body = ask(client, "List all rooms")
     assert body["ok"] is False
     assert "OPENAI_API_KEY" in body["reply"] and "Nothing was changed" in body["reply"]
-    assert client.get("/configuration/rooms/").status_code == 200  # the rest of the app still works
+    assert (
+        client.get("/configuration/rooms/").status_code == 200
+    )  # the rest of the app still works
 
 
 def test_model_setting_defaults_to_gpt_6_luna(monkeypatch):
