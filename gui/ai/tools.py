@@ -44,6 +44,7 @@ from gui.ai.base import (
     _course_line,
     _day,
     _join,
+    _key,
     _notes,
     _place,
     _plural,
@@ -89,13 +90,15 @@ class AddCourseArgs(BaseModel):
     credits: int = Field(description="Credit hours; an enabled class pattern must have this many credits")
     capacity: int | None = Field(
         default=None,
-        description="Enrollment capacity. Leave out if not given; the smallest listed room's capacity is used",
+        description="Enrollment capacity. Leave out if the user did not say; the smallest listed room's "
+        "capacity is used, and if there is no room the tool asks for it",
     )
     rooms: list[str] = Field(default_factory=list, description="Names of existing rooms the course may use")
     labs: list[str] = Field(default_factory=list, description="Names of existing labs the course may use")
     faculty: list[str] = Field(
         default_factory=list,
-        description="Names of existing faculty who teach it. Empty means chosen from faculty preferences",
+        description="Names of existing faculty who teach it. Ask the user if not given; leave empty only "
+        "when some faculty already prefer this course",
     )
     conflicts: list[str] = Field(default_factory=list, description="Course IDs it must not overlap with")
     section_id: str | None = Field(default=None, description="Section ID, only if the user gave one")
@@ -322,6 +325,13 @@ def add_lab(request, args: AddPlaceArgs) -> str:
     return f"Lab '{args.name.strip()}' added with capacity {args.capacity}."
 
 
+def _someone_prefers(people, course_id: str) -> bool:
+    """True when some faculty member already has a preference for this course (the library can
+    then work out who teaches it, so the user does not have to name a teacher)."""
+    wanted = _key(course_id)
+    return any(_key(name) == wanted for person in people for name in person.course_preferences)
+
+
 def add_course(request, args: AddCourseArgs) -> str:
     entities = require_config(get_session(request), "adding a course").config
     room_names = _resolve(args.rooms, [room.name for room in entities.rooms])
@@ -329,13 +339,24 @@ def add_course(request, args: AddCourseArgs) -> str:
     teachers = _resolve(args.faculty, [person.name for person in entities.faculty])
     conflicts = _resolve(args.conflicts, sorted({course.course_id for course in entities.courses}))
 
+    # Guard rail: a course needs these before it can exist. Ask for ALL that are missing at once,
+    # instead of trying and failing one library error at a time (or letting the AI guess).
     capacity, capacity_note = args.capacity, ""
+    sizes = {room.name: room.capacity for room in entities.rooms if room.name in room_names}
+    missing = []
     if capacity is None:
-        sizes = {room.name: room.capacity for room in entities.rooms if room.name in room_names}
-        if not sizes:
-            raise ControllerError("Capacity is required. Say how many students the course holds.")
-        smallest = min(sizes, key=lambda name: sizes[name])
-        capacity, capacity_note = sizes[smallest], f" (from room {smallest})"
+        if sizes:
+            smallest = min(sizes, key=lambda name: sizes[name])
+            capacity, capacity_note = sizes[smallest], f" (from room {smallest})"
+        else:
+            missing.append("Capacity is required. Say how many students the course holds.")
+    if not teachers and not _someone_prefers(entities.faculty, args.course_id):
+        missing.append(
+            "Faculty is required. Say which faculty member teaches it (they must already exist; "
+            "otherwise add the faculty member first)."
+        )
+    if missing:
+        raise ControllerError(f"I need a bit more before I can add {args.course_id.strip()}. " + " ".join(missing))
 
     notices = courses.add_course(
         request,
