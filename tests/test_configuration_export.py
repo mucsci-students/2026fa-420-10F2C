@@ -529,4 +529,4 @@ def test_the_delete_confirmation_cannot_stand_in_for_the_new_configuration_one(c
     reply = ask(client)
     assert "nothing waiting to be deleted" in reply["reply"].lower()
     assert session.config is config  # confirm_delete replaced nothing
-    assert getattr(session, "pending_new_configuration") is not None  # and the warning is still open
+    assert session.pending_new_configuration is not None # and the warning is still open
