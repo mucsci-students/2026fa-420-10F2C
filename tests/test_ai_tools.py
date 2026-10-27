@@ -306,9 +306,26 @@ def test_add_course_with_no_capacity_and_no_room_asks_for_it(box, request_):
     assert snapshot(request_) == before
 
 
+def test_add_course_asks_for_everything_that_is_missing_at_once(box, request_):
+    before = snapshot(request_)
+    result = box.call("add_course", {"course_id": "CMSC 423", "credits": 3})
+    assert not result.ok
+    assert "Capacity is required" in result.message and "Faculty is required" in result.message
+    assert snapshot(request_) == before
+
+
+def test_add_course_does_not_ask_for_faculty_when_someone_already_prefers_it(box, request_):
+    # CMSC 420 is in the example and a faculty member already prefers it.
+    result = box.call("add_course", {"course_id": "cmsc420", "credits": 3, "capacity": 20, "rooms": ["Roddy 140"]})
+    assert "Faculty is required" not in result.message
+
+
 def test_add_course_with_an_unknown_room_is_rejected(box, request_):
     before = snapshot(request_)
-    result = box.call("add_course", {"course_id": "CMSC 424", "credits": 3, "capacity": 20, "rooms": ["NOPE100"]})
+    result = box.call(
+        "add_course",
+        {"course_id": "CMSC 424", "credits": 3, "capacity": 20, "rooms": ["NOPE100"], "faculty": ["Hogg"]},
+    )
     assert not result.ok and "NOPE100" in result.message
     assert snapshot(request_) == before
 

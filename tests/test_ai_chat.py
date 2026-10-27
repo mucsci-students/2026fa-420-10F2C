@@ -1,10 +1,10 @@
 """
-Tests for the AI Assistant page and one request from start to finish
-(Sprint 3 user stories 2, 3 and 6).
+Tests for the AI chat button's endpoint and one request from start to finish
+(Sprint 3 user stories 2, 3 and 6). The button and panel themselves are covered in test_gui_chat.py.
 
 The real AI is replaced by FakeRunner, which calls the tools a model would
 have picked for each request (or just answers with text). Everything after
-that is real: the page, gui.ai.service, the tools, the controllers and the
+that is real: the endpoint, gui.ai.service, the tools, the controllers and the
 scheduler library. No OpenAI connection or API key is used.
 """
 
@@ -18,8 +18,7 @@ from gui.ai import runner as runner_module
 from gui.ai import service
 
 ASK_URL = "/assistant/ask/"
-PAGE_URL = "/assistant/"
-XHR = {"HTTP_X_REQUESTED_WITH": "XMLHttpRequest"}
+PAGE_URL = "/"
 
 ADD_140 = "Add a room named RODDY140 with capacity 30"
 ADD_141 = "Add a room named RODDY141 with capacity 25"
@@ -82,7 +81,7 @@ def fake(monkeypatch):
 
 
 def ask(client, text):
-    response = client.post(ASK_URL, {"message": text}, **XHR)
+    response = client.post(ASK_URL, {"message": text})
     return response.status_code, response.json()
 
 
@@ -100,20 +99,22 @@ def capacity(name):
 
 
 # ---------------------------------------------------------------------- #
-#  The page
+#  The endpoint
 # ---------------------------------------------------------------------- #
-def test_page_has_a_labelled_chat_input_and_submit_button(client):
-    html = client.get(PAGE_URL).content.decode()
-    assert '<label for="ai-message">Request for the AI assistant</label>' in html
-    assert 'name="message"' in html
-    assert '<button type="submit" class="btn btn-primary">Send</button>' in html
-    assert "gui/js/ai_chat.js" in html
-    assert 'id="ai-log"' in html and 'aria-live="polite"' in html
+def test_the_endpoint_only_accepts_post(client):
+    assert client.get(ASK_URL).status_code == 405
 
 
-def test_assistant_is_in_the_navigation(client):
-    html = client.get("/").content.decode()
-    assert 'href="/assistant/"' in html and "AI Assistant" in html
+def test_a_post_from_another_site_is_refused():
+    from django.test import Client
+
+    strict = Client(enforce_csrf_checks=True)
+    assert strict.post(ASK_URL, {"message": "List all rooms"}).status_code == 403
+
+
+def test_the_separate_assistant_page_is_gone(client):
+    assert client.get("/assistant/").status_code == 404
+    assert "AI Assistant</a>" not in client.get("/").content.decode()  # no tab; the button replaces it
 
 
 def test_the_page_never_contains_the_api_key(client, monkeypatch, fake):
@@ -121,15 +122,6 @@ def test_the_page_never_contains_the_api_key(client, monkeypatch, fake):
     assert "sk-test" not in client.get(PAGE_URL).content.decode()
     _, body = ask(client, "List all rooms")
     assert "sk-test" not in str(body)
-
-
-def test_without_javascript_the_form_still_works(client, fake):
-    response = client.post(ASK_URL, {"message": ADD_140})
-    html = response.content.decode()
-    assert response.status_code == 200
-    assert "<strong>You:</strong> <span>Add a room named RODDY140 with capacity 30</span>" in html
-    assert "Room &#x27;RODDY140&#x27; added with capacity 30." in html
-    assert len(rooms_named("RODDY140")) == 1
 
 
 # ---------------------------------------------------------------------- #
@@ -183,16 +175,16 @@ def test_empty_request_is_not_sent_to_the_ai(client, fake):
     assert fake.requests == []
 
 
-def test_the_script_shows_processing_and_guards_resubmits():
-    """The browser half of stories 2 and 3 lives in ai_chat.js; check the
+def test_the_script_shows_working_status_and_guards_resubmits():
+    """The browser half of stories 2 and 3 lives in chat.js; check the
     pieces the tests in this file cannot run are really there."""
     from pathlib import Path
 
-    script = (Path(__file__).resolve().parent.parent / "gui/static/gui/js/ai_chat.js").read_text()
-    assert "Processing your request" in script
-    assert "if (busy) { return; }" in script
-    assert "button.disabled = on" in script
-    assert "status.replaceWith(reply)" in script
+    script = (Path(__file__).resolve().parent.parent / "gui/static/gui/js/chat.js").read_text()
+    assert "Working on it" in script
+    assert "if (pending) {" in script
+    assert "sendButton.classList.toggle" in script
+    assert "thinking.remove()" in script
 
 
 # ---------------------------------------------------------------------- #
@@ -320,8 +312,8 @@ def test_what_can_you_do(client, fake):
     before = browser_session().config.model_dump_json()
     _, body = ask(client, "What can you do?")
     assert body["ok"] is True and body["changed"] is False
-    assert "View, add, change, and delete rooms" in body["reply"]
-    assert "Validate the configuration, save it, and generate schedules" in body["reply"]
+    assert "Delete rooms, labs, courses" in body["reply"]
+    assert "I can't validate the configuration, save it, or generate schedules yet" in body["reply"]
     assert browser_session().config.model_dump_json() == before
 
 

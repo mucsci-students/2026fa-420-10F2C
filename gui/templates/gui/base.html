@@ -17,7 +17,6 @@
     <a href="{% url 'gui:config_editor' %}" class="{% if active == 'config' %}active{% endif %}">Configuration Editor</a>
     <a href="{% url 'gui:schedule_generator' %}" class="{% if active == 'generator' %}active{% endif %}">Schedule Generator</a>
     <a href="{% url 'gui:schedule_viewer' %}" class="{% if active == 'viewer' %}active{% endif %}">Schedule Viewer</a>
-    <a href="{% url 'gui:assistant' %}" class="{% if active == 'assistant' %}active{% endif %}">AI Assistant</a>
     <span class="nav-status{% if config_loaded and config_dirty %} nav-status--dirty{% endif %}" role="status">
         Configuration:
         {% if not config_loaded %}none loaded
@@ -48,7 +47,9 @@
 <div id="loading-status" class="alert alert-info loading-status" role="status" aria-live="polite" hidden></div>
 {% block content %}{% endblock %}
 </main>
+{% include "gui/components/chat_widget.html" %}
 <script src="{% static 'gui/js/loading.js' %}" defer></script>
+<script src="{% static 'gui/js/chat.js' %}" defer></script>
 <script src="{% static 'gui/js/dropdowns.js' %}" defer></script>
 {% block scripts %}{% endblock %}
 <script src="{% static 'gui/js/app.js' %}" defer></script>
