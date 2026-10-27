@@ -17,10 +17,14 @@ every failure leaves the previous valid configuration exactly as it was.
 from __future__ import annotations
 
 import re
+import secrets
+from dataclasses import dataclass
+from time import monotonic
 
-from scheduler.config import ValidationError
+from scheduler.config import CombinedConfig, ValidationError
 
 from app.commands.configuration import revalidate
+from app.history import ConfigHistory
 from app.session import ConfigError
 from gui.controllers.common import require_config
 from gui.controllers.errors import ControllerError, FieldError, describe_problems
@@ -156,14 +160,7 @@ def _download_name(name: str | None) -> str:
 
 
 def save_configuration(request) -> tuple[str, str]:
-    """Validate the configuration, then return (file name, JSON text).
-
-    The text comes from the library's own Pydantic serialization. The view
-    sends it as a download, so the browser decides where it goes and asks
-    before replacing an existing file -- the app never overwrites anything
-    on disk (Section 9). The unsaved-changes flag is cleared once the text
-    is handed over.
-    """
+    """Validate and serialize without claiming that a file has been written."""
     session = get_session(request)
     require_config(session, "saving it")
     error = revalidate(session)
@@ -174,9 +171,115 @@ def save_configuration(request) -> tuple[str, str]:
         )
     filename = _download_name(getattr(session, "config_name", None))
     content = session.dumps()
-    session.mark_saved(filename)
-    session.remember_config(filename, content)
     return filename, content
+
+
+SAVE_LIFETIME = 15 * 60
+MAX_PENDING_SAVES = 8
+
+
+@dataclass
+class PreparedSave:
+    filename: str
+    content: str
+    config: CombinedConfig
+    history: ConfigHistory
+    version: int
+    expires: float
+    authorized_name: str | None = None
+    completed_name: str | None = None
+
+
+def _save_filename(filename: str) -> str:
+    if (
+        not filename.strip()
+        or filename.strip() in (".", "..")
+        or any(char in filename for char in '/\\')
+        or any(ord(char) < 32 for char in filename)
+    ):
+        raise ControllerError("Use a file name, not a path. Choose the destination in the browser's Save dialog.")
+    name = filename.strip()
+    return name if name.lower().endswith(".json") else f"{name}.json"
+
+
+def _pending_saves(session) -> dict[str, PreparedSave]:
+    pending = getattr(session, "_prepared_saves", {})
+    pending = {token: item for token, item in pending.items() if item.expires > monotonic()}
+    session._prepared_saves = pending
+    return pending
+
+
+def prepare_save(request, filename: str | None = None) -> dict[str, str]:
+    session = get_session(request)
+    name = _save_filename(filename) if filename is not None else None
+    config = require_config(session, "saving it")
+    history = session.history
+    version = history.version
+    default_name, content = save_configuration(request)
+    if session.config is not config or session.history is not history or history.version != version:
+        raise ControllerError("The configuration changed while preparing this save. Request a new save.")
+    pending = _pending_saves(session)
+    if len(pending) >= MAX_PENDING_SAVES:
+        raise ControllerError("Too many pending saves. Finish or cancel an earlier save, or wait 15 minutes.")
+    token = secrets.token_urlsafe(32)
+    pending[token] = PreparedSave(
+        name or default_name, content, config, history,
+        version, monotonic() + SAVE_LIFETIME,
+    )
+    return {"token": token, "filename": name or default_name, "content": content}
+
+
+def _prepared_save(request, token: str) -> PreparedSave:
+    item = _pending_saves(get_session(request)).get(token)
+    if item is None:
+        raise ControllerError("This save has expired or was cancelled. Request a new save.")
+    return item
+
+
+def complete_save(request, token: str, filename: str) -> dict:
+    """Acknowledge a browser-confirmed write; retries never write the file again."""
+    session = get_session(request)
+    item = _prepared_save(request, token)
+    name = _save_filename(filename)
+    if name != filename:
+        raise ControllerError("The saved file name must be a safe JSON filename.")
+    if item.authorized_name != name:
+        raise ControllerError("This target has not been confirmed for this save.")
+    if item.completed_name is not None and item.completed_name != name:
+        raise ControllerError("This save was already completed with a different filename.")
+    if item.completed_name is None:
+        if (
+            session.config is item.config
+            and session.history is item.history
+            and session.history.version == item.version
+            and session.dumps() == item.content
+        ):
+            session.mark_saved(name)
+        session.remember_config(name, item.content)
+        item.completed_name = name
+    return {
+        "ok": True, "filename": name, "dirty": bool(session.dirty),
+        "current_snapshot": session.config is item.config and session.dumps() == item.content,
+    }
+
+
+def begin_save(request, token: str, filename: str) -> None:
+    """Consume the write authorization before the browser touches file contents."""
+    item = _prepared_save(request, token)
+    if item.authorized_name is not None:
+        raise ControllerError("This save has already been authorized. Request a new save instead of writing twice.")
+    name = _save_filename(filename)
+    if name != filename:
+        raise ControllerError("Choose a safe filename ending in .json.")
+    item.authorized_name = name
+
+
+def cancel_save(request, token: str) -> None:
+    session = get_session(request)
+    item = _prepared_save(request, token)
+    if item.completed_name is not None:
+        raise ControllerError("This save has already completed.")
+    del session._prepared_saves[token]
 
 
 def saved_config_choices(request) -> list[tuple[str, str]]:

@@ -74,9 +74,9 @@ def test_loading_script_handles_downloads():
 # ---------------------------------------------------------------------- #
 #  Which forms opt in
 # ---------------------------------------------------------------------- #
-def test_configuration_save_shows_loading_until_the_download_arrives(client):
+def test_configuration_save_uses_confirmed_file_picker_instead_of_download_loading(client):
     tag = form_tag(page(client.get(EDITOR_URL)), SAVE_URL)
-    assert 'data-loading="Loading…"' in tag and "data-loading-download" in tag
+    assert "data-configuration-save" in tag and "data-loading-download" not in tag
 
 
 def test_configuration_load_and_new_show_loading(client):
@@ -141,11 +141,12 @@ def test_download_response_without_a_good_token_sets_no_cookie(token):
 # ---------------------------------------------------------------------- #
 #  End to end through the real views
 # ---------------------------------------------------------------------- #
-def test_configuration_save_with_a_token_sets_the_cookie(client):
+def test_configuration_save_prepares_a_snapshot_not_a_download_cookie(client):
     client.get(EDITOR_URL)
     response = client.post(SAVE_URL, {"download_token": "save-1"})
-    assert "attachment" in response["Content-Disposition"]
-    assert response.cookies["download_token"].value == "save-1"
+    assert response.json()["token"]
+    assert "Content-Disposition" not in response
+    assert "download_token" not in response.cookies
 
 
 def test_schedule_export_with_a_token_sets_the_cookie(client):

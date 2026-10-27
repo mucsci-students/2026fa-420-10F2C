@@ -29,13 +29,14 @@ import logging
 from collections.abc import Iterable
 from dataclasses import replace
 
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from gui.ai.base import (
     NO_CONFIG_MESSAGE,
     WEEKDAYS,
     AiTool,
     AvailabilityArgs,
+    BrowserAction,
     CourseArgs,
     NameArgs,
     NoArgs,
@@ -429,7 +430,51 @@ def add_class_pattern(request, args: AddPatternArgs) -> str:
 # ---------------------------------------------------------------------- #
 #  The registry: every tool the model is offered, in one place
 # ---------------------------------------------------------------------- #
+class SaveConfigurationArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    filename: str | None = Field(
+        default=None,
+        description="Optional JSON filename, not a path; the user selects the destination in the browser",
+    )
+
+
+def configuration_actions(request, args) -> BrowserAction:
+    return BrowserAction(
+        "Choose New Configuration or Load Configuration below. Use the existing form to create or select "
+        "a JSON file. Any discard confirmation still applies. Then ask me to save again.",
+        {"kind": "configuration"},
+    )
+
+
+def save_configuration(request, args: SaveConfigurationArgs) -> BrowserAction:
+    if get_session(request).config is None:
+        return BrowserAction(
+            "There is nothing to save: no configuration is loaded. Create a new configuration or load an "
+            "existing JSON file below, then ask me to save again.",
+            {"kind": "configuration"},
+        )
+    prepared = config_controller.prepare_save(request, args.filename)
+    return BrowserAction(
+        f"'{prepared['filename']}' is ready, but not saved yet. Click Save JSON below to choose its "
+        "destination and confirm writing it.",
+        {"kind": "save", **prepared},
+    )
+
+
 TOOLS: tuple[AiTool, ...] = (
+    AiTool(
+        "save_configuration",
+        "Prepare the current configuration for a user-confirmed JSON save. Use for save, download, "
+        "or save-as requests. Never claim the file is written yet.",
+        SaveConfigurationArgs, save_configuration, needs_config=False,
+    ),
+    AiTool(
+        "configuration_actions",
+        "Offer New Configuration and Load Configuration forms, including JSON file selection. "
+        "Use when the user asks to create or load a configuration.",
+        NoArgs, configuration_actions, needs_config=False,
+    ),
     AiTool(
         "describe_capabilities",
         "Say what this assistant can do. Use when the user asks what you can do or asks for help.",
@@ -552,8 +597,10 @@ class ToolBox:
         except Exception:
             logger.exception("AI tool %s failed unexpectedly", name)
             return self._record(ToolResult(name, False, UNEXPECTED_MESSAGE, write=tool.write))
+        action = message.action if isinstance(message, BrowserAction) else None
+        text = message.message if isinstance(message, BrowserAction) else message
         edited = tool.write and not isinstance(message, Unchanged)
-        return self._record(ToolResult(name, True, message, changed=edited, write=tool.write))
+        return self._record(ToolResult(name, True, text, changed=edited, write=tool.write, action=action))
 
     def invalid(self, name: str, error: Exception) -> ToolResult:
         """Record arguments LangChain already rejected (wrong types, missing values)."""

@@ -16,7 +16,7 @@ template.
 import re
 
 from django.contrib import messages
-from django.http import Http404, HttpResponse
+from django.http import Http404, HttpResponse, JsonResponse
 
 from app import schedule_ops
 from django.shortcuts import redirect, render
@@ -146,15 +146,16 @@ def config_load(request):
 
 
 def config_save(request):
-    """Validate, then send the configuration as a file download (Section 9)."""
+    """Prepare a snapshot; only a later browser write acknowledgement marks it saved."""
     if request.method != "POST":
         return redirect("gui:config_editor")
     try:
-        filename, content = config_controller.save_configuration(request)
+        prepared = config_controller.prepare_save(request, request.POST.get("filename") or None)
     except ControllerError as error:
-        report = {"heading": "The configuration was not saved.", "items": [item.message for item in error.errors]}
-        return _render_config_editor(request, report=report)
-    return download_response(filename, content, "application/json; charset=utf-8", download_token(request))
+        return JsonResponse({"ok": False, "error": error.message}, status=400)
+    response = JsonResponse(prepared)
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 def config_validate(request):

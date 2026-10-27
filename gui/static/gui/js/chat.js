@@ -131,6 +131,9 @@
             kind = "error";
         }
         var item = addMessage(kind, body.reply);
+        (body.actions || []).forEach(function (action) {
+            window.ConfigurationSave.addAction(item, action);
+        });
         if (body.dirty) {
             showUnsaved();
         }

@@ -130,7 +130,10 @@ def test_undo_only_acts_on_post(client):
 def test_after_a_save_undoing_marks_the_configuration_unsaved(client):
     client.get(ROOMS)
     add_room(client)
-    client.post("/configuration/save/")
+    prepared = client.post("/configuration/save/").json()
+    completion = {"token": prepared["token"], "filename": prepared["filename"]}
+    client.post("/configuration/save/begin/", completion)
+    client.post("/configuration/save/complete/", completion)
     assert browser_session().dirty is False
     client.post(UNDO)
     assert browser_session().dirty is True

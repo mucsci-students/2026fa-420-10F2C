@@ -32,6 +32,12 @@ LOOKUP_PREFIXES = ("list_", "get_", "show_")
 
 
 @dataclass(frozen=True)
+class BrowserAction:
+    message: str
+    action: dict[str, str]
+
+
+@dataclass(frozen=True)
 class ToolResult:
     """What one tool call really did, in words the user can read."""
 
@@ -41,6 +47,7 @@ class ToolResult:
     changed: bool = False  # True only when the configuration was edited
     write: bool = False  # True for tools that try to edit the configuration
     final: bool = True  # False for plain lookups: the AI sees them and goes on; they are not the answer
+    action: dict[str, str] | None = None
 
 
 class Unchanged(str):
@@ -56,7 +63,7 @@ class AiTool:
     name: str
     description: str
     args: type[BaseModel]
-    handler: Callable[[Any, Any], str]
+    handler: Callable[[Any, Any], str | BrowserAction]
     write: bool = False
     needs_config: bool = True
 
