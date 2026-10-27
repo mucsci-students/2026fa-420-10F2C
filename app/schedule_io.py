@@ -57,16 +57,32 @@ MAX_IMPORT_BYTES = 5 * 1024 * 1024  # a real schedule set is a few hundred KB
 MAX_REPORTED_PROBLEMS = 5
 
 DAYS = ("MON", "TUE", "WED", "THU", "FRI")
-DAY_NAMES = {"MON": "Monday", "TUE": "Tuesday", "WED": "Wednesday", "THU": "Thursday", "FRI": "Friday"}
+DAY_NAMES = {
+    "MON": "Monday",
+    "TUE": "Tuesday",
+    "WED": "Wednesday",
+    "THU": "Thursday",
+    "FRI": "Friday",
+}
 _LIBRARY_DAY_NAMES = {number: day for number, day in enumerate(DAYS, start=1)}
 
 CSV_COLUMNS = (
-    "schedule", "course", "faculty", "room", "lab",
-    "day", "start", "end", "duration_minutes", "lab_meeting",
+    "schedule",
+    "course",
+    "faculty",
+    "room",
+    "lab",
+    "day",
+    "start",
+    "end",
+    "duration_minutes",
+    "lab_meeting",
 )
 
 _HHMM_RE = re.compile(r"^(\d{1,2}):(\d{2})$")
-_MEETING_STR_RE = re.compile(r"^\s*([A-Za-z]+)\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*$")
+_MEETING_STR_RE = re.compile(
+    r"^\s*([A-Za-z]+)\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*$"
+)
 
 
 class ScheduleFileError(Exception):
@@ -87,14 +103,15 @@ class ScheduleFileError(Exception):
 #  Record types
 # --------------------------------------------------------------------------- #
 
+
 @dataclass(frozen=True)
 class MeetingTime:
     """One weekly meeting of a scheduled section."""
 
-    day: str          # MON..FRI
-    start: str        # "HH:MM", 24-hour
-    end: str          # "HH:MM", 24-hour
-    duration: int     # minutes
+    day: str  # MON..FRI
+    start: str  # "HH:MM", 24-hour
+    end: str  # "HH:MM", 24-hour
+    duration: int  # minutes
     lab: bool = False
 
     @property
@@ -102,8 +119,13 @@ class MeetingTime:
         return DAY_NAMES.get(self.day, self.day)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"day": self.day, "start": self.start, "end": self.end,
-                "duration": self.duration, "lab": self.lab}
+        return {
+            "day": self.day,
+            "start": self.start,
+            "end": self.end,
+            "duration": self.duration,
+            "lab": self.lab,
+        }
 
 
 @dataclass(frozen=True)
@@ -130,6 +152,7 @@ class Assignment:
 #  Import
 # --------------------------------------------------------------------------- #
 
+
 def parse_schedule_file(raw: bytes) -> list[list[Assignment]]:
     """Decode, parse, and validate an uploaded schedule file.
 
@@ -147,7 +170,9 @@ def parse_schedule_file(raw: bytes) -> list[list[Assignment]]:
     try:
         text = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
-        raise ScheduleFileError("The file is not a UTF-8 text file. Choose a .json schedule file.") from None
+        raise ScheduleFileError(
+            "The file is not a UTF-8 text file. Choose a .json schedule file."
+        ) from None
     try:
         data = json.loads(text)
     except json.JSONDecodeError as e:
@@ -175,7 +200,11 @@ def parse_schedule_data(data: Any) -> list[list[Assignment]]:
         assignments = []
         for a_idx, raw_assignment in enumerate(raw_schedule, start=1):
             try:
-                assignments.append(_assignment_from_data(raw_assignment, f"{where_schedule}, assignment {a_idx}"))
+                assignments.append(
+                    _assignment_from_data(
+                        raw_assignment, f"{where_schedule}, assignment {a_idx}"
+                    )
+                )
             except ScheduleFileError as e:
                 problems.append(e.message)
         schedules.append(assignments)
@@ -183,8 +212,12 @@ def parse_schedule_data(data: Any) -> list[list[Assignment]]:
     if problems:
         shown = problems[:MAX_REPORTED_PROBLEMS]
         if len(problems) > MAX_REPORTED_PROBLEMS:
-            shown.append(f"...and {len(problems) - MAX_REPORTED_PROBLEMS} more problem(s).")
-        raise ScheduleFileError("The file contains schedule data that is missing or invalid.", shown)
+            shown.append(
+                f"...and {len(problems) - MAX_REPORTED_PROBLEMS} more problem(s)."
+            )
+        raise ScheduleFileError(
+            "The file contains schedule data that is missing or invalid.", shown
+        )
     return schedules
 
 
@@ -197,30 +230,40 @@ def _unwrap(data: Any) -> list:
                 "Load it from the Configuration Editor instead."
             )
         if "format" in data and data["format"] != FORMAT_NAME:
-            raise ScheduleFileError(f"This is not a supported schedule format: the file says {data['format']!r}, expected {FORMAT_NAME!r}.")
+            raise ScheduleFileError(
+                f"This is not a supported schedule format: the file says {data['format']!r}, expected {FORMAT_NAME!r}."
+            )
         version = data.get("version", FORMAT_VERSION)
         if not isinstance(version, int) or isinstance(version, bool) or version < 1:
-            raise ScheduleFileError(f"The file has an invalid format version {version!r}.")
+            raise ScheduleFileError(
+                f"The file has an invalid format version {version!r}."
+            )
         if version > FORMAT_VERSION:
             raise ScheduleFileError(
                 f"The file uses schedule format version {version}, but this application "
                 f"supports up to version {FORMAT_VERSION}."
             )
         if "schedules" not in data:
-            raise ScheduleFileError("This is not a supported schedule format: it has no \"schedules\" list.")
+            raise ScheduleFileError(
+                'This is not a supported schedule format: it has no "schedules" list.'
+            )
         data = data["schedules"]
         if not isinstance(data, list):
-            raise ScheduleFileError("This is not a supported schedule format: \"schedules\" must be a list.")
+            raise ScheduleFileError(
+                'This is not a supported schedule format: "schedules" must be a list.'
+            )
 
     if not isinstance(data, list):
-        raise ScheduleFileError("This is not a supported schedule format: expected a list of schedules.")
+        raise ScheduleFileError(
+            "This is not a supported schedule format: expected a list of schedules."
+        )
     if not data:
         raise ScheduleFileError("The file contains no schedules.")
 
     if all(isinstance(item, dict) for item in data):
         return [data]  # a single schedule: a list of assignments
     if all(isinstance(item, list) for item in data):
-        return data    # a set of schedules
+        return data  # a set of schedules
     raise ScheduleFileError(
         "This is not a supported schedule format: it mixes schedules and course assignments at the top level."
     )
@@ -248,11 +291,14 @@ def _assignment_from_data(obj: Any, where: str) -> Assignment:
     if raw_meetings is None:
         raw_meetings = []
     if not isinstance(raw_meetings, list):
-        raise ScheduleFileError(f"{where}: \"meetings\" must be a list.")
+        raise ScheduleFileError(f'{where}: "meetings" must be a list.')
     meetings = tuple(
-        _meeting_from_data(m, f"{where}, meeting {i}") for i, m in enumerate(raw_meetings, start=1)
+        _meeting_from_data(m, f"{where}, meeting {i}")
+        for i, m in enumerate(raw_meetings, start=1)
     )
-    return Assignment(course=course, faculty=faculty, room=room, lab=lab, meetings=meetings)
+    return Assignment(
+        course=course, faculty=faculty, room=room, lab=lab, meetings=meetings
+    )
 
 
 def _optional_name(value: Any, label: str, where: str) -> str | None:
@@ -260,7 +306,9 @@ def _optional_name(value: Any, label: str, where: str) -> str | None:
         return None
     if isinstance(value, str):
         return value.strip() or None
-    raise ScheduleFileError(f"{where}: {label} must be a name or null, not {type(value).__name__}.")
+    raise ScheduleFileError(
+        f"{where}: {label} must be a name or null, not {type(value).__name__}."
+    )
 
 
 def _meeting_from_data(obj: Any, where: str) -> MeetingTime:
@@ -268,14 +316,21 @@ def _meeting_from_data(obj: Any, where: str) -> MeetingTime:
     if isinstance(obj, str):  # "MON 09:00-09:50"
         match = _MEETING_STR_RE.match(obj)
         if not match:
-            raise ScheduleFileError(f"{where}: {obj!r} is not a meeting like \"MON 09:00-09:50\".")
-        raw_day, raw_start, raw_end, raw_duration = match.group(1), match.group(2), match.group(3), None
+            raise ScheduleFileError(
+                f'{where}: {obj!r} is not a meeting like "MON 09:00-09:50".'
+            )
+        raw_day, raw_start, raw_end, raw_duration = (
+            match.group(1),
+            match.group(2),
+            match.group(3),
+            None,
+        )
     elif isinstance(obj, dict):
         raw_day, raw_start = obj.get("day"), obj.get("start")
         raw_end, raw_duration = obj.get("end"), obj.get("duration")
         lab_value = obj.get("lab", False)
         if not isinstance(lab_value, bool):
-            raise ScheduleFileError(f"{where}: \"lab\" must be true or false.")
+            raise ScheduleFileError(f'{where}: "lab" must be true or false.')
         lab = lab_value
     else:
         raise ScheduleFileError(f"{where} is not a meeting object.")
@@ -284,8 +339,14 @@ def _meeting_from_data(obj: Any, where: str) -> MeetingTime:
     start = _parse_minutes(raw_start, "start", where)
 
     if raw_duration is not None:
-        if isinstance(raw_duration, bool) or not isinstance(raw_duration, int) or raw_duration <= 0:
-            raise ScheduleFileError(f"{where}: duration must be a positive whole number of minutes.")
+        if (
+            isinstance(raw_duration, bool)
+            or not isinstance(raw_duration, int)
+            or raw_duration <= 0
+        ):
+            raise ScheduleFileError(
+                f"{where}: duration must be a positive whole number of minutes."
+            )
         duration = raw_duration  # when both are given, duration wins (documented)
     elif raw_end is not None:
         duration = _parse_minutes(raw_end, "end", where) - start
@@ -297,17 +358,25 @@ def _meeting_from_data(obj: Any, where: str) -> MeetingTime:
     end = start + duration
     if end > 24 * 60:
         raise ScheduleFileError(f"{where}: the meeting runs past midnight.")
-    return MeetingTime(day=day, start=_fmt(start), end=_fmt(end), duration=duration, lab=lab)
+    return MeetingTime(
+        day=day, start=_fmt(start), end=_fmt(end), duration=duration, lab=lab
+    )
 
 
 def _parse_day(value: Any, where: str) -> str:
     # The scheduler library serializes weekdays as ISO-style numbers (1=MON
     # through 5=FRI), while the schedule file format uses weekday names.
-    if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= len(DAYS):
+    if (
+        isinstance(value, int)
+        and not isinstance(value, bool)
+        and 1 <= value <= len(DAYS)
+    ):
         return DAYS[value - 1]
     if isinstance(value, str) and value.strip()[:3].upper() in DAYS:
         return value.strip()[:3].upper()
-    raise ScheduleFileError(f"{where}: {value!r} is not a weekday (use MON, TUE, WED, THU, or FRI).")
+    raise ScheduleFileError(
+        f"{where}: {value!r} is not a weekday (use MON, TUE, WED, THU, or FRI)."
+    )
 
 
 def _parse_minutes(value: Any, label: str, where: str) -> int:
@@ -320,7 +389,9 @@ def _parse_minutes(value: Any, label: str, where: str) -> int:
             hours, minutes = int(match.group(1)), int(match.group(2))
             if hours < 24 and minutes < 60:
                 return hours * 60 + minutes
-    raise ScheduleFileError(f"{where}: {label} time {value!r} is not a valid HH:MM time.")
+    raise ScheduleFileError(
+        f"{where}: {label} time {value!r} is not a valid HH:MM time."
+    )
 
 
 def _fmt(minutes: int) -> str:
@@ -330,6 +401,7 @@ def _fmt(minutes: int) -> str:
 # --------------------------------------------------------------------------- #
 #  Generated schedules -> records
 # --------------------------------------------------------------------------- #
+
 
 def to_assignments(schedule: Iterable[Any]) -> list[Assignment]:
     """Return a schedule as Assignments, whatever it currently holds.
@@ -368,7 +440,9 @@ def _library_instances_to_assignments(instances: list[Any]) -> list[Assignment]:
         with JSONWriter(str(path)) as writer:
             writer.add_schedule(instances)
         data = json.loads(path.read_text(encoding="utf-8"))
-    return parse_schedule_data([_normalize_library_schedule(schedule) for schedule in data])[0]
+    return parse_schedule_data(
+        [_normalize_library_schedule(schedule) for schedule in data]
+    )[0]
 
 
 def _normalize_library_schedule(schedule: list[Any]) -> list[Any]:
@@ -410,6 +484,7 @@ def _normalize_library_schedule(schedule: list[Any]) -> list[Any]:
 #  Export
 # --------------------------------------------------------------------------- #
 
+
 def schedules_to_json(schedules: list[list[Assignment]]) -> str:
     """Serialize schedules in the documented format (reloadable with
     parse_schedule_file)."""
@@ -434,5 +509,7 @@ def schedules_to_csv(schedules: list[list[Assignment]], first_number: int = 1) -
             if not a.meetings:
                 writer.writerow(base + ["", "", "", "", ""])
             for m in a.meetings:
-                writer.writerow(base + [m.day, m.start, m.end, m.duration, "yes" if m.lab else "no"])
+                writer.writerow(
+                    base + [m.day, m.start, m.end, m.duration, "yes" if m.lab else "no"]
+                )
     return buffer.getvalue()

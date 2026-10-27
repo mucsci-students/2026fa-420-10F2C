@@ -14,6 +14,7 @@ mirrors edit_mode()'s documented contract so what's under test is
 app/commands.py's own logic (credits/meetings validation, rollback-on-
 failure) rather than the real library's exact validation rules.
 """
+
 import copy
 from contextlib import contextmanager
 from types import SimpleNamespace
@@ -110,13 +111,20 @@ def feed_inputs(monkeypatch, answers):
     monkeypatch.setattr("builtins.input", fake_input)
 
 
-def _one_meeting_answers(day="MON", duration="150", lab="n", delivery="in_person", start_time=""):
+def _one_meeting_answers(
+    day="MON", duration="150", lab="n", delivery="in_person", start_time=""
+):
     """Inputs for a single _prompt_meeting() call."""
     return [day, duration, lab, delivery, start_time]
 
 
-def _pattern_answers(credits="3", meeting_answers=None, add_another="n",
-                      pattern_start_time="", disabled="n"):
+def _pattern_answers(
+    credits="3",
+    meeting_answers=None,
+    add_another="n",
+    pattern_start_time="",
+    disabled="n",
+):
     """Inputs for one full _prompt_pattern_fields() call: credits, one
     meeting, whether to add another (n = just the one), a fixed start
     time for the pattern, and whether it starts disabled."""
@@ -128,14 +136,23 @@ def _existing_pattern(credits=3, meetings=None, start_time=None, disabled=False)
     """Build a valid existing class pattern for a test."""
     return FakeClassPattern(
         credits=credits,
-        meetings=meetings or [FakeMeeting(day="MON", duration=150, lab=False,
-                                           delivery="in_person", start_time=None)],
+        meetings=meetings
+        or [
+            FakeMeeting(
+                day="MON",
+                duration=150,
+                lab=False,
+                delivery="in_person",
+                start_time=None,
+            )
+        ],
         start_time=start_time,
         disabled=disabled,
     )
 
 
 # ---------- add_pattern ----------
+
 
 def test_add_pattern_happy_path(monkeypatch, capsys):
     """Verify that add pattern happy path."""
@@ -155,15 +172,18 @@ def test_add_pattern_happy_path(monkeypatch, capsys):
 def test_add_pattern_with_multiple_meetings(monkeypatch):
     """Verify that add pattern with multiple meetings."""
     session = make_session(classes=[])
-    feed_inputs(monkeypatch, [
-        "4",
-        *_one_meeting_answers("MON", "110", "y", "in_person", ""),
-        "y",  # add another
-        *_one_meeting_answers("WED", "110", "y", "in_person", ""),
-        "n",  # stop
-        "",   # pattern start_time
-        "n",  # not disabled
-    ])
+    feed_inputs(
+        monkeypatch,
+        [
+            "4",
+            *_one_meeting_answers("MON", "110", "y", "in_person", ""),
+            "y",  # add another
+            *_one_meeting_answers("WED", "110", "y", "in_person", ""),
+            "n",  # stop
+            "",  # pattern start_time
+            "n",  # not disabled
+        ],
+    )
 
     commands.add_pattern(session)
 
@@ -196,10 +216,17 @@ def test_add_pattern_rolls_back_on_validation_failure(monkeypatch, capsys):
 
 # ---------- modify_pattern ----------
 
+
 def test_modify_pattern_applies_valid_change(monkeypatch):
     """Verify that modify pattern applies valid change."""
     session = make_session(classes=[_existing_pattern(credits=3)])
-    feed_inputs(monkeypatch, ["0"] + _pattern_answers(credits="4", meeting_answers=_one_meeting_answers("THU", "90")))
+    feed_inputs(
+        monkeypatch,
+        ["0"]
+        + _pattern_answers(
+            credits="4", meeting_answers=_one_meeting_answers("THU", "90")
+        ),
+    )
 
     commands.modify_pattern(session)
 
@@ -248,6 +275,7 @@ def test_modify_pattern_restores_previous_state_on_invalid_edit(monkeypatch, cap
 
 
 # ---------- delete_pattern ----------
+
 
 def test_delete_pattern_removes_confirmed_record(monkeypatch):
     """Verify that delete pattern removes confirmed record."""

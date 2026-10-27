@@ -56,9 +56,13 @@ class GenerationJob:
     ) -> None:
         self._config = deepcopy(config)
         self._limit_override = limit_override
-        self._optimizer_overrides = list(optimizer_overrides) if optimizer_overrides is not None else None
+        self._optimizer_overrides = (
+            list(optimizer_overrides) if optimizer_overrides is not None else None
+        )
         self._on_finish = on_finish
-        self._runner = runner  # None -> schedule_ops.generate_schedules, looked up at run time
+        self._runner = (
+            runner  # None -> schedule_ops.generate_schedules, looked up at run time
+        )
 
         self._lock = threading.Lock()
         self._cancel = threading.Event()
@@ -66,7 +70,11 @@ class GenerationJob:
         self._thread: Optional[threading.Thread] = None
 
         self._found = 0
-        self._limit = limit_override if limit_override is not None else getattr(config, "limit", None)
+        self._limit = (
+            limit_override
+            if limit_override is not None
+            else getattr(config, "limit", None)
+        )
         self._started_at: Optional[float] = None
         self._finished_at: Optional[float] = None
         self._result: Optional[GenerationResult] = None
@@ -79,7 +87,9 @@ class GenerationJob:
             raise RuntimeError("This generation job was already started.")
         self._started_at = time.monotonic()
         # daemon: a stuck solver must not keep the server from shutting down
-        self._thread = threading.Thread(target=self._run, name="schedule-generation", daemon=True)
+        self._thread = threading.Thread(
+            target=self._run, name="schedule-generation", daemon=True
+        )
         self._thread.start()
 
     def cancel(self) -> None:
@@ -118,7 +128,11 @@ class GenerationJob:
         percent = None
         if isinstance(limit, int) and not isinstance(limit, bool) and limit > 0:
             percent = min(100, int(found * 100 / limit))
-        if finished and result is not None and result.outcome == GenerationOutcome.SUCCESS:
+        if (
+            finished
+            and result is not None
+            and result.outcome == GenerationOutcome.SUCCESS
+        ):
             percent = 100
 
         return {

@@ -42,7 +42,9 @@ from gui.controllers.uploads import read_upload
 from gui.session_store import get_session
 
 IMPORT_FIELD = "schedule_file"
-NO_SCHEDULES_MESSAGE = "There are no schedules yet. Generate schedules or load a schedule file first."
+NO_SCHEDULES_MESSAGE = (
+    "There are no schedules yet. Generate schedules or load a schedule file first."
+)
 JSON_CONTENT_TYPE = "application/json; charset=utf-8"
 CSV_CONTENT_TYPE = "text/csv; charset=utf-8"
 
@@ -70,7 +72,10 @@ def get_schedules(request) -> list[list[Assignment]]:
     schedules = get_session(request).schedules
     if not schedules:
         raise ControllerError(NO_SCHEDULES_MESSAGE)
-    return [_as_records(schedule, number) for number, schedule in enumerate(schedules, start=1)]
+    return [
+        _as_records(schedule, number)
+        for number, schedule in enumerate(schedules, start=1)
+    ]
 
 
 def get_schedule(request, index: int) -> list[Assignment]:
@@ -85,7 +90,9 @@ def get_schedule(request, index: int) -> list[Assignment]:
     return _as_records(schedules[index], index + 1)
 
 
-def replace_schedules(request, schedules: list, version=None, tracked: bool = True) -> None:
+def replace_schedules(
+    request, schedules: list, version=None, tracked: bool = True
+) -> None:
     """Store a new set of results (generated, loaded, or [] to clear).
 
     The one place session.schedules is written, so anything that should
@@ -124,12 +131,14 @@ def generate(request, limit_override=None, optimizer_overrides=None):
     # the pages can say when the configuration has changed since (stale notice).
     started_from = session.history.version
     with generation_in_progress(request):
-        result = schedule_ops.generate_schedules(config, limit_override, optimizer_overrides)
+        result = schedule_ops.generate_schedules(
+            config, limit_override, optimizer_overrides
+        )
 
     if result.outcome == schedule_ops.GenerationOutcome.SUCCESS:
         replace_schedules(request, result.schedules, started_from)
     elif result.outcome == schedule_ops.GenerationOutcome.NO_FEASIBLE_SCHEDULE:
-        replace_schedules(request, [])             # same as the CLI: don't leave stale results
+        replace_schedules(request, [])  # same as the CLI: don't leave stale results
     return result
 
 
@@ -166,11 +175,17 @@ def load_schedule_json(request, uploaded_file) -> int:
     try:
         schedules = schedule_io.parse_schedule_file(raw)
     except schedule_io.ScheduleFileError as error:
-        items = [FieldError(IMPORT_FIELD, f"{error.message} Your current schedules were kept.")]
+        items = [
+            FieldError(
+                IMPORT_FIELD, f"{error.message} Your current schedules were kept."
+            )
+        ]
         items += [FieldError(IMPORT_FIELD, problem) for problem in error.problems]
         raise ControllerError(items) from error
 
-    replace_schedules(request, schedules, tracked=False)  # an imported file: origin unknown
+    replace_schedules(
+        request, schedules, tracked=False
+    )  # an imported file: origin unknown
     return len(schedules)
 
 
@@ -219,19 +234,26 @@ def export_schedules(request, index: int | None, file_format: str) -> ExportFile
     try:
         exporter = EXPORTERS[file_format]
     except KeyError:
-        raise ControllerError(f"Unknown export format '{file_format}'. Choose JSON or CSV.") from None
+        raise ControllerError(
+            f"Unknown export format '{file_format}'. Choose JSON or CSV."
+        ) from None
     return exporter(request, index)
 
 
-def _schedules_to_export(request, index: int | None) -> tuple[list[list[Assignment]], str]:
+def _schedules_to_export(
+    request, index: int | None
+) -> tuple[list[list[Assignment]], str]:
     """The schedules to write and the file name without its extension."""
     if index is None:
         schedules = get_schedules(request)
         return schedules, f"schedules-all-{len(schedules)}"
     return [get_schedule(request, index)], f"schedule-{index + 1}"
 
+
 _GENERATION_LOCK = threading.Lock()  # the dev server is threaded
-BUSY_MESSAGE = "A schedule generation is already running. Wait for it to finish, then try again."
+BUSY_MESSAGE = (
+    "A schedule generation is already running. Wait for it to finish, then try again."
+)
 
 
 @contextmanager
@@ -275,15 +297,32 @@ def is_generating(request) -> bool:
 def _validated_overrides(limit_override, optimizer_overrides):
     """Check a run's one-off overrides; return the flag list (or None)."""
     if limit_override is not None:
-        if isinstance(limit_override, bool) or not isinstance(limit_override, int) or limit_override <= 0:
-            raise ControllerError([FieldError("limit", "Generation limit must be a positive whole number.")])
+        if (
+            isinstance(limit_override, bool)
+            or not isinstance(limit_override, int)
+            or limit_override <= 0
+        ):
+            raise ControllerError(
+                [
+                    FieldError(
+                        "limit", "Generation limit must be a positive whole number."
+                    )
+                ]
+            )
 
     if optimizer_overrides is not None:
         optimizer_overrides = list(optimizer_overrides)
-        unknown = [flag for flag in optimizer_overrides if flag not in VALID_OPTIMIZER_FLAGS]
+        unknown = [
+            flag for flag in optimizer_overrides if flag not in VALID_OPTIMIZER_FLAGS
+        ]
         if unknown:
             raise ControllerError(
-                [FieldError("optimizer_flags", f"'{flag}' is not a valid optimizer flag.") for flag in unknown]
+                [
+                    FieldError(
+                        "optimizer_flags", f"'{flag}' is not a valid optimizer flag."
+                    )
+                    for flag in unknown
+                ]
             )
     return optimizer_overrides
 
@@ -391,7 +430,10 @@ def describe_outcome(result) -> tuple[str, str]:
     if result.outcome == outcome.SUCCESS:
         return "success", result.message
     if result.outcome == outcome.NO_FEASIBLE_SCHEDULE:
-        return "warning", "No feasible schedule was found. Check the configuration and try again."
+        return (
+            "warning",
+            "No feasible schedule was found. Check the configuration and try again.",
+        )
     if result.outcome == outcome.CANCELLED:
         return "warning", result.message
     if result.outcome == outcome.INVALID_CONFIG:

@@ -81,7 +81,9 @@ def test_export_refuses_existing_file_without_overwrite(tmp_path, one_schedule):
     target.write_text("pre-existing content", encoding="utf-8")
 
     with pytest.raises(FileExistsError):
-        schedule_ops.export_schedule([one_schedule], "csv", str(target), overwrite=False)
+        schedule_ops.export_schedule(
+            [one_schedule], "csv", str(target), overwrite=False
+        )
 
     # refusal must not touch the existing file
     assert target.read_text(encoding="utf-8") == "pre-existing content"

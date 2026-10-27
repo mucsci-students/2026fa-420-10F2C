@@ -15,6 +15,7 @@ scheduler.load_config_from_file are replaced with simple fakes the
 tests fully control, so a failure can be simulated on demand without
 needing to know the real schema's exact rejection rules.
 """
+
 import pytest
 
 import app.session as session_module
@@ -68,6 +69,7 @@ def fake_loader_bad_json(cls, path):
 
 # ---------- new_config ----------
 
+
 def test_new_config_sets_a_config_and_resets_state():
     """Verify that new config sets a config and resets state."""
     session = Session()
@@ -84,9 +86,11 @@ def test_new_config_sets_a_config_and_resets_state():
 
 def test_new_config_raises_config_error_on_validation_failure(monkeypatch):
     """Verify that new config raises config error on validation failure."""
+
     def bad_constructor(**kwargs):
         """Simulate validation failure during configuration creation."""
         raise FakeValidationError("seed data rejected")
+
     monkeypatch.setattr(session_module, "CombinedConfig", bad_constructor)
 
     session = Session()
@@ -95,6 +99,7 @@ def test_new_config_raises_config_error_on_validation_failure(monkeypatch):
 
 
 # ---------- load ----------
+
 
 def test_load_missing_file_raises_and_leaves_prior_config_untouched(tmp_path):
     """Verify that load missing file raises and leaves prior config untouched."""
@@ -108,7 +113,9 @@ def test_load_missing_file_raises_and_leaves_prior_config_untouched(tmp_path):
     assert session.config is original_config  # untouched, same object
 
 
-def test_load_invalid_schema_raises_and_leaves_prior_config_untouched(monkeypatch, tmp_path):
+def test_load_invalid_schema_raises_and_leaves_prior_config_untouched(
+    monkeypatch, tmp_path
+):
     """Verify that load invalid schema raises and leaves prior config untouched."""
     session = Session()
     session.new_config()
@@ -116,7 +123,9 @@ def test_load_invalid_schema_raises_and_leaves_prior_config_untouched(monkeypatc
 
     fake_file = tmp_path / "bad.json"
     fake_file.write_text("{}")
-    monkeypatch.setattr(session_module, "load_config_from_file", fake_loader_invalid_schema)
+    monkeypatch.setattr(
+        session_module, "load_config_from_file", fake_loader_invalid_schema
+    )
 
     with pytest.raises(ConfigError):
         session.load(str(fake_file))
@@ -160,6 +169,7 @@ def test_load_success_swaps_in_new_config_and_resets_dirty(monkeypatch, tmp_path
 
 
 # ---------- save ----------
+
 
 def test_save_with_no_config_raises_config_error():
     """Verify that save with no config raises config error."""
@@ -206,6 +216,7 @@ def test_save_reuses_last_path_when_none_given(tmp_path):
 
 # ---------- require_config ----------
 
+
 def test_require_config_raises_when_nothing_loaded():
     """Verify that require config raises when nothing loaded."""
     session = Session()
@@ -222,6 +233,7 @@ def test_require_config_returns_config_when_present():
 
 # ---------- restoring what New / Load replaced, and stale schedules ----------
 
+
 def _loaded_session(monkeypatch, tmp_path, name="first.json"):
     monkeypatch.setattr(session_module, "load_config_from_file", fake_loader_success)
     path = tmp_path / name
@@ -236,7 +248,9 @@ def test_nothing_is_kept_until_a_configuration_replaces_another(monkeypatch, tmp
     assert session.previous is None and session.previous_info() is None
 
 
-def test_new_config_keeps_the_replaced_one_and_restoring_swaps_back(monkeypatch, tmp_path):
+def test_new_config_keeps_the_replaced_one_and_restoring_swaps_back(
+    monkeypatch, tmp_path
+):
     session, _ = _loaded_session(monkeypatch, tmp_path)
     first = session.config
     session.dirty = True
@@ -247,14 +261,20 @@ def test_new_config_keeps_the_replaced_one_and_restoring_swaps_back(monkeypatch,
     second = session.config
     assert second is not first and session.schedules == [] and session.dirty is False
     info = session.previous_info()
-    assert info["name"] == "first.json" and info["dirty"] is True and info["schedule_count"] == 1
+    assert (
+        info["name"] == "first.json"
+        and info["dirty"] is True
+        and info["schedule_count"] == 1
+    )
 
     assert session.restore_previous() == "first.json"
     assert session.config is first and session.dirty is True
     assert session.schedules == ["s1"] and session.history is first_history
-    assert session.previous_info()["dirty"] is False       # the new one is now the "previous"
+    assert (
+        session.previous_info()["dirty"] is False
+    )  # the new one is now the "previous"
 
-    session.restore_previous()                              # and it can be reversed
+    session.restore_previous()  # and it can be reversed
     assert session.config is second
 
 
@@ -282,7 +302,9 @@ def test_restoring_with_nothing_kept_explains():
         session.restore_previous()
 
 
-def test_the_replaced_configurations_undo_history_comes_back_with_it(monkeypatch, tmp_path):
+def test_the_replaced_configurations_undo_history_comes_back_with_it(
+    monkeypatch, tmp_path
+):
     session, _ = _loaded_session(monkeypatch, tmp_path)
     session.history.record("an edit", session.history.capture(session.config), False)
     session.new_config()
@@ -291,21 +313,23 @@ def test_the_replaced_configurations_undo_history_comes_back_with_it(monkeypatch
     assert session.history.can_undo and session.history.undo_label == "an edit"
 
 
-def test_schedules_are_stale_once_the_configuration_changes_and_fresh_again_after_undo(monkeypatch, tmp_path):
+def test_schedules_are_stale_once_the_configuration_changes_and_fresh_again_after_undo(
+    monkeypatch, tmp_path
+):
     session, _ = _loaded_session(monkeypatch, tmp_path)
-    assert session.schedules_stale is False                   # no schedules at all
+    assert session.schedules_stale is False  # no schedules at all
     session.set_schedules(["s"])
     assert session.schedules_stale is False
 
     session.history.record("an edit", session.history.capture(session.config), False)
     session.dirty = True
-    assert session.schedules_stale is True                    # configuration moved on
+    assert session.schedules_stale is True  # configuration moved on
 
     session.history.undo(session)
-    assert session.schedules_stale is False                   # same configuration they came from
+    assert session.schedules_stale is False  # same configuration they came from
 
     session.history.redo(session)
-    session.set_schedules(["fresh"])                          # generated again from the new state
+    session.set_schedules(["fresh"])  # generated again from the new state
     assert session.schedules_stale is False
 
 
@@ -319,6 +343,8 @@ def test_schedules_set_directly_are_never_reported_stale(monkeypatch, tmp_path):
 def test_schedules_can_be_tied_to_the_version_a_run_started_from(monkeypatch, tmp_path):
     session, _ = _loaded_session(monkeypatch, tmp_path)
     started_from = session.history.version
-    session.history.record("edited while generating", session.history.capture(session.config), False)
+    session.history.record(
+        "edited while generating", session.history.capture(session.config), False
+    )
     session.set_schedules(["s"], started_from)
     assert session.schedules_stale is True

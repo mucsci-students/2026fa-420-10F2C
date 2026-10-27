@@ -37,7 +37,10 @@ def undo(request):
     except ControllerError as error:
         messages.error(request, error.message)
     else:
-        messages.success(request, f"Undid: {label}. The configuration is back to how it was before that change.")
+        messages.success(
+            request,
+            f"Undid: {label}. The configuration is back to how it was before that change.",
+        )
     return _back(request)
 
 
@@ -63,7 +66,9 @@ def history_goto(request):
     if request.method != "POST":
         return redirect("gui:history")
     try:
-        labels = history_controller.go_to(request, request.POST.get("entry"), _token(request))
+        labels = history_controller.go_to(
+            request, request.POST.get("entry"), _token(request)
+        )
     except ControllerError as error:
         messages.error(request, error.message)
     else:

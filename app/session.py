@@ -169,7 +169,9 @@ class Session:
     # ---------------------------------------------------------------- #
     #  Schedules vs. configuration versions                            #
     # ---------------------------------------------------------------- #
-    def set_schedules(self, schedules: list, version: Optional[int] = None, tracked: bool = True) -> None:
+    def set_schedules(
+        self, schedules: list, version: Optional[int] = None, tracked: bool = True
+    ) -> None:
         """Store schedules and remember which configuration version they describe
         (default: the configuration as it is right now). Pass tracked=False for
         schedules of unknown origin, such as an imported file: they are never
@@ -178,7 +180,9 @@ class Session:
         if not schedules or not tracked:
             self.schedules_version = None
         else:
-            self.schedules_version = self.history.version if version is None else version
+            self.schedules_version = (
+                self.history.version if version is None else version
+            )
 
     @property
     def schedules_stale(self) -> bool:
@@ -243,7 +247,9 @@ class Session:
         """Store the current valid configuration as a selectable snapshot."""
         if not name:
             return
-        self.saved_configs[Path(name).name] = content if content is not None else self.dumps()
+        self.saved_configs[Path(name).name] = (
+            content if content is not None else self.dumps()
+        )
 
     def saved_config_names(self) -> list[str]:
         """Return selectable saved configuration names in stable order."""
@@ -318,11 +324,15 @@ class Session:
         Pydantic serialization mechanism'). Reuses the last load/save path
         if the user just types 'config save' with nothing else."""
         if self.config is None:
-            raise ConfigError("No configuration loaded. Try 'config new' or 'config load <path>'.")
+            raise ConfigError(
+                "No configuration loaded. Try 'config new' or 'config load <path>'."
+            )
 
         target = Path(path) if path else self.config_path
         if target is None:
-            raise ConfigError("No path given, and this config hasn't been saved/loaded from one yet.")
+            raise ConfigError(
+                "No path given, and this config hasn't been saved/loaded from one yet."
+            )
 
         target.write_text(self.config.model_dump_json(indent=2), encoding="utf-8")
         self.config_path = target
@@ -347,13 +357,17 @@ class Session:
         try:
             data = json.loads(raw)
         except UnicodeDecodeError as e:
-            raise ConfigError(f"'{name}' is not a text file (it is not valid UTF-8).") from e
+            raise ConfigError(
+                f"'{name}' is not a text file (it is not valid UTF-8)."
+            ) from e
         except json.JSONDecodeError as e:
             raise ConfigError(
                 f"'{name}' is not valid JSON: {e.msg} (line {e.lineno}, column {e.colno})."
             ) from e
         if not isinstance(data, dict):
-            raise ConfigError(f"'{name}' must contain a JSON object, like the files saved by this app.")
+            raise ConfigError(
+                f"'{name}' must contain a JSON object, like the files saved by this app."
+            )
 
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "configuration.json"
@@ -392,5 +406,7 @@ class Session:
         """Every CRUD/schedule command should call this first instead of
         assuming self.config exists."""
         if self.config is None:
-            raise ConfigError("No configuration loaded. Try 'config new' or 'config load <path>'.")
+            raise ConfigError(
+                "No configuration loaded. Try 'config new' or 'config load <path>'."
+            )
         return self.config

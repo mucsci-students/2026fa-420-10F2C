@@ -29,6 +29,7 @@ TestFacultyDayLimitsAgainstRealLibrary too, and its tests would go back
 to "passing" without checking anything real, with no visible sign that
 happened.
 """
+
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -45,6 +46,7 @@ _EXAMPLE_CONFIG = "app/examples/config_example.json"
 # --------------------------------------------------------------------- #
 #  Shared helpers (used by both sections below)
 # --------------------------------------------------------------------- #
+
 
 def feed_inputs(monkeypatch, answers):
     """Replace input() with a sequence of predetermined answers."""
@@ -85,6 +87,7 @@ def _skip_times_and_prefs():
 # ======================================================================= #
 #  SECTION 1: commands.py's own logic, against fakes
 # ======================================================================= #
+
 
 class FakeValidationError(Exception):
     """Stand-in for scheduler.config.ValidationError."""
@@ -149,7 +152,9 @@ class FakeCombinedConfig:
 def make_session(faculty=None, courses=None, rooms=None, labs=None, reject=False):
     """Create an initialized session for a test."""
     session = Session()
-    session.config = FakeCombinedConfig(faculty=faculty, courses=courses, rooms=rooms, labs=labs, reject=reject)
+    session.config = FakeCombinedConfig(
+        faculty=faculty, courses=courses, rooms=rooms, labs=labs, reject=reject
+    )
     return session
 
 
@@ -257,19 +262,29 @@ class TestFacultyCRUDLogic:
             courses=[FakeCourse("CMSC 420"), FakeCourse("CMSC 350")],
             rooms=[FakeRoom("Roddy 136")],
         )
-        feed_inputs(monkeypatch, [
-            "Dr. Full", "full",
-            "",              # MON -> default 09:00-17:00
-            "n/a",           # TUE -> unavailable
-            "10:00-14:00",   # WED -> custom
-            "n/a",           # THU -> unavailable
-            "",              # FRI -> default
-            "MON, FRI",      # mandatory_days (both available -- valid)
-            "2",             # maximum_days (already sufficient, no bump)
-            "CMSC 420", "8", "CMSC 350", "5", "",   # course prefs, then stop
-            "Roddy 136", "7", "",                    # room prefs, then stop
-            "",                                       # lab prefs -> none (no labs exist)
-        ])
+        feed_inputs(
+            monkeypatch,
+            [
+                "Dr. Full",
+                "full",
+                "",  # MON -> default 09:00-17:00
+                "n/a",  # TUE -> unavailable
+                "10:00-14:00",  # WED -> custom
+                "n/a",  # THU -> unavailable
+                "",  # FRI -> default
+                "MON, FRI",  # mandatory_days (both available -- valid)
+                "2",  # maximum_days (already sufficient, no bump)
+                "CMSC 420",
+                "8",
+                "CMSC 350",
+                "5",
+                "",  # course prefs, then stop
+                "Roddy 136",
+                "7",
+                "",  # room prefs, then stop
+                "",  # lab prefs -> none (no labs exist)
+            ],
+        )
 
         commands.add_faculty(session)
 
@@ -288,14 +303,23 @@ class TestFacultyCRUDLogic:
     def test_add_faculty_rejects_unknown_preference_name_and_retries(self, monkeypatch):
         """Verify that add faculty rejects unknown preference name and retries."""
         session = make_session(faculty=[], courses=[FakeCourse("CMSC 420")])
-        feed_inputs(monkeypatch, [
-            "Dr. Full", "full",
-        ] + _skip_times() + [
-            "",                              # maximum_days: blank -> None
-            "CS999", "CMSC 420", "6", "",   # bad name, then the real one, then stop
-            "",                              # no rooms exist -> stop immediately
-            "",                              # no labs exist -> stop immediately
-        ])
+        feed_inputs(
+            monkeypatch,
+            [
+                "Dr. Full",
+                "full",
+            ]
+            + _skip_times()
+            + [
+                "",  # maximum_days: blank -> None
+                "CS999",
+                "CMSC 420",
+                "6",
+                "",  # bad name, then the real one, then stop
+                "",  # no rooms exist -> stop immediately
+                "",  # no labs exist -> stop immediately
+            ],
+        )
 
         commands.add_faculty(session)
 
@@ -347,13 +371,23 @@ class TestFacultyCRUDLogic:
     def test_add_faculty_captures_mandatory_and_maximum_days(self, monkeypatch):
         """Verify that add faculty captures mandatory and maximum days."""
         session = make_session(faculty=[])
-        feed_inputs(monkeypatch, [
-            "Dr. Days", "full",
-            "", "", "", "", "",
-            "MON, WED",
-            "1",   # should be bumped up to 2
-            "", "", "",
-        ])
+        feed_inputs(
+            monkeypatch,
+            [
+                "Dr. Days",
+                "full",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "MON, WED",
+                "1",  # should be bumped up to 2
+                "",
+                "",
+                "",
+            ],
+        )
 
         commands.add_faculty(session)
 
@@ -364,13 +398,23 @@ class TestFacultyCRUDLogic:
     def test_add_faculty_omits_mandatory_and_maximum_days_when_blank(self, monkeypatch):
         """Verify that add faculty omits mandatory and maximum days when blank."""
         session = make_session(faculty=[])
-        feed_inputs(monkeypatch, [
-            "Dr. NoDays", "adjunct",
-            "", "n/a", "n/a", "n/a", "n/a",   # MON available, rest unavailable
-            "",   # mandatory_days: blank -> None
-            "",   # maximum_days: blank -> None
-            "", "", "",
-        ])
+        feed_inputs(
+            monkeypatch,
+            [
+                "Dr. NoDays",
+                "adjunct",
+                "",
+                "n/a",
+                "n/a",
+                "n/a",
+                "n/a",  # MON available, rest unavailable
+                "",  # mandatory_days: blank -> None
+                "",  # maximum_days: blank -> None
+                "",
+                "",
+                "",
+            ],
+        )
 
         commands.add_faculty(session)
 
@@ -382,9 +426,13 @@ class TestFacultyCRUDLogic:
 
     def test_modify_faculty_applies_valid_change(self, monkeypatch):
         """Verify that modify faculty applies valid change."""
-        existing = FakeFacultyConfig(name="Dr. Test", maximum_credits=12, unique_course_limit=2)
+        existing = FakeFacultyConfig(
+            name="Dr. Test", maximum_credits=12, unique_course_limit=2
+        )
         session = make_session(faculty=[existing])
-        feed_inputs(monkeypatch, ["Dr. Test", "Dr. Test", "adjunct"] + _skip_times_and_prefs())
+        feed_inputs(
+            monkeypatch, ["Dr. Test", "Dr. Test", "adjunct"] + _skip_times_and_prefs()
+        )
 
         commands.modify_faculty(session)
 
@@ -404,11 +452,15 @@ class TestFacultyCRUDLogic:
         assert session.config.config.faculty == [existing]
         assert "does not exist" in capsys.readouterr().out.lower()
 
-    def test_modify_faculty_restores_previous_state_on_invalid_edit(self, monkeypatch, capsys):
+    def test_modify_faculty_restores_previous_state_on_invalid_edit(
+        self, monkeypatch, capsys
+    ):
         """Verify that modify faculty restores previous state on invalid edit."""
         existing = FakeFacultyConfig(name="Dr. Test", maximum_credits=12)
         session = make_session(faculty=[existing], reject=True)
-        feed_inputs(monkeypatch, ["Dr. Test", "Dr. Test", "adjunct"] + _skip_times_and_prefs())
+        feed_inputs(
+            monkeypatch, ["Dr. Test", "Dr. Test", "adjunct"] + _skip_times_and_prefs()
+        )
 
         commands.modify_faculty(session)
 
@@ -419,15 +471,28 @@ class TestFacultyCRUDLogic:
 
     def test_modify_faculty_updates_mandatory_and_maximum_days(self, monkeypatch):
         """Verify that modify faculty updates mandatory and maximum days."""
-        existing = FakeFacultyConfig(name="Dr. Test", maximum_credits=12, unique_course_limit=2)
+        existing = FakeFacultyConfig(
+            name="Dr. Test", maximum_credits=12, unique_course_limit=2
+        )
         session = make_session(faculty=[existing])
-        feed_inputs(monkeypatch, [
-            "Dr. Test", "Dr. Test", "full",
-            "", "", "", "", "",
-            "WED",
-            "3",
-            "", "", "",
-        ])
+        feed_inputs(
+            monkeypatch,
+            [
+                "Dr. Test",
+                "Dr. Test",
+                "full",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "WED",
+                "3",
+                "",
+                "",
+                "",
+            ],
+        )
 
         commands.modify_faculty(session)
 
@@ -508,6 +573,7 @@ class TestFacultyCRUDLogic:
 #  SECTION 2: the REAL library, no patching
 # ======================================================================= #
 
+
 class TestFacultyDayLimitsAgainstRealLibrary:
     """No fixture here patches commands.FacultyConfig or
     crud.ValidationError -- deliberately. commands.add_faculty() and
@@ -523,15 +589,27 @@ class TestFacultyDayLimitsAgainstRealLibrary:
         s.load(_EXAMPLE_CONFIG)
         return s
 
-    def test_add_faculty_with_day_limits_against_real_library(self, session, monkeypatch, capsys):
+    def test_add_faculty_with_day_limits_against_real_library(
+        self, session, monkeypatch, capsys
+    ):
         """Verify that add faculty with day limits against real library."""
-        feed_inputs(monkeypatch, [
-            "Library Test Faculty", "full",
-            "", "", "", "", "",
-            "MON, WED",
-            "3",
-            "", "", "",
-        ])
+        feed_inputs(
+            monkeypatch,
+            [
+                "Library Test Faculty",
+                "full",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "MON, WED",
+                "3",
+                "",
+                "",
+                "",
+            ],
+        )
 
         commands.add_faculty(session)
 
@@ -540,8 +618,7 @@ class TestFacultyDayLimitsAgainstRealLibrary:
         assert "faculty added" in out.lower()
 
         added = next(
-            f for f in session.config.config.faculty
-            if f.name == "Library Test Faculty"
+            f for f in session.config.config.faculty if f.name == "Library Test Faculty"
         )
         # CONFIRMED against the real library: mandatory_days comes back
         # as a set, not a list -- order isn't preserved and duplicates
@@ -549,14 +626,26 @@ class TestFacultyDayLimitsAgainstRealLibrary:
         assert set(added.mandatory_days) == {"MON", "WED"}
         assert added.maximum_days == 3
 
-    def test_add_faculty_without_day_limits_against_real_library(self, session, monkeypatch, capsys):
+    def test_add_faculty_without_day_limits_against_real_library(
+        self, session, monkeypatch, capsys
+    ):
         """Verify that add faculty without day limits against real library."""
-        feed_inputs(monkeypatch, [
-            "No Day Limits Library Test", "adjunct",
-            "n/a", "n/a", "n/a", "n/a", "n/a",
-            "",
-            "", "", "",
-        ])
+        feed_inputs(
+            monkeypatch,
+            [
+                "No Day Limits Library Test",
+                "adjunct",
+                "n/a",
+                "n/a",
+                "n/a",
+                "n/a",
+                "n/a",
+                "",
+                "",
+                "",
+                "",
+            ],
+        )
 
         commands.add_faculty(session)
 
@@ -564,12 +653,15 @@ class TestFacultyDayLimitsAgainstRealLibrary:
         assert "could not add faculty" not in out.lower(), out
 
         added = next(
-            f for f in session.config.config.faculty
+            f
+            for f in session.config.config.faculty
             if f.name == "No Day Limits Library Test"
         )
         assert added is not None
 
-    def test_modify_faculty_updates_day_limits_against_real_library(self, session, monkeypatch, capsys):
+    def test_modify_faculty_updates_day_limits_against_real_library(
+        self, session, monkeypatch, capsys
+    ):
         """Verify that modify faculty updates day limits against real library."""
         # Deliberately does NOT modify one of the shipped example's
         # existing faculty. Some of those (e.g. the first in the list)
@@ -584,23 +676,44 @@ class TestFacultyDayLimitsAgainstRealLibrary:
         # pre-existing (and separately worth fixing) limitation by
         # adding a fresh, preference-free record first and modifying
         # that instead.
-        feed_inputs(monkeypatch, [
-            "Modify Target", "full",
-            "", "", "", "", "",
-            "",   # no mandatory_days yet
-            "",   # no maximum_days yet
-            "", "", "",
-        ])
+        feed_inputs(
+            monkeypatch,
+            [
+                "Modify Target",
+                "full",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",  # no mandatory_days yet
+                "",  # no maximum_days yet
+                "",
+                "",
+                "",
+            ],
+        )
         commands.add_faculty(session)
         capsys.readouterr()  # discard add_faculty's own output
 
-        feed_inputs(monkeypatch, [
-            "Modify Target", "Modify Target", "full",
-            "", "", "", "", "",
-            "FRI",
-            "1",
-            "", "", "",
-        ])
+        feed_inputs(
+            monkeypatch,
+            [
+                "Modify Target",
+                "Modify Target",
+                "full",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "FRI",
+                "1",
+                "",
+                "",
+                "",
+            ],
+        )
 
         commands.modify_faculty(session)
 
@@ -608,19 +721,31 @@ class TestFacultyDayLimitsAgainstRealLibrary:
         assert "previous version kept" not in out.lower(), out
         assert "faculty updated" in out.lower()
 
-        updated = next(f for f in session.config.config.faculty if f.name == "Modify Target")
+        updated = next(
+            f for f in session.config.config.faculty if f.name == "Modify Target"
+        )
         assert set(updated.mandatory_days) == {"FRI"}
         assert updated.maximum_days == 1
 
     def test_day_limits_survive_save_and_reload(self, session, monkeypatch, tmp_path):
         """Verify that day limits survive save and reload."""
-        feed_inputs(monkeypatch, [
-            "Round Trip Faculty", "full",
-            "", "", "", "", "",
-            "TUE, THU",
-            "2",
-            "", "", "",
-        ])
+        feed_inputs(
+            monkeypatch,
+            [
+                "Round Trip Faculty",
+                "full",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "TUE, THU",
+                "2",
+                "",
+                "",
+                "",
+            ],
+        )
         commands.add_faculty(session)
 
         out_path = tmp_path / "round_trip_config.json"
@@ -630,8 +755,7 @@ class TestFacultyDayLimitsAgainstRealLibrary:
         reloaded.load(str(out_path))
 
         added = next(
-            f for f in reloaded.config.config.faculty
-            if f.name == "Round Trip Faculty"
+            f for f in reloaded.config.config.faculty if f.name == "Round Trip Faculty"
         )
         assert set(added.mandatory_days) == {"TUE", "THU"}
         assert added.maximum_days == 2

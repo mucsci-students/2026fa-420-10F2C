@@ -40,7 +40,9 @@ def meeting_add(request):
     form = AddMeetingForm(request.POST, pattern_choices=choices)
     if form.is_valid():
         try:
-            warnings = meeting_controller.add_meeting(request, form.cleaned_data["pattern"], form.cleaned_data)
+            warnings = meeting_controller.add_meeting(
+                request, form.cleaned_data["pattern"], form.cleaned_data
+            )
         except ControllerError as error:
             _attach_errors(form, error)
         else:
@@ -80,7 +82,11 @@ def meeting_edit(request, pattern_index, meeting_index):
                 "start_time": meeting["start_time"] or None,
             }
         )
-    return render(request, "gui/meeting_edit.html", {"active": "config", "form": form, "meeting": meeting})
+    return render(
+        request,
+        "gui/meeting_edit.html",
+        {"active": "config", "form": form, "meeting": meeting},
+    )
 
 
 def meeting_delete(request, pattern_index, meeting_index):
@@ -100,7 +106,9 @@ def meeting_delete(request, pattern_index, meeting_index):
             messages.info(request, "Cancelled.")
             return redirect("gui:meetings")
         try:
-            warnings = meeting_controller.delete_meeting(request, pattern_index, meeting_index)
+            warnings = meeting_controller.delete_meeting(
+                request, pattern_index, meeting_index
+            )
         except ControllerError as error:
             messages.error(request, error.message)
         else:
@@ -108,4 +116,6 @@ def meeting_delete(request, pattern_index, meeting_index):
             _flash_warnings(request, warnings)
         return redirect("gui:meetings")
 
-    return render(request, "gui/meeting_delete.html", {"active": "config", "meeting": meeting})
+    return render(
+        request, "gui/meeting_delete.html", {"active": "config", "meeting": meeting}
+    )

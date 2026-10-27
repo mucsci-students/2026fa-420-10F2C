@@ -3,7 +3,14 @@
 from app.crud import ReferenceError_, ValidationFailure, check_no_references
 from scheduler.config import RoomConfig
 
-from .common import DAY_LABELS, VALID_DAYS, apply_session_edit, field_value, prompt_resource_availability, prompt_supplied_features
+from .common import (
+    DAY_LABELS,
+    VALID_DAYS,
+    apply_session_edit,
+    field_value,
+    prompt_resource_availability,
+    prompt_supplied_features,
+)
 
 
 def prompt_room_fields():
@@ -56,13 +63,17 @@ def modify_room(session):
     """Prompt for and update an existing room record."""
     config = session.require_config()
     target_name = input("What is the name of the room you would like to edit? ").strip()
-    existing = next((room for room in config.config.rooms if room.name == target_name), None)
+    existing = next(
+        (room for room in config.config.rooms if room.name == target_name), None
+    )
     if existing is None:
         print("Room does not exist!")
         return
 
     fields = prompt_room_fields()
-    if fields["name"] != target_name and any(room.name == fields["name"] for room in config.config.rooms):
+    if fields["name"] != target_name and any(
+        room.name == fields["name"] for room in config.config.rooms
+    ):
         print("Room name is already in the system!")
         return
 
@@ -126,7 +137,10 @@ def format_room(index, room):
             blocks = field_value(room.times, day)
             if not blocks:
                 continue
-            ranges = ", ".join(f"{field_value(block, 'start')}-{field_value(block, 'end')}" for block in blocks)
+            ranges = ", ".join(
+                f"{field_value(block, 'start')}-{field_value(block, 'end')}"
+                for block in blocks
+            )
             lines.append(f"        {DAY_LABELS[day]}  {ranges}")
     else:
         lines.append("      Availability: unrestricted")

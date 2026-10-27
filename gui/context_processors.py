@@ -25,5 +25,7 @@ def config_status(request) -> dict:
         # Generated schedules that no longer match the configuration (Section 13).
         "schedules_stale": bool(getattr(session, "schedules_stale", False)),
         # The configuration that New / Load replaced, if it can be brought back.
-        "previous_config": session.previous_info() if hasattr(session, "previous_info") else None,
+        "previous_config": session.previous_info()
+        if hasattr(session, "previous_info")
+        else None,
     }

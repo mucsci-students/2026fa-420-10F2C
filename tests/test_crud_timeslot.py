@@ -10,6 +10,7 @@ is app/commands.py's own logic -- overlap detection, the "can't delete
 the last block on a day" guard, index validation, rollback-on-failure
 -- rather than the real library's exact validation rules.
 """
+
 import copy
 from contextlib import contextmanager
 from types import SimpleNamespace
@@ -86,7 +87,10 @@ def make_session(times=None, max_time_gap=30, min_time_overlap=45, reject=False)
     """Create a session configured for the test scenario."""
     session = Session()
     session.config = FakeCombinedConfig(
-        times=times, max_time_gap=max_time_gap, min_time_overlap=min_time_overlap, reject=reject
+        times=times,
+        max_time_gap=max_time_gap,
+        min_time_overlap=min_time_overlap,
+        reject=reject,
     )
     return session
 
@@ -106,6 +110,7 @@ def feed_inputs(monkeypatch, answers):
 
 
 # ---------- add_timeslot ----------
+
 
 def test_add_timeslot_happy_path(monkeypatch, capsys):
     """Verify that add timeslot happy path."""
@@ -157,6 +162,7 @@ def test_add_timeslot_rejects_bad_spacing(monkeypatch, capsys):
 
 
 # ---------- modify_timeslot ----------
+
 
 def test_modify_timeslot_applies_valid_change(monkeypatch):
     """Verify that modify timeslot applies valid change."""
@@ -212,6 +218,7 @@ def test_modify_timeslot_invalid_index_is_a_no_op(monkeypatch, capsys):
 
 # ---------- delete_timeslot ----------
 
+
 def test_delete_timeslot_removes_confirmed_block(monkeypatch):
     """Verify that delete timeslot removes confirmed block."""
     block_a = FakeTimeBlock("09:00", "11:00", 30)
@@ -249,6 +256,7 @@ def test_delete_timeslot_blocked_when_only_one_remains(monkeypatch, capsys):
 
 
 # ---------- modify_timing_options ----------
+
 
 def test_modify_timing_options_updates_both_values(monkeypatch):
     """Verify that modify timing options updates both values."""

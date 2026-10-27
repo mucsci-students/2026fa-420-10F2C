@@ -40,7 +40,9 @@ _FALLBACK_HTML = """<!DOCTYPE html>
 """
 
 
-def friendly_error_response(request, reference: str | None = None, exception: Exception | None = None) -> HttpResponse:
+def friendly_error_response(
+    request, reference: str | None = None, exception: Exception | None = None
+) -> HttpResponse:
     """A 500 page in plain language. `reference` matches the log entry;
     the exception's type and message are only shown when DEBUG is on, in a
     collapsed "Technical details" section (never a traceback)."""
@@ -55,8 +57,16 @@ def friendly_error_response(request, reference: str | None = None, exception: Ex
             status=500,
         )
     except Exception:  # the error page must not fail too
-        ref = f"<p>Reference: <code>{html.escape(reference)}</code></p>" if reference else ""
-        return HttpResponse(_FALLBACK_HTML.format(reference=ref), status=500, content_type="text/html; charset=utf-8")
+        ref = (
+            f"<p>Reference: <code>{html.escape(reference)}</code></p>"
+            if reference
+            else ""
+        )
+        return HttpResponse(
+            _FALLBACK_HTML.format(reference=ref),
+            status=500,
+            content_type="text/html; charset=utf-8",
+        )
 
 
 def page_not_found(request, exception=None):

@@ -1,4 +1,5 @@
 """Configuration lifecycle commands."""
+
 from scheduler.config import CombinedConfig
 from app.session import ConfigError
 

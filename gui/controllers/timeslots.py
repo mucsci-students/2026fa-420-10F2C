@@ -57,7 +57,9 @@ def _require_config(session):
 
 def _check_day(day: str) -> str:
     if day not in VALID_DAYS:
-        raise ControllerError(f"'{day}' is not a valid day. Choose one of: {', '.join(VALID_DAYS)}.")
+        raise ControllerError(
+            f"'{day}' is not a valid day. Choose one of: {', '.join(VALID_DAYS)}."
+        )
     return day
 
 
@@ -77,7 +79,9 @@ def _build_block(form_data) -> TimeBlock:
             spacing=form_data.get("spacing"),
         )
     except ValidationError as error:
-        raise ControllerError(translate_validation_error(error, form_fields=TIME_FIELDS)) from error
+        raise ControllerError(
+            translate_validation_error(error, form_fields=TIME_FIELDS)
+        ) from error
 
 
 def _check_overlap(blocks, new_block, ignore_index: int | None = None) -> None:
@@ -91,7 +95,14 @@ def _check_overlap(blocks, new_block, ignore_index: int | None = None) -> None:
 
 
 def _apply(session, config, mutate, label=None) -> None:
-    apply_config_edit(session, config, "timeslot", mutate, form_fields=TIME_FIELDS + OPTION_FIELDS, label=label)
+    apply_config_edit(
+        session,
+        config,
+        "timeslot",
+        mutate,
+        form_fields=TIME_FIELDS + OPTION_FIELDS,
+        label=label,
+    )
 
 
 def _day_of(meeting) -> str:
@@ -189,7 +200,10 @@ def describe_timeslots(request) -> dict:
         )
 
     hours = [
-        {"label": f"{minute // 60:02d}:00", "top": f"{(minute - axis_start) / span * 100:.2f}"}
+        {
+            "label": f"{minute // 60:02d}:00",
+            "top": f"{(minute - axis_start) / span * 100:.2f}",
+        }
         for minute in range(axis_start, axis_end + 1, 60)
     ]
     return {
@@ -289,7 +303,11 @@ def update_timing_options(request, form_data) -> None:
     """
     session = get_session(request)
     config = _require_config(session)
-    values = {name: form_data[name] for name in OPTION_FIELDS if form_data.get(name) is not None}
+    values = {
+        name: form_data[name]
+        for name in OPTION_FIELDS
+        if form_data.get(name) is not None
+    }
 
     def mutate(draft):
         for name, value in values.items():

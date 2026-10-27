@@ -3,7 +3,12 @@
 from app.crud import ReferenceError_, ValidationFailure, check_no_references
 from scheduler.config import LabConfig
 
-from .common import apply_session_edit, field_value, prompt_resource_availability, prompt_supplied_features
+from .common import (
+    apply_session_edit,
+    field_value,
+    prompt_resource_availability,
+    prompt_supplied_features,
+)
 
 
 def prompt_lab_fields():
@@ -56,13 +61,17 @@ def modify_lab(session):
     """Prompt for and update an existing lab record."""
     config = session.require_config()
     target_name = input("What is the name of the lab you would like to edit? ").strip()
-    existing = next((lab for lab in config.config.labs if lab.name == target_name), None)
+    existing = next(
+        (lab for lab in config.config.labs if lab.name == target_name), None
+    )
     if existing is None:
         print("Lab does not exist!")
         return
 
     fields = prompt_lab_fields()
-    if fields["name"] != target_name and any(lab.name == fields["name"] for lab in config.config.labs):
+    if fields["name"] != target_name and any(
+        lab.name == fields["name"] for lab in config.config.labs
+    ):
         print("Lab name is already in the system!")
         return
 
@@ -89,7 +98,9 @@ def delete_lab(session):
         print("Lab does not exist!")
         return
 
-    referencing_courses = [course.course_id for course in config.config.courses if name in course.lab]
+    referencing_courses = [
+        course.course_id for course in config.config.courses if name in course.lab
+    ]
     try:
         check_no_references(name, referencing_courses)
     except ReferenceError_ as error:
@@ -119,11 +130,15 @@ def format_lab(index, lab):
     if lab.times:
         lines.append("      Availability:")
         from .common import DAY_LABELS, VALID_DAYS
+
         for day in VALID_DAYS:
             blocks = field_value(lab.times, day)
             if not blocks:
                 continue
-            ranges = ", ".join(f"{field_value(block, 'start')}-{field_value(block, 'end')}" for block in blocks)
+            ranges = ", ".join(
+                f"{field_value(block, 'start')}-{field_value(block, 'end')}"
+                for block in blocks
+            )
             lines.append(f"        {DAY_LABELS[day]}  {ranges}")
     else:
         lines.append("      Availability: unrestricted")

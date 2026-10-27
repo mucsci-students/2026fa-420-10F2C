@@ -20,6 +20,7 @@ module docstring lists what's still unconfirmed there. Full solver
 exhaustiveness testing is explicitly out of scope for Sprint 1 (see
 requirements §12: "solver-exhaustiveness testing is not required").
 """
+
 from types import SimpleNamespace
 
 import app.commands as commands
@@ -44,9 +45,12 @@ def test_generate_schedule_success_stores_schedules(monkeypatch, capsys):
     session = make_session()
     fake_schedules = [["course_instance_1"], ["course_instance_2"]]
     monkeypatch.setattr(
-        schedule_ops, "generate_schedules",
+        schedule_ops,
+        "generate_schedules",
         lambda config, limit_override: fake_result(
-            schedule_ops.GenerationOutcome.SUCCESS, "Generated 2 schedule(s).", fake_schedules
+            schedule_ops.GenerationOutcome.SUCCESS,
+            "Generated 2 schedule(s).",
+            fake_schedules,
         ),
     )
 
@@ -56,12 +60,15 @@ def test_generate_schedule_success_stores_schedules(monkeypatch, capsys):
     assert "generated 2 schedule(s)" in capsys.readouterr().out.lower()
 
 
-def test_generate_schedule_no_feasible_schedule_clears_session_schedules(monkeypatch, capsys):
+def test_generate_schedule_no_feasible_schedule_clears_session_schedules(
+    monkeypatch, capsys
+):
     """Verify that generate schedule no feasible schedule clears session schedules."""
     session = make_session()
     session.schedules = ["stale", "schedules", "from", "last", "run"]
     monkeypatch.setattr(
-        schedule_ops, "generate_schedules",
+        schedule_ops,
+        "generate_schedules",
         lambda config, limit_override: fake_result(
             schedule_ops.GenerationOutcome.NO_FEASIBLE_SCHEDULE,
             "The solver found no schedule satisfying every hard constraint.",
@@ -79,9 +86,11 @@ def test_generate_schedule_invalid_config_does_not_touch_schedules(monkeypatch, 
     session = make_session()
     session.schedules = ["previous", "valid", "schedules"]
     monkeypatch.setattr(
-        schedule_ops, "generate_schedules",
+        schedule_ops,
+        "generate_schedules",
         lambda config, limit_override: fake_result(
-            schedule_ops.GenerationOutcome.INVALID_CONFIG, "3 courses reference an unknown room.",
+            schedule_ops.GenerationOutcome.INVALID_CONFIG,
+            "3 courses reference an unknown room.",
         ),
     )
 
@@ -98,9 +107,11 @@ def test_generate_schedule_runtime_error_does_not_touch_schedules(monkeypatch, c
     session = make_session()
     session.schedules = ["previous", "valid", "schedules"]
     monkeypatch.setattr(
-        schedule_ops, "generate_schedules",
+        schedule_ops,
+        "generate_schedules",
         lambda config, limit_override: fake_result(
-            schedule_ops.GenerationOutcome.RUNTIME_ERROR, "Z3 solver crashed unexpectedly.",
+            schedule_ops.GenerationOutcome.RUNTIME_ERROR,
+            "Z3 solver crashed unexpectedly.",
         ),
     )
 
@@ -118,7 +129,9 @@ def test_generate_schedule_passes_limit_override_through(monkeypatch):
     def fake_generate(config, limit_override):
         """Capture the generation limit and return a controlled result."""
         captured["limit_override"] = limit_override
-        return fake_result(schedule_ops.GenerationOutcome.SUCCESS, "Generated 1 schedule(s).", [["x"]])
+        return fake_result(
+            schedule_ops.GenerationOutcome.SUCCESS, "Generated 1 schedule(s).", [["x"]]
+        )
 
     monkeypatch.setattr(schedule_ops, "generate_schedules", fake_generate)
 
@@ -135,7 +148,9 @@ def test_generate_schedule_default_limit_override_is_none(monkeypatch):
     def fake_generate(config, limit_override):
         """Capture the generation limit and return a controlled result."""
         captured["limit_override"] = limit_override
-        return fake_result(schedule_ops.GenerationOutcome.SUCCESS, "Generated 1 schedule(s).", [["x"]])
+        return fake_result(
+            schedule_ops.GenerationOutcome.SUCCESS, "Generated 1 schedule(s).", [["x"]]
+        )
 
     monkeypatch.setattr(schedule_ops, "generate_schedules", fake_generate)
 

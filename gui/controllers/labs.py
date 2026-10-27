@@ -66,7 +66,9 @@ def _require_config(session):
 def _find_lab(config, name):
     lab = next((lab for lab in config.config.labs if lab.name == name), None)
     if lab is None:
-        raise ControllerError(f"Lab '{name}' no longer exists. Refresh the page and try again.")
+        raise ControllerError(
+            f"Lab '{name}' no longer exists. Refresh the page and try again."
+        )
     return lab
 
 
@@ -96,18 +98,26 @@ def _parse_times(raw, errors: list[FieldError]):
     if not raw:
         return None
     if not isinstance(raw, dict):
-        errors.append(FieldError("times", "Availability must be a set of weekday time ranges."))
+        errors.append(
+            FieldError("times", "Availability must be a set of weekday time ranges.")
+        )
         return None
     times = {}
     for day, blocks in raw.items():
         if day not in VALID_DAYS:
             errors.append(
-                FieldError("times", f"'{day}' is not a valid day. Choose from: {', '.join(VALID_DAYS)}.")
+                FieldError(
+                    "times",
+                    f"'{day}' is not a valid day. Choose from: {', '.join(VALID_DAYS)}.",
+                )
             )
             continue
         if not blocks:
             continue
-        times[day] = [{"start": field_value(b, "start"), "end": field_value(b, "end")} for b in blocks]
+        times[day] = [
+            {"start": field_value(b, "start"), "end": field_value(b, "end")}
+            for b in blocks
+        ]
     return times or None
 
 
@@ -126,7 +136,9 @@ def _lab_fields(form_data) -> dict:
 
     capacity = form_data.get("capacity")
     if isinstance(capacity, bool) or not isinstance(capacity, int) or capacity <= 0:
-        errors.append(FieldError("capacity", "Capacity must be a positive whole number."))
+        errors.append(
+            FieldError("capacity", "Capacity must be a positive whole number.")
+        )
 
     features = _parse_features(form_data.get("features"))
     times = _parse_times(form_data.get("times"), errors)
@@ -144,15 +156,21 @@ def _build_lab(fields) -> LabConfig:
     try:
         return LabConfig(**fields)
     except ValidationError as error:
-        raise ControllerError(translate_validation_error(error, form_fields=LAB_FIELDS)) from error
+        raise ControllerError(
+            translate_validation_error(error, form_fields=LAB_FIELDS)
+        ) from error
 
 
 def _prepared_update(config, lab_name, form_data) -> tuple[dict, LabConfig]:
     """Validate one LabConfig replacement before an edit is committed."""
     _find_lab(config, lab_name)
     fields = _lab_fields(form_data)
-    if fields["name"] != lab_name and any(lab.name == fields["name"] for lab in config.config.labs):
-        raise ControllerError([FieldError("name", f"A lab named '{fields['name']}' already exists.")])
+    if fields["name"] != lab_name and any(
+        lab.name == fields["name"] for lab in config.config.labs
+    ):
+        raise ControllerError(
+            [FieldError("name", f"A lab named '{fields['name']}' already exists.")]
+        )
     return fields, _build_lab(fields)
 
 
@@ -172,7 +190,9 @@ def _availability(times) -> list[dict]:
         blocks = field_value(times, day)
         if not blocks:
             continue
-        ranges = ", ".join(f"{field_value(b, 'start')}-{field_value(b, 'end')}" for b in blocks)
+        ranges = ", ".join(
+            f"{field_value(b, 'start')}-{field_value(b, 'end')}" for b in blocks
+        )
         rows.append({"day": day, "name": DAY_NAMES[day], "ranges": ranges})
     return rows
 
@@ -219,7 +239,8 @@ def get_lab(request, lab_name) -> dict:
             blocks = field_value(lab.times, day)
             if blocks:
                 times[day] = [
-                    {"start": field_value(b, "start"), "end": field_value(b, "end")} for b in blocks
+                    {"start": field_value(b, "start"), "end": field_value(b, "end")}
+                    for b in blocks
                 ]
     return {
         "name": lab.name,
@@ -243,7 +264,9 @@ def add_lab(request, form_data) -> None:
     config = _require_config(session)
     fields = _lab_fields(form_data)
     if any(lab.name == fields["name"] for lab in config.config.labs):
-        raise ControllerError([FieldError("name", f"A lab named '{fields['name']}' already exists.")])
+        raise ControllerError(
+            [FieldError("name", f"A lab named '{fields['name']}' already exists.")]
+        )
     new_lab = _build_lab(fields)
 
     def mutate(draft):
@@ -269,7 +292,9 @@ def update_lab(request, lab_name, form_data) -> list[str]:
             # maps, so both dependent structures change in this same draft.
             for course in draft.config.courses:
                 if lab_name in (course.lab or []):
-                    course.lab = [new_name if name == lab_name else name for name in course.lab]
+                    course.lab = [
+                        new_name if name == lab_name else name for name in course.lab
+                    ]
             for person in draft.config.faculty:
                 preferences = dict(person.lab_preferences or {})
                 if lab_name in preferences:
@@ -284,14 +309,26 @@ def _rename_notices(config, old_name: str, new_name: str) -> list[str]:
     """Describe dependent records changed by a direct lab-name update."""
     if old_name == new_name:
         return []
-    course_lists = sum(old_name in (course.lab or []) for course in config.config.courses)
-    preferences = sum(old_name in (person.lab_preferences or {}) for person in config.config.faculty)
+    course_lists = sum(
+        old_name in (course.lab or []) for course in config.config.courses
+    )
+    preferences = sum(
+        old_name in (person.lab_preferences or {}) for person in config.config.faculty
+    )
     parts = []
     if course_lists:
-        parts.append(f"{course_lists} course lab list{'s' if course_lists != 1 else ''}")
+        parts.append(
+            f"{course_lists} course lab list{'s' if course_lists != 1 else ''}"
+        )
     if preferences:
-        parts.append(f"{preferences} faculty lab preference{'s' if preferences != 1 else ''}")
-    return [f"Renamed '{old_name}' to '{new_name}' in {' and '.join(parts)}."] if parts else []
+        parts.append(
+            f"{preferences} faculty lab preference{'s' if preferences != 1 else ''}"
+        )
+    return (
+        [f"Renamed '{old_name}' to '{new_name}' in {' and '.join(parts)}."]
+        if parts
+        else []
+    )
 
 
 def delete_lab(request, lab_name) -> list[str]:

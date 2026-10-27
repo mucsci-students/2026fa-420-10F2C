@@ -1,10 +1,10 @@
 # ----------------------------------------------------------------------------------------------------------------------- #
 #                                                                                                                         #
-#                                      Main.py's only purpose is to start shell.                                          #   
-#                                      we simply import the shell and run it                                              #   
+#                                      Main.py's only purpose is to start shell.                                          #
+#                                      we simply import the shell and run it                                              #
 #                                                                                                                         #
 # ----------------------------------------------------------------------------------------------------------------------- #
-from app.shell import SchedulerShell 
+from app.shell import SchedulerShell
 
 
 shell = SchedulerShell()

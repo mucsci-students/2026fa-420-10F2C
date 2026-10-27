@@ -43,9 +43,11 @@ from scheduler.writers import CSVWriter, JSONWriter
 
 DEFAULT_EXPORT_DIR = Path.cwd() / "exports"
 
+
 class GenerationOutcome:
     """Distinguishes the four cases Req #8 explicitly calls out, instead of
     letting the shell guess from a generic exception."""
+
     SUCCESS = "success"
     NO_FEASIBLE_SCHEDULE = "no_feasible_schedule"
     INVALID_CONFIG = "invalid_config"
@@ -79,14 +81,20 @@ def generate_schedules(
     run_config = config
     if optimizer_overrides is not None:
         run_config = deepcopy(config)
-        run_config.optimizer_flags = [OptimizerFlags(flag) for flag in optimizer_overrides]
+        run_config.optimizer_flags = [
+            OptimizerFlags(flag) for flag in optimizer_overrides
+        ]
 
     try:
         engine = Scheduler(run_config)
     except Exception as e:  # noqa: BLE001 -- narrow once the real exception type is known
         return GenerationResult(GenerationOutcome.INVALID_CONFIG, str(e), [])
 
-    limit = limit_override if limit_override is not None else getattr(run_config, "limit", None)
+    limit = (
+        limit_override
+        if limit_override is not None
+        else getattr(run_config, "limit", None)
+    )
 
     # The solver yields one schedule at a time, so progress is simply "schedules
     # found so far" out of `limit`. Both hooks are optional:
@@ -143,16 +151,24 @@ def summarize_schedule(schedule) -> str:
     return "\n".join(lines)
 
 
-def export_schedule(schedules: list, fmt: str, out_path: Optional[str], overwrite: bool = False) -> Path:
+def export_schedule(
+    schedules: list, fmt: str, out_path: Optional[str], overwrite: bool = False
+) -> Path:
     if fmt not in ("json", "csv"):
         raise ValueError(f"Unknown export format: {fmt!r} (expected 'json' or 'csv')")
 
-    target = Path(out_path) if out_path and out_path.strip() else DEFAULT_EXPORT_DIR / f"schedule.{fmt}"
+    target = (
+        Path(out_path)
+        if out_path and out_path.strip()
+        else DEFAULT_EXPORT_DIR / f"schedule.{fmt}"
+    )
 
     target.parent.mkdir(parents=True, exist_ok=True)
 
     if target.exists() and not overwrite:
-        raise FileExistsError(f"'{target}' already exists. Re-run with overwrite confirmed to replace it.")
+        raise FileExistsError(
+            f"'{target}' already exists. Re-run with overwrite confirmed to replace it."
+        )
 
     writer_cls = JSONWriter if fmt == "json" else CSVWriter
     with writer_cls(str(target)) as writer:

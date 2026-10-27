@@ -20,7 +20,9 @@ from app.session import Session
 from gui.controllers import schedule_controller as ctrl
 from gui.controllers.errors import ControllerError
 
-EXAMPLE = Path(__file__).resolve().parent.parent / "app" / "examples" / "config_example.json"
+EXAMPLE = (
+    Path(__file__).resolve().parent.parent / "app" / "examples" / "config_example.json"
+)
 TIMEOUT = 5.0
 
 
@@ -59,7 +61,11 @@ def blocking_runner(gate, schedules=("a", "b")):
     def runner(config, limit, flags, on_progress=None, should_cancel=None):
         on_progress(1, limit)
         gate.wait(TIMEOUT)
-        return GenerationResult(GenerationOutcome.SUCCESS, f"Generated {len(schedules)} schedule(s).", list(schedules))
+        return GenerationResult(
+            GenerationOutcome.SUCCESS,
+            f"Generated {len(schedules)} schedule(s).",
+            list(schedules),
+        )
 
     return runner
 
@@ -67,7 +73,9 @@ def blocking_runner(gate, schedules=("a", "b")):
 def cancellable_runner(config, limit, flags, on_progress=None, should_cancel=None):
     while not should_cancel():
         time.sleep(0.01)
-    return GenerationResult(GenerationOutcome.CANCELLED, "Generation was cancelled.", [])
+    return GenerationResult(
+        GenerationOutcome.CANCELLED, "Generation was cancelled.", []
+    )
 
 
 # ---------------------------------------------------------------------- #
@@ -75,25 +83,39 @@ def cancellable_runner(config, limit, flags, on_progress=None, should_cancel=Non
 # ---------------------------------------------------------------------- #
 def test_progress_is_reported_after_every_schedule(monkeypatch):
     calls = []
-    result = run_ops(monkeypatch, 10, limit_override=3, on_progress=lambda found, limit: calls.append((found, limit)))
+    result = run_ops(
+        monkeypatch,
+        10,
+        limit_override=3,
+        on_progress=lambda found, limit: calls.append((found, limit)),
+    )
     assert result.outcome == GenerationOutcome.SUCCESS
     assert len(result.schedules) == 3
     assert calls == [(1, 3), (2, 3), (3, 3)]
 
 
 def test_configured_limit_is_used_without_an_override(monkeypatch):
-    result = run_ops(monkeypatch, 10, config=SimpleNamespace(limit=2, optimizer_flags=[]))
+    result = run_ops(
+        monkeypatch, 10, config=SimpleNamespace(limit=2, optimizer_flags=[])
+    )
     assert len(result.schedules) == 2
 
 
 def test_override_beats_the_configured_limit(monkeypatch):
-    result = run_ops(monkeypatch, 10, config=SimpleNamespace(limit=2, optimizer_flags=[]), limit_override=4)
+    result = run_ops(
+        monkeypatch,
+        10,
+        config=SimpleNamespace(limit=2, optimizer_flags=[]),
+        limit_override=4,
+    )
     assert len(result.schedules) == 4
 
 
 def test_without_a_limit_it_runs_until_the_solver_runs_out(monkeypatch):
     calls = []
-    result = run_ops(monkeypatch, 4, on_progress=lambda found, limit: calls.append((found, limit)))
+    result = run_ops(
+        monkeypatch, 4, on_progress=lambda found, limit: calls.append((found, limit))
+    )
     assert len(result.schedules) == 4
     assert calls[-1] == (4, None)
 
@@ -101,7 +123,9 @@ def test_without_a_limit_it_runs_until_the_solver_runs_out(monkeypatch):
 def test_cancel_is_noticed_between_schedules_and_stores_nothing(monkeypatch):
     found = []
     result = run_ops(
-        monkeypatch, 10, limit_override=5,
+        monkeypatch,
+        10,
+        limit_override=5,
         on_progress=lambda n, limit: found.append(n),
         should_cancel=lambda: len(found) >= 2,
     )
@@ -129,7 +153,9 @@ def test_solver_failure_is_a_runtime_error(monkeypatch):
             yield  # pragma: no cover
 
     monkeypatch.setattr(schedule_ops, "Scheduler", Broken)
-    result = schedule_ops.generate_schedules(SimpleNamespace(limit=None, optimizer_flags=[]))
+    result = schedule_ops.generate_schedules(
+        SimpleNamespace(limit=None, optimizer_flags=[])
+    )
     assert result.outcome == GenerationOutcome.RUNTIME_ERROR
     assert "boom" in result.message
 
@@ -147,12 +173,21 @@ def test_job_reports_progress_while_running_then_finishes():
     job.start()
     assert wait_for(lambda: job.snapshot()["found"] == 1)
     snap = job.snapshot()
-    assert (snap["state"], snap["limit"], snap["percent"], snap["outcome"]) == ("running", 4, 25, None)
+    assert (snap["state"], snap["limit"], snap["percent"], snap["outcome"]) == (
+        "running",
+        4,
+        25,
+        None,
+    )
 
     gate.set()
     assert job.wait(TIMEOUT)
     snap = job.snapshot()
-    assert (snap["state"], snap["outcome"], snap["percent"]) == ("finished", GenerationOutcome.SUCCESS, 100)
+    assert (snap["state"], snap["outcome"], snap["percent"]) == (
+        "finished",
+        GenerationOutcome.SUCCESS,
+        100,
+    )
     assert job.result.schedules == ["a", "b"]
 
 
@@ -194,7 +229,9 @@ def test_on_finish_runs_before_the_job_counts_as_finished():
     gate = threading.Event()
     gate.set()
     job = GenerationJob(
-        SimpleNamespace(limit=3), None, runner=blocking_runner(gate),
+        SimpleNamespace(limit=3),
+        None,
+        runner=blocking_runner(gate),
         on_finish=lambda j, result: seen.append(j.finished),
     )
     job.start()
@@ -218,7 +255,11 @@ def test_the_job_runs_on_a_copy_of_the_configuration():
 
 
 def test_a_job_cannot_be_started_twice():
-    job = GenerationJob(SimpleNamespace(limit=1), None, runner=lambda *a, **k: GenerationResult("success", "", []))
+    job = GenerationJob(
+        SimpleNamespace(limit=1),
+        None,
+        runner=lambda *a, **k: GenerationResult("success", "", []),
+    )
     job.start()
     assert job.wait(TIMEOUT)
     with pytest.raises(RuntimeError):
@@ -240,7 +281,9 @@ def finish(session):
     assert session.generation_job.wait(TIMEOUT)
 
 
-def test_start_generation_runs_in_the_background_and_stores_results(session, monkeypatch):
+def test_start_generation_runs_in_the_background_and_stores_results(
+    session, monkeypatch
+):
     gate = threading.Event()
     monkeypatch.setattr(schedule_ops, "generate_schedules", blocking_runner(gate))
     limit_before = getattr(session.config, "limit", None)
@@ -253,7 +296,9 @@ def test_start_generation_runs_in_the_background_and_stores_results(session, mon
     finish(session)
     assert session.generating is False
     assert session.schedules == ["a", "b"]
-    assert getattr(session.config, "limit", None) == limit_before  # the override never touched the saved limit
+    assert (
+        getattr(session.config, "limit", None) == limit_before
+    )  # the override never touched the saved limit
 
 
 def test_overrides_are_passed_to_the_runner(session, monkeypatch):
@@ -307,18 +352,24 @@ def test_starting_without_a_configuration_is_refused(monkeypatch):
 @pytest.mark.parametrize(
     "outcome, expected",
     [
-        (GenerationOutcome.SUCCESS, ["new"]),                 # replaced
-        (GenerationOutcome.NO_FEASIBLE_SCHEDULE, []),         # cleared, like the synchronous path
-        (GenerationOutcome.INVALID_CONFIG, ["old"]),          # kept
-        (GenerationOutcome.RUNTIME_ERROR, ["old"]),           # kept
-        (GenerationOutcome.CANCELLED, ["old"]),               # kept
+        (GenerationOutcome.SUCCESS, ["new"]),  # replaced
+        (
+            GenerationOutcome.NO_FEASIBLE_SCHEDULE,
+            [],
+        ),  # cleared, like the synchronous path
+        (GenerationOutcome.INVALID_CONFIG, ["old"]),  # kept
+        (GenerationOutcome.RUNTIME_ERROR, ["old"]),  # kept
+        (GenerationOutcome.CANCELLED, ["old"]),  # kept
     ],
 )
-def test_each_outcome_stores_the_right_schedules(session, monkeypatch, outcome, expected):
+def test_each_outcome_stores_the_right_schedules(
+    session, monkeypatch, outcome, expected
+):
     session.schedules = ["old"]
     produced = ["new"] if outcome == GenerationOutcome.SUCCESS else []
     monkeypatch.setattr(
-        schedule_ops, "generate_schedules",
+        schedule_ops,
+        "generate_schedules",
         lambda *a, **k: GenerationResult(outcome, "message", produced),
     )
     ctrl.start_generation(None)
@@ -334,8 +385,11 @@ def test_generation_status_is_idle_without_a_job(session):
 
 def test_the_finished_result_is_collected_exactly_once(session, monkeypatch):
     monkeypatch.setattr(
-        schedule_ops, "generate_schedules",
-        lambda *a, **k: GenerationResult(GenerationOutcome.SUCCESS, "Generated 1 schedule(s).", ["a"]),
+        schedule_ops,
+        "generate_schedules",
+        lambda *a, **k: GenerationResult(
+            GenerationOutcome.SUCCESS, "Generated 1 schedule(s).", ["a"]
+        ),
     )
     ctrl.start_generation(None)
     finish(session)
@@ -400,7 +454,9 @@ def poll_until_finished(client):
 def test_start_poll_and_collect_through_the_endpoints(client, monkeypatch):
     def runner(config, limit, flags, on_progress=None, should_cancel=None):
         on_progress(1, 1)
-        return GenerationResult(GenerationOutcome.SUCCESS, "Generated 1 schedule(s).", [])
+        return GenerationResult(
+            GenerationOutcome.SUCCESS, "Generated 1 schedule(s).", []
+        )
 
     monkeypatch.setattr(schedule_ops, "generate_schedules", runner)
     response = client.post("/generate/start/", {"limit": "1"})
@@ -418,8 +474,11 @@ def test_start_poll_and_collect_through_the_endpoints(client, monkeypatch):
 
 def test_a_run_with_no_feasible_schedule_returns_to_the_generator(client, monkeypatch):
     monkeypatch.setattr(
-        schedule_ops, "generate_schedules",
-        lambda *a, **k: GenerationResult(GenerationOutcome.NO_FEASIBLE_SCHEDULE, "none", []),
+        schedule_ops,
+        "generate_schedules",
+        lambda *a, **k: GenerationResult(
+            GenerationOutcome.NO_FEASIBLE_SCHEDULE, "none", []
+        ),
     )
     client.post("/generate/start/", {})
     body = poll_until_finished(client)

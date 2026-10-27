@@ -31,7 +31,15 @@ OLD_JSON_EXPORT_URL = "/schedules/export/json/"
 
 
 def schedule(faculty):
-    return [Assignment("CMSC 140.01", faculty, "Roddy 136", None, (MeetingTime("MON", "09:00", "09:50", 50),))]
+    return [
+        Assignment(
+            "CMSC 140.01",
+            faculty,
+            "Roddy 136",
+            None,
+            (MeetingTime("MON", "09:00", "09:50", 50),),
+        )
+    ]
 
 
 # ---------------------------------------------------------------------- #
@@ -60,21 +68,33 @@ class TestExportScheduleJson:
         session.schedules = [schedule("A"), schedule("B"), schedule("C")]
         export = ctrl.export_schedule_json(None)
         assert export.filename == "schedules-all-3.json"
-        assert [s[0]["faculty"] for s in json.loads(export.content)["schedules"]] == ["A", "B", "C"]
+        assert [s[0]["faculty"] for s in json.loads(export.content)["schedules"]] == [
+            "A",
+            "B",
+            "C",
+        ]
 
     def test_exported_schedule_loads_back_the_same(self, session):
         session.schedules = [schedule("A"), schedule("B")]
         export = ctrl.export_schedule_json(None, 1)
 
         session.schedules = []
-        assert ctrl.load_schedule_json(None, io.BytesIO(export.content.encode("utf-8"))) == 1
+        assert (
+            ctrl.load_schedule_json(None, io.BytesIO(export.content.encode("utf-8")))
+            == 1
+        )
         assert session.schedules == [schedule("B")]
 
     def test_generated_schedules_export_too(self, session):
         class FakeCourseInstance:  # what the generator stores: the library's objects
             def as_json(self):
-                return {"course": "CMSC 140.01", "faculty": "Gen", "room": "Roddy 136", "lab": None,
-                        "times": [{"day": "MON", "start": "09:00", "duration": 50}]}
+                return {
+                    "course": "CMSC 140.01",
+                    "faculty": "Gen",
+                    "room": "Roddy 136",
+                    "lab": None,
+                    "times": [{"day": "MON", "start": "09:00", "duration": 50}],
+                }
 
         session.schedules = [[FakeCourseInstance()]]
         data = json.loads(ctrl.export_schedule_json(None, 0).content)
@@ -84,7 +104,10 @@ class TestExportScheduleJson:
         session.schedules = [schedule("Muñoz")]
         export = ctrl.export_schedule_json(None, 0)
         assert "Muñoz" in export.content
-        assert json.loads(export.content.encode("utf-8"))["schedules"][0][0]["faculty"] == "Muñoz"
+        assert (
+            json.loads(export.content.encode("utf-8"))["schedules"][0][0]["faculty"]
+            == "Muñoz"
+        )
 
     def test_export_changes_nothing(self, session):
         stored = [schedule("A"), schedule("B")]
@@ -118,8 +141,14 @@ class TestExportScheduleCsv:
         assert export.content_type == "text/csv; charset=utf-8"
         assert export.schedule_count == 1
         rows = csv_rows(export.content)
-        assert [(r["schedule"], r["faculty"]) for r in rows] == [("3", "C")]  # keeps the viewer's number
-        assert rows[0]["day"] == "MON" and rows[0]["start"] == "09:00" and rows[0]["end"] == "09:50"
+        assert [(r["schedule"], r["faculty"]) for r in rows] == [
+            ("3", "C")
+        ]  # keeps the viewer's number
+        assert (
+            rows[0]["day"] == "MON"
+            and rows[0]["start"] == "09:00"
+            and rows[0]["end"] == "09:50"
+        )
 
     def test_index_none_exports_every_schedule(self, session):
         session.schedules = [schedule("A"), schedule("B"), schedule("C")]
@@ -128,7 +157,11 @@ class TestExportScheduleCsv:
         assert export.filename == "schedules-all-3.csv"
         assert export.schedule_count == 3
         rows = csv_rows(export.content)
-        assert [(r["schedule"], r["faculty"]) for r in rows] == [("1", "A"), ("2", "B"), ("3", "C")]
+        assert [(r["schedule"], r["faculty"]) for r in rows] == [
+            ("1", "A"),
+            ("2", "B"),
+            ("3", "C"),
+        ]
 
     def test_header_matches_the_documented_columns(self, session):
         session.schedules = [schedule("A")]
@@ -148,7 +181,10 @@ class TestExportScheduleCsv:
 
 
 class TestExportSchedules:
-    @pytest.mark.parametrize("file_format, filename", [("json", "schedule-1.json"), ("csv", "schedule-1.csv")])
+    @pytest.mark.parametrize(
+        "file_format, filename",
+        [("json", "schedule-1.json"), ("csv", "schedule-1.csv")],
+    )
     def test_picks_the_writer_for_the_format(self, session, file_format, filename):
         session.schedules = [schedule("A")]
         assert ctrl.export_schedules(None, 0, file_format).filename == filename
@@ -164,15 +200,21 @@ class TestExportSchedules:
 #  Pages (Django test client)
 # ---------------------------------------------------------------------- #
 def load(client, *faculty):
-    raw = schedule_io.schedules_to_json([schedule(name) for name in faculty]).encode("utf-8")
+    raw = schedule_io.schedules_to_json([schedule(name) for name in faculty]).encode(
+        "utf-8"
+    )
     upload = SimpleUploadedFile("fall.json", raw, content_type="application/json")
     return client.post(IMPORT_URL, {"schedule_file": upload}, follow=True)
 
 
 @pytest.mark.parametrize(
     "label",
-    ["Export This Schedule (JSON)", "Export This Schedule (CSV)",
-     "Export All Schedules (JSON)", "Export All Schedules (CSV)"],
+    [
+        "Export This Schedule (JSON)",
+        "Export This Schedule (CSV)",
+        "Export All Schedules (JSON)",
+        "Export All Schedules (CSV)",
+    ],
 )
 def test_export_buttons_are_disabled_when_there_are_no_schedules(client, label):
     html = client.get(VIEWER_URL).content.decode()
@@ -218,7 +260,15 @@ def test_viewer_shows_selected_schedule_meetings_in_chronological_order(client):
                 (MeetingTime("TUE", "13:00", "14:50", 110, lab=True),),
             ),
         ],
-        [Assignment("CMSC 201.01", "Zoppetti", "Roddy 140", None, (MeetingTime("FRI", "11:00", "11:50", 50),))],
+        [
+            Assignment(
+                "CMSC 201.01",
+                "Zoppetti",
+                "Roddy 140",
+                None,
+                (MeetingTime("FRI", "11:00", "11:50", 50),),
+            )
+        ],
     ]
     upload = SimpleUploadedFile(
         "meetings.json",
@@ -231,8 +281,8 @@ def test_viewer_shows_selected_schedule_meetings_in_chronological_order(client):
     assert "Schedule 1 weekly overview" in html
     assert 'class="week-grid schedule-grid"' in html
     assert "CMSC 161.01" in html and "CMSC 162.01" in html
-    assert "Roddy 136 · Hogg" in html          # detail line: room · faculty
-    assert "Roddy 147 · Killen" in html        # lab meeting shows the lab
+    assert "Roddy 136 · Hogg" in html  # detail line: room · faculty
+    assert "Roddy 147 · Killen" in html  # lab meeting shows the lab
     assert 'data-faculty="Hogg"' in html
     assert 'data-location="Roddy 147"' in html
 
@@ -251,7 +301,9 @@ def test_schedule_grid_places_overlapping_meetings_in_separate_lanes():
 
     monday = _schedule_grid(assignments)["days"][0]["meetings"]
 
-    assert [(meeting["course"], meeting["left"], meeting["width"]) for meeting in monday] == [
+    assert [
+        (meeting["course"], meeting["left"], meeting["width"]) for meeting in monday
+    ] == [
         ("CMSC 140.01", "0.00", "50.00"),
         ("CMSC 140.02", "50.00", "50.00"),
         ("CMSC 152.01", "0.00", "100.00"),
@@ -268,7 +320,11 @@ def test_dense_overlaps_stay_as_separate_blocks_in_side_by_side_lanes():
     grid = _schedule_grid(assignments)
     monday = grid["days"][0]["meetings"]
 
-    assert [m["course"] for m in monday] == ["CMSC 140.01", "CMSC 140.02", "CMSC 140.03"]
+    assert [m["course"] for m in monday] == [
+        "CMSC 140.01",
+        "CMSC 140.02",
+        "CMSC 140.03",
+    ]
     assert [m["lane_count"] for m in monday] == [3, 3, 3]
     assert [m["left"] for m in monday] == ["0.00", "33.33", "66.67"]
     assert [m["width"] for m in monday] == ["33.33", "33.33", "33.33"]
@@ -292,15 +348,21 @@ def test_single_schedule_pager_identifies_the_selection_and_disables_boundaries(
 
     assert 'aria-label="Schedule navigation"' in html
     assert 'role="status" aria-live="polite">\n            Schedule 1 of 1' in html
-    assert '<span class="btn btn-disabled schedule-pager__previous" aria-disabled="true">Previous</span>' in html
-    assert '<span class="btn btn-disabled schedule-pager__next" aria-disabled="true">Next</span>' in html
+    assert (
+        '<span class="btn btn-disabled schedule-pager__previous" aria-disabled="true">Previous</span>'
+        in html
+    )
+    assert (
+        '<span class="btn btn-disabled schedule-pager__next" aria-disabled="true">Next</span>'
+        in html
+    )
 
 
 def test_middle_schedule_pager_links_to_its_neighbors_and_keeps_export_selected(client):
     load(client, "A", "B", "C")
     html = client.get(VIEWER_URL, {"schedule": "2"}).content.decode()
 
-    assert 'Schedule 2 of 3' in html
+    assert "Schedule 2 of 3" in html
     assert 'href="?schedule=1">Previous</a>' in html
     assert 'href="?schedule=3">Next</a>' in html
     assert '<option value="2" selected>' in html
@@ -310,19 +372,27 @@ def test_last_schedule_pager_disables_next(client):
     load(client, "A", "B", "C")
     html = client.get(VIEWER_URL, {"schedule": "3"}).content.decode()
 
-    assert 'Schedule 3 of 3' in html
+    assert "Schedule 3 of 3" in html
     assert 'href="?schedule=2">Previous</a>' in html
-    assert '<span class="btn btn-disabled schedule-pager__next" aria-disabled="true">Next</span>' in html
+    assert (
+        '<span class="btn btn-disabled schedule-pager__next" aria-disabled="true">Next</span>'
+        in html
+    )
 
 
 @pytest.mark.parametrize("invalid_schedule", ["9", "0", "-1", "abc", ""])
-def test_invalid_viewer_schedule_falls_back_to_the_first_schedule(client, invalid_schedule):
+def test_invalid_viewer_schedule_falls_back_to_the_first_schedule(
+    client, invalid_schedule
+):
     load(client, "A", "B", "C")
     html = client.get(VIEWER_URL, {"schedule": invalid_schedule}).content.decode()
 
-    assert 'Schedule 1 of 3' in html
+    assert "Schedule 1 of 3" in html
     assert '<option value="1" selected>' in html
-    assert '<span class="btn btn-disabled schedule-pager__previous" aria-disabled="true">Previous</span>' in html
+    assert (
+        '<span class="btn btn-disabled schedule-pager__previous" aria-disabled="true">Previous</span>'
+        in html
+    )
 
 
 def test_download_contains_only_the_chosen_schedule(client):
@@ -342,15 +412,22 @@ def test_downloaded_file_loads_back_in_a_later_session(client):
     exported = client.get(EXPORT_URL, {"schedule": "3"}).content
 
     later = type(client)()  # a fresh browser
-    upload = SimpleUploadedFile("schedule-3.json", exported, content_type="application/json")
-    html = later.post(IMPORT_URL, {"schedule_file": upload}, follow=True).content.decode()
+    upload = SimpleUploadedFile(
+        "schedule-3.json", exported, content_type="application/json"
+    )
+    html = later.post(
+        IMPORT_URL, {"schedule_file": upload}, follow=True
+    ).content.decode()
     assert "Loaded 1 schedule from schedule-3.json." in html
 
 
 def test_export_does_not_change_the_viewer(client):
     load(client, "A", "B", "C")
     client.get(EXPORT_URL, {"schedule": "1"})
-    assert "<strong>3</strong> schedules available." in client.get(VIEWER_URL).content.decode()
+    assert (
+        "<strong>3</strong> schedules available."
+        in client.get(VIEWER_URL).content.decode()
+    )
 
 
 def test_export_with_no_schedules_explains_why(client):
@@ -374,18 +451,28 @@ def test_bad_schedule_number_explains_the_range(client, value):
 def test_viewer_has_this_schedule_and_all_schedules_buttons(client):
     load(client, "A", "B", "C")
     html = client.get(VIEWER_URL).content.decode()
-    assert 'name="file_format" value="json" class="btn btn-primary">Export This Schedule (JSON)</button>' in html
-    assert 'name="file_format" value="csv" class="btn">Export This Schedule (CSV)</button>' in html
+    assert (
+        'name="file_format" value="json" class="btn btn-primary">Export This Schedule (JSON)</button>'
+        in html
+    )
+    assert (
+        'name="file_format" value="csv" class="btn">Export This Schedule (CSV)</button>'
+        in html
+    )
     assert '<input type="hidden" name="schedule" value="all">' in html
     assert ">Export All Schedules (JSON)</button>" in html
     assert ">Export All Schedules (CSV)</button>" in html
-    assert '<option value="all"' not in html  # "all" has its own buttons, not a list entry
+    assert (
+        '<option value="all"' not in html
+    )  # "all" has its own buttons, not a list entry
 
 
 def test_all_schedules_works_with_a_single_schedule(client):
     load(client, "A")
     response = client.get(EXPORT_URL, {"schedule": "all", "file_format": "json"})
-    assert response["Content-Disposition"] == 'attachment; filename="schedules-all-1.json"'
+    assert (
+        response["Content-Disposition"] == 'attachment; filename="schedules-all-1.json"'
+    )
 
 
 def test_download_all_as_json_loads_back_every_schedule(client):
@@ -396,17 +483,25 @@ def test_download_all_as_json_loads_back_every_schedule(client):
 
     assert response.status_code == 200
     assert response["Content-Type"] == "application/json; charset=utf-8"
-    assert response["Content-Disposition"] == 'attachment; filename="schedules-all-5.json"'
+    assert (
+        response["Content-Disposition"] == 'attachment; filename="schedules-all-5.json"'
+    )
     data = json.loads(response.content.decode("utf-8"))
     assert data["schedule_count"] == 5
     assert [s[0]["faculty"] for s in data["schedules"]] == names
 
     later = type(client)()  # a later session in a fresh browser
-    upload = SimpleUploadedFile("schedules-all-5.json", response.content, content_type="application/json")
-    html = later.post(IMPORT_URL, {"schedule_file": upload}, follow=True).content.decode()
+    upload = SimpleUploadedFile(
+        "schedules-all-5.json", response.content, content_type="application/json"
+    )
+    html = later.post(
+        IMPORT_URL, {"schedule_file": upload}, follow=True
+    ).content.decode()
     assert "Loaded 5 schedules from schedules-all-5.json." in html
     assert "<strong>5</strong> schedules available." in html
-    reexported = json.loads(later.get(EXPORT_URL, {"schedule": "all"}).content.decode("utf-8"))
+    reexported = json.loads(
+        later.get(EXPORT_URL, {"schedule": "all"}).content.decode("utf-8")
+    )
     assert reexported["schedules"] == data["schedules"]  # the same 5 schedules
 
 
@@ -425,7 +520,9 @@ def test_download_all_as_csv(client):
     load(client, "A", "B", "C")
     response = client.get(EXPORT_URL, {"schedule": "all", "file_format": "csv"})
 
-    assert response["Content-Disposition"] == 'attachment; filename="schedules-all-3.csv"'
+    assert (
+        response["Content-Disposition"] == 'attachment; filename="schedules-all-3.csv"'
+    )
     rows = csv_rows(response.content.decode("utf-8"))
     assert [r["faculty"] for r in rows] == ["A", "B", "C"]
 
@@ -444,9 +541,12 @@ def test_older_json_export_url_still_works(client):
 
 def test_unknown_format_explains_the_choices(client):
     load(client, "A", "B")
-    response = client.get(EXPORT_URL, {"schedule": "1", "file_format": "xml"}, follow=True)
+    response = client.get(
+        EXPORT_URL, {"schedule": "1", "file_format": "xml"}, follow=True
+    )
     assert response.redirect_chain[-1][0].endswith(VIEWER_URL)
     assert "Choose JSON or CSV as the export format." in response.content.decode()
+
 
 def test_overlapping_courses_get_different_colors():
     assignments = [
@@ -463,7 +563,10 @@ def test_meetings_of_the_same_course_share_a_color():
     assignments = [
         Assignment(
             "CMSC 140.01",
-            meetings=(MeetingTime("MON", "09:00", "09:50", 50), MeetingTime("WED", "09:00", "09:50", 50)),
+            meetings=(
+                MeetingTime("MON", "09:00", "09:50", 50),
+                MeetingTime("WED", "09:00", "09:50", 50),
+            ),
         ),
         Assignment("CMSC 152.01", meetings=(MeetingTime("MON", "11:00", "11:50", 50),)),
     ]
@@ -477,7 +580,9 @@ def test_meetings_of_the_same_course_share_a_color():
 
 def test_colors_wrap_around_the_palette():
     assignments = [
-        Assignment(f"CMSC {100 + n}.01", meetings=(MeetingTime("MON", "09:00", "09:50", 50),))
+        Assignment(
+            f"CMSC {100 + n}.01", meetings=(MeetingTime("MON", "09:00", "09:50", 50),)
+        )
         for n in range(15)
     ]
 
@@ -488,7 +593,15 @@ def test_colors_wrap_around_the_palette():
 
 def test_every_block_carries_the_details_shown_in_the_tooltip(client):
     schedules = [
-        [Assignment("CMSC 161.01", "Hogg", "Roddy 136", None, (MeetingTime("MON", "09:00", "09:50", 50),))],
+        [
+            Assignment(
+                "CMSC 161.01",
+                "Hogg",
+                "Roddy 136",
+                None,
+                (MeetingTime("MON", "09:00", "09:50", 50),),
+            )
+        ],
     ]
     upload = SimpleUploadedFile(
         "tooltip.json",

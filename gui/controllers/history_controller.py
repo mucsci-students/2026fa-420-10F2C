@@ -65,7 +65,9 @@ def restore_previous(request) -> str:
 
 def _run(session, action):
     if session.config is None:
-        raise ControllerError("No configuration is loaded, so there is nothing to undo or redo.")
+        raise ControllerError(
+            "No configuration is loaded, so there is nothing to undo or redo."
+        )
     try:
         return action()
     except HistoryError as error:

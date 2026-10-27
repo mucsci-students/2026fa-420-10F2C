@@ -77,7 +77,9 @@ def _friendly_message(error: dict) -> tuple[str, bool]:
     return str(error.get("msg") or "Invalid value."), False
 
 
-def translate_validation_error(exc: Exception, form_fields: Iterable[str] = ()) -> list[FieldError]:
+def translate_validation_error(
+    exc: Exception, form_fields: Iterable[str] = ()
+) -> list[FieldError]:
     """Turn a library validation failure into FieldError items.
 
     `form_fields` lists the form field names errors may be attached to; an
@@ -112,7 +114,9 @@ def translate_validation_error(exc: Exception, form_fields: Iterable[str] = ()) 
     return items
 
 
-def to_controller_error(exc: Exception, form_fields: Iterable[str] = ()) -> ControllerError:
+def to_controller_error(
+    exc: Exception, form_fields: Iterable[str] = ()
+) -> ControllerError:
     """Convert any exception the app/ layer raises into a ControllerError."""
     if isinstance(exc, ControllerError):
         return exc
@@ -155,5 +159,7 @@ def describe_problems(exc: Exception, limit: int | None = None) -> list[str]:
 
     if limit is not None and len(items) > limit:
         extra = len(items) - limit
-        items = items[:limit] + [f"...and {extra} more problem{'' if extra == 1 else 's'}."]
+        items = items[:limit] + [
+            f"...and {extra} more problem{'' if extra == 1 else 's'}."
+        ]
     return items

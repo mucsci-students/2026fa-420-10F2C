@@ -116,10 +116,10 @@ def test_undoing_back_to_a_clean_state_clears_the_unsaved_flag():
 def test_after_a_save_older_states_count_as_unsaved():
     session = FakeSession()
     edit(session, "one", ["A", "1"])
-    session.history.mark_saved()   # what Session.save()/mark_saved() do
+    session.history.mark_saved()  # what Session.save()/mark_saved() do
     session.dirty = False
     session.history.undo(session)
-    assert session.dirty is True   # the saved file still has the edit in it
+    assert session.dirty is True  # the saved file still has the edit in it
 
 
 def test_clear_forgets_everything():
@@ -148,7 +148,7 @@ def test_every_state_has_its_own_version_and_undo_restores_the_old_one():
     second = session.history.version
     assert second != first
     session.history.undo(session)
-    assert session.history.version == first        # back to exactly the earlier state
+    assert session.history.version == first  # back to exactly the earlier state
     session.history.redo(session)
     assert session.history.version == second
 
@@ -163,8 +163,10 @@ def test_a_stale_token_refuses_to_undo_or_redo():
     stale = session.history.version - 1
     with pytest.raises(HistoryError, match="changed since"):
         session.history.undo(session, expected=stale)
-    assert rooms_of(session) == ["A", "1"]           # nothing was undone
-    session.history.undo(session, expected=session.history.version)   # the right token works
+    assert rooms_of(session) == ["A", "1"]  # nothing was undone
+    session.history.undo(
+        session, expected=session.history.version
+    )  # the right token works
     with pytest.raises(HistoryError, match="changed since"):
         session.history.redo(session, expected="0")
 
@@ -181,7 +183,7 @@ def test_go_to_undoes_everything_after_an_entry_and_can_come_back():
 
     labels = session.history.go_to(session, rows["two"]["id"])
     assert labels == ["three", "two"]
-    assert rooms_of(session) == ["A", "1"]            # just before "two"
+    assert rooms_of(session) == ["A", "1"]  # just before "two"
     assert session.history.undo_label == "one"
 
     redo_rows = {row["label"]: row for row in session.history.state()["redo_entries"]}
@@ -204,11 +206,13 @@ def test_the_inline_undo_offer_is_given_once_after_an_edit():
     assert session.history.take_fresh() is None
     edit(session, "Add room 'B'", ["A", "B"])
     offer = session.history.take_fresh()
-    assert offer["label"] == "Add room 'B'" and offer["token"] == session.history.version
-    assert session.history.take_fresh() is None          # consumed
+    assert (
+        offer["label"] == "Add room 'B'" and offer["token"] == session.history.version
+    )
+    assert session.history.take_fresh() is None  # consumed
     edit(session, "two", ["A", "B", "C"])
     session.history.undo(session)
-    assert session.history.take_fresh() is None          # an undo is not offered an undo
+    assert session.history.take_fresh() is None  # an undo is not offered an undo
 
 
 def test_the_history_state_describes_each_change():
@@ -224,7 +228,9 @@ def test_an_edit_without_a_label_is_named_after_what_it_changed():
     session = FakeSession()
     before = session.history.capture(session.config)
     session.config.config.rooms = [room("A"), room("B")]
-    entry = session.history.record(None, before, False, after=session.config, area="room")
+    entry = session.history.record(
+        None, before, False, after=session.config, area="room"
+    )
     assert entry.label == "Added room B"
 
 
@@ -234,11 +240,14 @@ def test_an_edit_that_changed_nothing_is_not_remembered():
     session.history.undo(session)
     version = session.history.version
     before = session.history.capture(session.config)
-    assert session.history.record("Edit room 'A'", before, False, after=session.config) is None
+    assert (
+        session.history.record("Edit room 'A'", before, False, after=session.config)
+        is None
+    )
     assert not session.history.can_undo
-    assert session.history.can_redo                   # redo is kept, as nothing new happened
+    assert session.history.can_redo  # redo is kept, as nothing new happened
     assert session.history.version == version
-    assert session.history.take_fresh() is None       # and no Undo is offered
+    assert session.history.take_fresh() is None  # and no Undo is offered
 
 
 def test_a_very_long_description_is_shortened_for_the_label():
@@ -286,11 +295,13 @@ def test_a_change_to_several_parts_is_one_step():
 
 def test_submitting_an_edit_with_no_change_adds_no_history_and_leaves_the_flag_alone():
     session = FakeSession()
-    apply_session_edit(session, session.config, "room", lambda draft: None, label="Edit room 'A'")
+    apply_session_edit(
+        session, session.config, "room", lambda draft: None, label="Edit room 'A'"
+    )
     assert not session.history.can_undo and session.dirty is False
 
     def same_values(draft):
-        draft.config.rooms[:] = [room("A")]      # rewritten, but identical
+        draft.config.rooms[:] = [room("A")]  # rewritten, but identical
 
     apply_session_edit(session, session.config, "room", same_values)
     assert not session.history.can_undo and session.dirty is False
@@ -299,6 +310,10 @@ def test_submitting_an_edit_with_no_change_adds_no_history_and_leaves_the_flag_a
 def test_a_real_edit_still_counts():
     session = FakeSession()
     apply_session_edit(
-        session, session.config, "room", lambda draft: draft.config.rooms.append(room("B")), label="Add room 'B'"
+        session,
+        session.config,
+        "room",
+        lambda draft: draft.config.rooms.append(room("B")),
+        label="Add room 'B'",
     )
     assert session.history.undo_label == "Add room 'B'" and session.dirty is True

@@ -36,7 +36,15 @@ def page(response) -> str:
 
 def load_schedules(client, *faculty, **extra):
     schedules = [
-        [Assignment("CMSC 140.01", name, "Roddy 136", None, (MeetingTime("MON", "09:00", "09:50", 50),))]
+        [
+            Assignment(
+                "CMSC 140.01",
+                name,
+                "Roddy 136",
+                None,
+                (MeetingTime("MON", "09:00", "09:50", 50),),
+            )
+        ]
         for name in faculty
     ]
     raw = schedule_io.schedules_to_json(schedules).encode("utf-8")
@@ -54,7 +62,9 @@ def explode(*args, **kwargs):
 def test_story_49_failed_import_shows_error_in_viewer_and_keeps_schedules(client):
     load_schedules(client, "A", "B", "C")
     bad = SimpleUploadedFile("bad.json", b"{not json", content_type="application/json")
-    response = client.post(IMPORT_URL, {"schedule_file": bad, "confirm_replace": "on"}, follow=True)
+    response = client.post(
+        IMPORT_URL, {"schedule_file": bad, "confirm_replace": "on"}, follow=True
+    )
 
     html = page(response)
     assert response.status_code == 200
@@ -74,7 +84,10 @@ def test_unexpected_crash_shows_a_friendly_page(client, monkeypatch):
     assert response.status_code == 500
     assert "Something went wrong" in html
     assert "<strong>Error:</strong>" in html  # labelled, not colour alone (Section 24)
-    assert "couldn&#x27;t finish that action" in html or "couldn't finish that action" in html
+    assert (
+        "couldn&#x27;t finish that action" in html
+        or "couldn't finish that action" in html
+    )
     assert "Traceback" not in html
     assert "secret internal detail" not in html  # no internals unless DEBUG
     for mode in ("/configuration/", "/generate/", "/schedules/"):
@@ -89,7 +102,9 @@ def test_crash_page_shows_a_reference_that_matches_the_log(client, monkeypatch, 
     records = [r for r in caplog.records if r.name == "gui.errors"]
     assert len(records) == 1
     record = records[0]
-    assert record.exc_info and record.exc_info[0] is RuntimeError  # full traceback goes to the log
+    assert (
+        record.exc_info and record.exc_info[0] is RuntimeError
+    )  # full traceback goes to the log
     reference = html.split('id="error-reference">')[1].split("<")[0]
     assert len(reference) == 8
     assert reference in record.getMessage()
@@ -111,7 +126,9 @@ def test_crash_during_a_form_post_is_also_friendly(client, monkeypatch):
     client.get(EDITOR_URL)
     monkeypatch.setattr(config_controller, "load_configuration", explode)
     upload = SimpleUploadedFile("fall.json", b"{}", content_type="application/json")
-    response = client.post(LOAD_URL, {"load-config_file": upload, "load-confirm_replace": "on"})
+    response = client.post(
+        LOAD_URL, {"load-config_file": upload, "load-confirm_replace": "on"}
+    )
     assert response.status_code == 500
     assert "Something went wrong" in page(response)
 
@@ -134,7 +151,9 @@ def test_error_page_that_cannot_render_still_answers_in_plain_language(monkeypat
         raise RuntimeError("templates are broken too")
 
     monkeypatch.setattr(views_errors, "render", broken_render)
-    response = views_errors.friendly_error_response(RequestFactory().get("/"), "abcd1234")
+    response = views_errors.friendly_error_response(
+        RequestFactory().get("/"), "abcd1234"
+    )
     html = page(response)
     assert response.status_code == 500
     assert "Something went wrong" in html and "abcd1234" in html
