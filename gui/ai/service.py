@@ -12,14 +12,19 @@ One AI request from start to finish (Sprint 3 user stories 2, 3 and 6).
   * A fresh ToolBox is made for every request, and every tool reads the
     session's configuration when it runs, so the AI always sees the current
     state, manual edits included (story 6).
+  * The AI also gets the last few chat messages (AI_HISTORY_MESSAGES, default
+    6, 0 turns it off), only so it can understand "yes", "that one" or "make
+    it 40 instead". They are never a source of data: the tools are.
   * The reply is built from the tool results, so it only says something
     happened when the application really did it, and it says whether the
-    configuration was changed.
+    configuration was changed. Plain lookups are for the AI to read; when a
+    request ends after only lookups, the AI's own words are the answer.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import threading
 from dataclasses import dataclass, field
 
@@ -40,6 +45,12 @@ SAVED_NOTE_MANY = "The changes are applied but not yet saved to a file."
 PARTLY_SAVED_NOTE = "The changes that worked are applied but not yet saved to a file."
 UNCHANGED_NOTE = "The configuration was not changed."
 
+HISTORY_ENV = "AI_HISTORY_MESSAGES"
+DEFAULT_HISTORY = 6
+MAX_HISTORY = 20
+HISTORY_ATTR = "ai_history"
+HISTORY_TEXT_LIMIT = 1500
+
 _BUSY: set[int] = set()
 _BUSY_LOCK = threading.Lock()  # the dev server is threaded
 
@@ -58,14 +69,32 @@ def get_runner() -> Runner:
     return LangChainRunner.from_environment()
 
 
+def history_limit() -> int:
+    """How many earlier chat messages go to the AI (0 = none, every request on its own)."""
+    raw = os.environ.get(HISTORY_ENV, "").strip()
+    try:
+        value = int(raw) if raw else DEFAULT_HISTORY
+    except ValueError:
+        value = DEFAULT_HISTORY
+    return max(0, min(value, MAX_HISTORY))
+
+
 def compose(results: list[ToolResult], model_text: str = "") -> Reply:
     """Turn what the tools really did into one plain-language reply."""
     if not results:
         return Reply(ok=bool(model_text), message=model_text or NO_ANSWER)
 
-    lines = [result.message for result in results]
-    changed = [result for result in results if result.changed]
-    failed_writes = [result for result in results if result.write and not result.ok]
+    # Actions end the request with the application's own words. Lookups are only for the AI to
+    # read, so they are shown only when nothing else happened and the AI said nothing itself.
+    shown = [result for result in results if result.final]
+    if not shown:
+        if model_text:
+            return Reply(ok=True, message=model_text, results=list(results))
+        shown = list(results)
+
+    lines = [result.message for result in shown]
+    changed = [result for result in shown if result.changed]
+    failed_writes = [result for result in shown if result.write and not result.ok]
     if changed and failed_writes:
         lines.append(PARTLY_SAVED_NOTE)
     elif changed:
@@ -73,11 +102,23 @@ def compose(results: list[ToolResult], model_text: str = "") -> Reply:
     elif failed_writes:
         lines.append(UNCHANGED_NOTE)
     return Reply(
-        ok=all(result.ok for result in results),
+        ok=all(result.ok for result in shown),
         message="\n".join(lines),
         changed=bool(changed),
         results=list(results),
     )
+
+
+def _remember(request, text: str, reply: Reply, limit: int) -> None:
+    """Keep the last few chat messages for this browser, so the next request can build on them."""
+    session = get_session(request)
+    if limit <= 0:
+        setattr(session, HISTORY_ATTR, [])
+        return
+    kept = list(getattr(session, HISTORY_ATTR, None) or [])
+    kept.append({"role": "user", "content": text})
+    kept.append({"role": "assistant", "content": reply.message[:HISTORY_TEXT_LIMIT]})
+    setattr(session, HISTORY_ATTR, kept[-limit:])
 
 
 def handle_request(request, text: str) -> Reply:
@@ -100,7 +141,9 @@ def handle_request(request, text: str) -> Reply:
 
 
 def _run(request, text: str) -> Reply:
-    toolbox = ToolBox(request)
+    limit = history_limit()
+    earlier = (list(getattr(get_session(request), HISTORY_ATTR, None) or []))[-limit:] if limit else []
+    toolbox = ToolBox(request, history=earlier)
     try:
         runner = get_runner()
         model_text = runner.run(text, toolbox)
@@ -114,4 +157,6 @@ def _run(request, text: str) -> Reply:
             reply = compose(toolbox.results)
             return Reply(ok=False, message=f"{reply.message}\n{SERVICE_FAILED}", changed=reply.changed)
         return Reply(ok=False, message=f"{SERVICE_FAILED} {UNCHANGED_NOTE}")
-    return compose(toolbox.results, model_text)
+    reply = compose(toolbox.results, model_text)
+    _remember(request, text, reply, limit)
+    return reply
