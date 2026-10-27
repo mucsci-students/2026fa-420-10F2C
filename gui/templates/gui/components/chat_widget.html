@@ -6,21 +6,35 @@
     button off the right edge; a small tab stays at the edge to bring it back. See chat.js and
     the "AI chat" block of style.css.
 
+    While a request runs, chat.js polls data-status-url so a schedule generation shows its progress, and
+    after one succeeds it offers a link to data-viewer-url (or refreshes the Schedule Viewer if that is the
+    page being shown).
+
     The button, the arrow and the tab all start hidden and gui/static/gui/js/chat.js reveals them,
     so a browser without JavaScript never shows a chat that cannot work (the same
     progressive-enhancement rule as the rest of the app). The panel posts one request at a time to
     gui:assistant_ask (gui/views_ai.py, which hands it to gui/ai/service.py); it never sees or
-    sends an API key.
+    sends an API key. The conversation is kept on the server (gui/ai/chats.py): chat.js draws the saved
+    chat again on every page, and the toolbar starts a new chat or opens an older one.
 {% endcomment %}
-<div class="chat-widget" data-chat>
+<div class="chat-widget" data-chat data-status-url="{% url 'gui:assistant_status' %}" data-viewer-url="{% url 'gui:schedule_viewer' %}"
+     data-chat-url="{% url 'gui:assistant_chat' %}" data-chat-new-url="{% url 'gui:assistant_chat_new' %}"
+     data-chat-switch-url="{% url 'gui:assistant_chat_switch' %}" data-chat-delete-url="{% url 'gui:assistant_chat_delete' %}">
     <section id="chat-panel" class="chat-panel" role="dialog" aria-labelledby="chat-title" hidden>
         <header class="chat-panel__header">
             <h2 id="chat-title" class="chat-panel__title">AI assistant</h2>
             <button type="button" class="chat-panel__close" data-chat-close aria-label="Close AI assistant">&times;</button>
         </header>
+        {# Hidden until chat.js has loaded the saved chats (no JavaScript, no chat). #}
+        <div class="chat-toolbar" data-chat-toolbar hidden>
+            <label class="visually-hidden" for="chat-picker">Chat</label>
+            <select id="chat-picker" class="chat-picker" data-chat-picker></select>
+            <button type="button" class="btn btn-small" data-chat-new>New chat</button>
+            <button type="button" class="btn btn-small" data-chat-delete title="Delete this chat" aria-label="Delete this chat">Delete</button>
+        </div>
         <div class="chat-log" data-chat-log role="log" aria-live="polite" aria-relevant="additions">
             {# One line on purpose: chat messages keep their line breaks (pre-wrap), so source indentation would show. #}
-            <p class="chat-message chat-message--assistant">Hi! Ask me to look at or change your scheduler configuration. Try &quot;What can you do?&quot;. Changes are applied to the open configuration but not saved to a file until you save it.</p>
+            <p class="chat-message chat-message--assistant">Hi! Ask me to look at or change your scheduler configuration, or to generate schedules. Try &quot;What can you do?&quot;. Changes are applied to the open configuration but not saved to a file until you save it.</p>
         </div>
         <form class="chat-form" data-chat-form method="post" action="{% url 'gui:assistant_ask' %}">
             {% csrf_token %}

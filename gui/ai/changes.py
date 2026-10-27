@@ -59,6 +59,7 @@ from gui.ai.base import (
     _plural,
     _resolve,
     find_name,
+    not_found,
 )
 from gui.constants import DAY_NAMES
 from gui.controllers import (
@@ -89,9 +90,10 @@ _now: Callable[[], float] = time.monotonic  # tests replace this to age a pendin
 # ---------------------------------------------------------------------- #
 def _existing(wanted: str, names: Iterable[str], label: str) -> str:
     """The existing item the user meant, or a ControllerError saying there is none."""
+    names = list(names)
     found = find_name(str(wanted).strip(), names)
     if found is None:
-        raise ControllerError(f"No {label} named '{str(wanted).strip()}' exists.")
+        raise ControllerError(not_found(label, wanted, names))
     return found
 
 

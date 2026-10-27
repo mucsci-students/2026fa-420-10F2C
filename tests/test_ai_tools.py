@@ -18,6 +18,7 @@ from gui.ai import service
 from gui.ai.prompt import AREAS, CAPABILITIES
 from gui.ai.tools import NO_CONFIG_MESSAGE, TOOLS, TOOLS_BY_NAME, ToolBox, find_name
 from gui.controllers import rooms
+from gui.controllers.errors import ControllerError
 
 
 class FakeRequest:
@@ -142,7 +143,14 @@ def test_find_name_matches_loosely_only_when_unambiguous():
     assert find_name("roddy 140", names) == "RODDY140"
     assert find_name("Dr. Hogg", names) == "Hogg"
     assert find_name("Dr. Nobody", names) is None
-    assert find_name("roddy", names) is None
+    # By the words of the name: "136" or "room 136" is enough when only one name has it.
+    assert find_name("136", names) == "Roddy 136"
+    assert find_name("room 136", names) == "Roddy 136"
+    assert find_name("hog", names) == "Hogg"
+    assert find_name("13", names) is None  # half a number is not a name
+    # ... and never a guess between two real items:
+    with pytest.raises(ControllerError, match="could mean RODDY140, Roddy 136"):
+        find_name("roddy", names)
 
 
 # ---------------------------------------------------------------------- #
