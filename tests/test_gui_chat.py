@@ -68,3 +68,8 @@ def test_the_script_updates_the_top_bar_and_offers_a_refresh_after_a_change():
     assert "if (body.changed)" in script and "window.location.reload()" in script
     assert "body.busy" in script   # a refused duplicate is shown as a note, not as a failure
     assert "innerHTML" not in script   # messages are inserted as text, never as HTML
+
+def test_the_script_prompts_instead_of_silently_ignoring_an_empty_request():
+    script = (ROOT / "gui/static/gui/js/chat.js").read_text(encoding="utf-8")
+    assert 'EMPTY_PROMPT = "Type a request first."' in script
+    assert 'addMessage("notice", EMPTY_PROMPT)' in script
