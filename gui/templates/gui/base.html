@@ -9,11 +9,7 @@
     <script src="{% static 'gui/js/theme.js' %}"></script>
     {% block styles %}{% endblock %}
 </head>
-<body data-save-prepare="{% url 'gui:config_save' %}"
-      data-save-begin="{% url 'gui:config_save_begin' %}"
-      data-save-complete="{% url 'gui:config_save_complete' %}"
-      data-save-cancel="{% url 'gui:config_save_cancel' %}"
-      data-config-editor="{% url 'gui:config_editor' %}">
+<body>
 <a class="skip-link" href="#main">Skip to content</a>
 <nav aria-label="Main">
     <a href="{% url 'gui:index' %}" class="brand">Course Scheduler</a>
@@ -53,7 +49,7 @@
 </main>
 {% include "gui/components/chat_widget.html" %}
 <script src="{% static 'gui/js/loading.js' %}" defer></script>
-<script src="{% static 'gui/js/configuration_save.js' %}" defer></script>
+<script src="{% static 'gui/js/configuration_export.js' %}" defer></script>
 <script src="{% static 'gui/js/chat.js' %}" defer></script>
 <script src="{% static 'gui/js/dropdowns.js' %}" defer></script>
 {% block scripts %}{% endblock %}

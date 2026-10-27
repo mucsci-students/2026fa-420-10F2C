@@ -131,9 +131,12 @@
             kind = "error";
         }
         var item = addMessage(kind, body.reply);
-        (body.actions || []).forEach(function (action) {
-            window.ConfigurationSave.addAction(item, action);
-        });
+        if (window.ConfigurationExport) {
+            var chat = { addMessage: addMessage, offerRefresh: addRefreshButton, showUnsaved: showUnsaved };
+            (body.actions || []).forEach(function (action) {
+                window.ConfigurationExport.addAction(item, action, chat);
+            });
+        }
         if (body.dirty) {
             showUnsaved();
         }

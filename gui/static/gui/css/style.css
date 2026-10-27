@@ -1977,6 +1977,22 @@ html[data-theme="dark"] .list-toolbar input { background: #18181b; color: #f3f4f
 }
 
 .chat-refresh { display: block; margin-top: 0.5rem; }
+.chat-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+.chat-action-status { display: block; margin-top: 0.5rem; font-size: 0.9em; color: var(--muted); }
+.chat-filename { display: block; margin-top: 0.5rem; font-weight: 600; font-size: 0.9em; }
+.chat-filename input {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    margin-top: 0.2rem;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid #9ca3af;
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-weight: 400;
+}
 
 html[data-theme="dark"] .chat-panel { background: #18181b; color: #f3f4f6; border-color: #52525b; }
 html[data-theme="dark"] .chat-panel__header { background: #000; }

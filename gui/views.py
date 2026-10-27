@@ -16,7 +16,7 @@ template.
 import re
 
 from django.contrib import messages
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse
 
 from app import schedule_ops
 from django.shortcuts import redirect, render
@@ -120,11 +120,7 @@ def config_new(request):
         except ControllerError as error:
             _attach_errors(form, error)
         else:
-            messages.success(
-                request,
-                "Started a new configuration. It begins with one placeholder room, course, "
-                "faculty member and class pattern; edit or replace them.",
-            )
+            messages.success(request, config_controller.STARTED_NEW)
             return redirect("gui:config_editor")
     return _render_config_editor(request, new_form=form)
 
@@ -146,16 +142,18 @@ def config_load(request):
 
 
 def config_save(request):
-    """Prepare a snapshot; only a later browser write acknowledgement marks it saved."""
+    """Validate, then send the configuration as a standard file download (Section 9).
+
+    The Save button on this page and the chat's Save JSON button both post here, so there is one export.
+    `filename` is optional (the chat's "save it as fall")."""
     if request.method != "POST":
         return redirect("gui:config_editor")
     try:
-        prepared = config_controller.prepare_save(request, request.POST.get("filename") or None)
+        filename, content = config_controller.save_configuration(request, request.POST.get("filename") or None)
     except ControllerError as error:
-        return JsonResponse({"ok": False, "error": error.message}, status=400)
-    response = JsonResponse(prepared)
-    response["Cache-Control"] = "no-store"
-    return response
+        report = {"heading": "The configuration was not saved.", "items": [item.message for item in error.errors]}
+        return _render_config_editor(request, report=report)
+    return download_response(filename, content, "application/json; charset=utf-8", download_token(request))
 
 
 def config_validate(request):

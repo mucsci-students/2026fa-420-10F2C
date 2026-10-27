@@ -72,7 +72,7 @@
         clearInterval(timer);
         clearCookie(TOKEN_COOKIE);
         reset(form);
-        showStatus("<strong>Download started.</strong> Your browser shows where the file was saved.");
+        showStatus("<strong>Download started.</strong> Your browser decides where the file goes; this app can't confirm it was saved.");
       } else if (Date.now() - started > GIVE_UP_MS) {
         clearInterval(timer);
         reset(form);

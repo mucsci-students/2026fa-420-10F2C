@@ -12,7 +12,10 @@
     gui:assistant_ask (gui/views_ai.py, which hands it to gui/ai/service.py); it never sees or
     sends an API key.
 {% endcomment %}
-<div class="chat-widget" data-chat>
+<div class="chat-widget" data-chat
+     data-new-confirm="{% url 'gui:config_new_confirm' %}"
+     data-new-cancel="{% url 'gui:config_new_cancel' %}"
+     data-config-editor="{% url 'gui:config_editor' %}">
     <section id="chat-panel" class="chat-panel" role="dialog" aria-labelledby="chat-title" hidden>
         <header class="chat-panel__header">
             <h2 id="chat-title" class="chat-panel__title">AI assistant</h2>
@@ -38,4 +41,9 @@
         <button type="button" class="chat-hide" data-chat-hide aria-label="Hide AI assistant button" title="Hide (slides to the side)" hidden>&rsaquo;</button>
     </div>
     <button type="button" class="chat-tab" data-chat-show aria-label="Show AI assistant button" title="Show AI assistant" hidden>&lsaquo;</button>
+    {# The chat's Save JSON button submits this. It posts to the same view as the Configuration Editor's Save button. #}
+    <form id="config-export-form" method="post" action="{% url 'gui:config_save' %}" data-loading="Starting the download…" data-loading-download hidden>
+        {% csrf_token %}
+        <input type="hidden" name="filename" value="">
+    </form>
 </div>

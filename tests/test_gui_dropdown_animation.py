@@ -48,7 +48,7 @@ def test_every_page_with_these_dropdowns_loads_the_script_exactly_once(client, u
 
 def test_the_script_is_deferred_so_it_never_blocks_the_page(client):
     html = page(client.get(PAGES[0]))
-    assert SCRIPT_TAG in html and "dropdowns.js" not in html.split("</head>")[0]
+    assert SCRIPT_TAG in html and "dropdowns.js" not in html.split("<body>")[0]
 
 
 def test_the_script_file_is_found_by_the_static_files_finder():

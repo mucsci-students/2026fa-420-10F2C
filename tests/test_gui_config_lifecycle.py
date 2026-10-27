@@ -124,13 +124,13 @@ class TestNew:
 
 
 class TestSave:
-    def test_returns_json_named_after_the_loaded_file_without_clearing_the_flag(self, session):
+    def test_returns_json_named_after_the_loaded_file_and_clears_the_flag(self, session):
         session.config_name = "fall.json"
         session.dirty = True
         filename, content = ctrl.save_configuration(None)
         assert filename == "fall.json"
         assert "config" in json.loads(content)
-        assert session.dirty is True
+        assert session.dirty is False
 
     def test_uses_a_default_name_when_the_config_has_none(self, empty_session):
         empty_session.new_config()
@@ -286,16 +286,15 @@ def test_starting_a_new_configuration_with_nothing_to_lose_needs_no_confirmation
     assert "Started a new configuration" in page(response)
 
 
-def test_save_prepares_the_configuration_without_clearing_the_unsaved_flag(client):
+def test_save_downloads_the_configuration_and_clears_the_unsaved_flag(client):
     client.get(EDITOR_URL)
     browser_session().dirty = True
     response = client.post(SAVE_URL)
     assert response.status_code == 200
-    prepared = response.json()
-    assert prepared["filename"].endswith(".json")
-    assert "config" in json.loads(prepared["content"])
-    assert prepared["token"]
-    assert browser_session().dirty is True
+    assert "attachment" in response["Content-Disposition"]
+    assert ".json" in response["Content-Disposition"]
+    assert "config" in json.loads(response.content)
+    assert browser_session().dirty is False
 
 
 def test_save_is_post_only(client):

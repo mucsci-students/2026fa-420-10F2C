@@ -11,7 +11,7 @@
 <h2 id="current-configuration" class="section-title">Current configuration</h2>
 {% if has_config %}
 <div class="status-card{% if dirty %} status-card--dirty{% endif %}">
-    <p class="status-line" role="status" data-configuration-status>
+    <p class="status-line" role="status">
         {% if name %}Loaded from or saved as <strong>{{ name }}</strong>.{% else %}Not loaded from a file.{% endif %}
         {% if dirty %}<strong>Unsaved changes.</strong> Save the configuration to keep them.{% else %}No unsaved changes.{% endif %}
     </p>
@@ -71,17 +71,20 @@
     <section class="card" aria-labelledby="save-validate">
         <h3 id="save-validate" class="card__title">Save and validate</h3>
         <p class="help">
-            Saving checks the whole configuration, then lets you choose a JSON file in your browser's Save dialog.
-            You must confirm the target before writing; saved status updates only after the write finishes.
-            This requires a browser supporting the File System Access API, such as desktop Chrome or Edge,
-            on localhost or HTTPS. Validating re-checks every rule without saving.
+            Saving checks the whole configuration first, then downloads it as a JSON file. Your browser decides where
+            it goes and what happens if a file with that name exists, and this app cannot tell whether the download
+            finished. Validating re-checks every rule without saving.
         </p>
         <div class="button-row">
-            <form method="post" action="{% url 'gui:config_save' %}" data-configuration-save>
+            <form method="post" action="{% url 'gui:config_save' %}" data-loading="Loading…" data-loading-download>
                 {% csrf_token %}
+                <div class="field">
+                    <label for="export-filename">File name</label>
+                    <input type="text" id="export-filename" name="filename" value="{{ export_name }}" maxlength="{{ max_filename_length }}" pattern="{{ filename_pattern }}" title="A file name only, with no folders. .json is added if it is missing." autocomplete="off"{% if not has_config %} disabled{% endif %}>
+                    <p class="help">A file name only, with no folders; .json is added if it is missing.</p>
+                </div>
                 <button type="submit" class="btn btn-primary"{% if not has_config %} disabled{% endif %}>Save configuration</button>
             </form>
-            <noscript>Saving requires JavaScript and a supported browser. Your configuration has not been saved.</noscript>
             <form method="post" action="{% url 'gui:config_validate' %}" data-loading="Validating…">
                 {% csrf_token %}
                 <button type="submit" class="btn"{% if not has_config %} disabled{% endif %}>Validate configuration</button>

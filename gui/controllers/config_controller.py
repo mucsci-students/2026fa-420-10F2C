@@ -24,7 +24,6 @@ from time import monotonic
 from scheduler.config import CombinedConfig, ValidationError
 
 from app.commands.configuration import revalidate
-from app.history import ConfigHistory
 from app.session import ConfigError
 from gui.controllers.common import require_config
 from gui.controllers.errors import ControllerError, FieldError, describe_problems
@@ -80,6 +79,9 @@ def describe_configuration(request) -> dict:
         "has_config": config is not None,
         "dirty": dirty,
         "name": getattr(session, "config_name", None),
+        "export_name": _download_name(getattr(session, "config_name", None)),  # what Save would call the file
+        "filename_pattern": FILENAME_PATTERN,
+        "max_filename_length": MAX_FILENAME_LENGTH,
         "schedule_count": schedule_count,
         "counts": {},
         "discard_note": discard_note(dirty, schedule_count),
@@ -159,8 +161,28 @@ def _download_name(name: str | None) -> str:
     return cleaned if cleaned.lower().endswith(".json") else f"{cleaned}.json"
 
 
-def save_configuration(request) -> tuple[str, str]:
-    """Validate and serialize without claiming that a file has been written."""
+# What a file name may hold. The same pattern is put on both file name fields (the editor's and the
+# chat's) so the browser stops a path before anything is sent; the server checks it again.
+FILENAME_PATTERN = r"[^\\\/\x00-\x1f]*"
+MAX_FILENAME_LENGTH = 100
+
+
+def _requested_filename(filename: str | None) -> str | None:
+    """The file name the user typed ("fall"), or None for the default.
+
+    A path is refused rather than quietly rewritten: only the browser decides where a download goes."""
+    name = (filename or "").strip()
+    if not name:
+        return None
+    if name in (".", "..") or not re.fullmatch(FILENAME_PATTERN, name):
+        raise ControllerError("Give a file name, not a path. Your browser decides where a download is saved.")
+    if len(name) > MAX_FILENAME_LENGTH:
+        raise ControllerError(f"That file name is too long. Use at most {MAX_FILENAME_LENGTH} characters.")
+    return _download_name(name)
+
+
+def _validated_session(request):
+    """The session, once its configuration is loaded and valid. Nothing is changed."""
     session = get_session(request)
     require_config(session, "saving it")
     error = revalidate(session)
@@ -169,117 +191,138 @@ def save_configuration(request) -> tuple[str, str]:
             [FieldError(None, "Not saved: the configuration is not valid.")]
             + [FieldError(None, text) for text in describe_problems(error, MAX_PROBLEMS)]
         )
-    filename = _download_name(getattr(session, "config_name", None))
+    return session
+
+
+def _export_name(session, filename: str | None) -> str:
+    return _requested_filename(filename) or _download_name(getattr(session, "config_name", None))
+
+
+def check_export(request, filename: str | None = None) -> str:
+    """The file name an export would use, or a ControllerError saying why it could not happen.
+
+    Changes nothing, so the chat can check a save request before offering its Save JSON button."""
+    return _export_name(_validated_session(request), filename)
+
+
+def save_configuration(request, filename: str | None = None) -> tuple[str, str]:
+    """Validate the configuration, then return (file name, JSON text).
+
+    The one export behind the Configuration Editor's Save button and the chat's Save JSON button.
+    The text comes from the library's own Pydantic serialization. The view sends it as a standard
+    download, so the browser decides where it goes and whether to ask before replacing a file.
+    The app cannot see whether the download finished, so the unsaved-changes flag is cleared once
+    the text is handed over and the pages say that the download was only started.
+    """
+    session = _validated_session(request)
+    name = _export_name(session, filename)
     content = session.dumps()
-    return filename, content
+    session.mark_saved(name)
+    session.remember_config(name, content)
+    return name, content
 
 
-SAVE_LIFETIME = 15 * 60
-MAX_PENDING_SAVES = 8
+# ---------------------------------------------------------------------- #
+#  Starting a new configuration from the chat: warn first, replace only on an explicit click
+# ---------------------------------------------------------------------- #
+STARTED_NEW = (
+    "Started a new configuration. It begins with one placeholder room, course, "
+    "faculty member and class pattern; edit or replace them."
+)
+RESTORE_HINT = (
+    "The configuration you had is kept for this session: use Restore previous configuration "
+    "in the Configuration Editor to bring it back, with its schedules."
+)
+NEW_CONFIRM_SECONDS = 600  # a warning stops being confirmable after this long
+_PENDING_NEW_ATTR = "pending_new_configuration"
+NOTHING_WAITING = (
+    "Nothing is waiting for confirmation, so nothing was changed. Ask me to start a new configuration again."
+)
 
 
-@dataclass
-class PreparedSave:
-    filename: str
-    content: str
+@dataclass(frozen=True)
+class PendingReplacement:
+    """What the user was warned about; the confirmation only counts while that is still true."""
+
+    token: str
     config: CombinedConfig
-    history: ConfigHistory
-    version: int
-    expires: float
-    authorized_name: str | None = None
-    completed_name: str | None = None
+    version: int  # the edit-history version of that configuration
+    schedule_count: int
+    created: float
 
 
-def _save_filename(filename: str) -> str:
-    if (
-        not filename.strip()
-        or filename.strip() in (".", "..")
-        or any(char in filename for char in '/\\')
-        or any(ord(char) < 32 for char in filename)
-    ):
-        raise ControllerError("Use a file name, not a path. Choose the destination in the browser's Save dialog.")
-    name = filename.strip()
-    return name if name.lower().endswith(".json") else f"{name}.json"
+@dataclass(frozen=True)
+class NewConfigurationOutcome:
+    started: bool  # True: the new configuration already exists, because nothing would be lost
+    token: str | None = None
+    dirty: bool = False
+    schedule_count: int = 0
+    name: str | None = None
+    export_name: str = DEFAULT_FILENAME  # what Save JSON would call the current configuration's file
 
 
-def _pending_saves(session) -> dict[str, PreparedSave]:
-    pending = getattr(session, "_prepared_saves", {})
-    pending = {token: item for token, item in pending.items() if item.expires > monotonic()}
-    session._prepared_saves = pending
+def request_new_configuration(request) -> NewConfigurationOutcome:
+    """Start a new configuration now when nothing would be lost; otherwise remember what would be
+    lost and return a single-use token. The caller must ask the user before confirming."""
+    state = describe_configuration(request)
+    if not state["discard_note"]:
+        new_configuration(request)
+        return NewConfigurationOutcome(started=True)
+    session = get_session(request)
+    pending = PendingReplacement(
+        token=secrets.token_urlsafe(32),
+        config=session.config,
+        version=session.history.version,
+        schedule_count=state["schedule_count"],
+        created=monotonic(),
+    )
+    setattr(session, _PENDING_NEW_ATTR, pending)  # one at a time: a newer warning replaces an older one
+    return NewConfigurationOutcome(
+        started=False,
+        token=pending.token,
+        dirty=state["dirty"],
+        schedule_count=state["schedule_count"],
+        name=state["name"],
+        export_name=state["export_name"],
+    )
+
+
+def _waiting(session, token: str) -> PendingReplacement:
+    pending = getattr(session, _PENDING_NEW_ATTR, None)
+    if pending is None or not secrets.compare_digest(pending.token, str(token)):
+        raise ControllerError(NOTHING_WAITING)
     return pending
 
 
-def prepare_save(request, filename: str | None = None) -> dict[str, str]:
+def confirm_new_configuration(request, token: str) -> None:
+    """Replace the configuration the user was warned about.
+
+    Single use, and refused when the configuration or the number of schedules is no longer what
+    the warning described. Saving a download in between does not matter: it changes neither."""
     session = get_session(request)
-    name = _save_filename(filename) if filename is not None else None
-    config = require_config(session, "saving it")
-    history = session.history
-    version = history.version
-    default_name, content = save_configuration(request)
-    if session.config is not config or session.history is not history or history.version != version:
-        raise ControllerError("The configuration changed while preparing this save. Request a new save.")
-    pending = _pending_saves(session)
-    if len(pending) >= MAX_PENDING_SAVES:
-        raise ControllerError("Too many pending saves. Finish or cancel an earlier save, or wait 15 minutes.")
-    token = secrets.token_urlsafe(32)
-    pending[token] = PreparedSave(
-        name or default_name, content, config, history,
-        version, monotonic() + SAVE_LIFETIME,
-    )
-    return {"token": token, "filename": name or default_name, "content": content}
+    pending = _waiting(session, token)
+    setattr(session, _PENDING_NEW_ATTR, None)  # used up, whatever happens next
+    if monotonic() - pending.created > NEW_CONFIRM_SECONDS:
+        raise ControllerError(
+            "That warning is too old, so nothing was changed. Ask me to start a new configuration again."
+        )
+    if (
+        session.config is not pending.config
+        or session.history.version != pending.version
+        or len(session.schedules) != pending.schedule_count
+    ):
+        raise ControllerError(
+            "The configuration or schedules changed after I warned you, so nothing was replaced. "
+            "Ask me to start a new configuration again."
+        )
+    new_configuration(request)
 
 
-def _prepared_save(request, token: str) -> PreparedSave:
-    item = _pending_saves(get_session(request)).get(token)
-    if item is None:
-        raise ControllerError("This save has expired or was cancelled. Request a new save.")
-    return item
-
-
-def complete_save(request, token: str, filename: str) -> dict:
-    """Acknowledge a browser-confirmed write; retries never write the file again."""
+def cancel_new_configuration(request, token: str) -> None:
+    """Forget the warning. The configuration and the schedules are not touched."""
     session = get_session(request)
-    item = _prepared_save(request, token)
-    name = _save_filename(filename)
-    if name != filename:
-        raise ControllerError("The saved file name must be a safe JSON filename.")
-    if item.authorized_name != name:
-        raise ControllerError("This target has not been confirmed for this save.")
-    if item.completed_name is not None and item.completed_name != name:
-        raise ControllerError("This save was already completed with a different filename.")
-    if item.completed_name is None:
-        if (
-            session.config is item.config
-            and session.history is item.history
-            and session.history.version == item.version
-            and session.dumps() == item.content
-        ):
-            session.mark_saved(name)
-        session.remember_config(name, item.content)
-        item.completed_name = name
-    return {
-        "ok": True, "filename": name, "dirty": bool(session.dirty),
-        "current_snapshot": session.config is item.config and session.dumps() == item.content,
-    }
-
-
-def begin_save(request, token: str, filename: str) -> None:
-    """Consume the write authorization before the browser touches file contents."""
-    item = _prepared_save(request, token)
-    if item.authorized_name is not None:
-        raise ControllerError("This save has already been authorized. Request a new save instead of writing twice.")
-    name = _save_filename(filename)
-    if name != filename:
-        raise ControllerError("Choose a safe filename ending in .json.")
-    item.authorized_name = name
-
-
-def cancel_save(request, token: str) -> None:
-    session = get_session(request)
-    item = _prepared_save(request, token)
-    if item.completed_name is not None:
-        raise ControllerError("This save has already completed.")
-    del session._prepared_saves[token]
+    _waiting(session, token)
+    setattr(session, _PENDING_NEW_ATTR, None)
 
 
 def saved_config_choices(request) -> list[tuple[str, str]]:
