@@ -511,3 +511,109 @@ def test_a_failed_add_says_nothing_was_changed(roddy, box):
     assert not reply.ok and not reply.changed
     assert "The configuration was not changed." in reply.message
     assert "applied" not in reply.message
+
+
+# ---------------------------------------------------------------------- #
+#  #128: several changes, all or nothing (apply_changes)
+# ---------------------------------------------------------------------- #
+def session(request_):
+    return session_store.get_session(request_)
+
+
+def data(request_):
+    """Plain data (sets compare as sets), for checks after a rollback."""
+    return config(request_).model_dump()
+
+
+def batch(*steps):
+    return {
+        "operations": [
+            {"tool": tool, "arguments": arguments} for tool, arguments in steps
+        ]
+    }
+
+
+def test_apply_changes_is_a_registered_write():
+    tool = TOOLS_BY_NAME["apply_changes"]
+    assert tool.write
+    assert tool.args.model_json_schema()["required"] == ["operations"]
+
+
+def test_apply_changes_applies_every_step(roddy, box):
+    result = box.call(
+        "apply_changes",
+        batch(
+            ("add_room", {"name": "RODDY150", "capacity": 35}),
+            ("update_room", {"name": "RODDY140", "capacity": 45}),
+        ),
+    )
+    assert result.ok and result.changed, result.message
+    assert "All 2 changes were applied together" in result.message
+    assert room(roddy, "RODDY150").capacity == 35
+    assert room(roddy, "RODDY140").capacity == 45
+    assert session(roddy).dirty
+
+
+def test_one_bad_step_rolls_back_the_good_ones(roddy, box):
+    before = data(roddy)
+    history_before = session(roddy).history.state()
+    result = box.call(
+        "apply_changes",
+        batch(
+            ("add_room", {"name": "RODDY150", "capacity": 35}),
+            ("update_room", {"name": "RODDY141", "capacity": 40}),
+            ("update_room", {"name": "RODDY140", "capacity": -10}),
+        ),
+    )
+    assert not result.ok and not result.changed
+    assert "step 3 (update_room) failed" in result.message
+    assert "None of the 3 changes were applied." in result.message
+    assert room(roddy, "RODDY150") is None
+    assert room(roddy, "RODDY141").capacity == 25
+    assert data(roddy) == before
+    assert not session(roddy).dirty
+    history = session(roddy).history.state()
+    assert history["undo_count"] == history_before["undo_count"]
+    assert history["token"] == history_before["token"]
+    assert not history["can_redo"]  # a rolled-back step can't be redone by mistake
+    assert "The configuration was not changed." in service.compose(box.results).message
+
+
+def test_undo_still_works_after_a_combined_change(roddy, box):
+    box.call(
+        "apply_changes",
+        batch(
+            ("add_room", {"name": "RODDY150", "capacity": 35}),
+            ("update_room", {"name": "RODDY140", "capacity": 45}),
+        ),
+    )
+    current = session(roddy)
+    current.history.undo(current)
+    assert room(roddy, "RODDY140").capacity == 30
+    current.history.undo(current)
+    assert room(roddy, "RODDY150") is None
+
+
+def test_a_combined_change_that_changes_nothing_says_so(roddy, box):
+    result = box.call(
+        "apply_changes", batch(("update_room", {"name": "RODDY140", "capacity": 30}))
+    )
+    assert result.ok and not result.changed
+    assert not session(roddy).dirty
+
+
+def test_apply_changes_refuses_deletes_and_lookups(roddy, box):
+    before = snapshot(roddy)
+    result = box.call(
+        "apply_changes",
+        batch(
+            ("add_room", {"name": "RODDY150", "capacity": 35}),
+            ("delete_room", {"name": "RODDY141"}),
+            ("list_rooms", {}),
+        ),
+    )
+    assert not result.ok
+    assert (
+        "delete_room, list_rooms can't be part of a combined change" in result.message
+    )
+    assert snapshot(roddy) == before

@@ -31,6 +31,7 @@ CAPABILITIES = (
     "show you the generation limit and optimizer flags for the run (you can change them), and only start "
     "after you say go ahead. The schedules then appear in the Schedule Viewer. If no configuration is open, "
     "I can create a new one or load one that is available in this session.\n"
+    "- Make several adds and changes as one: either all of them are applied, or none are.\n"
     "- Undo and redo changes, including bringing back something that was deleted (with everything that was "
     "removed with it), and show what changed recently.\n"
     "- Check the configuration for the usual reasons schedule generation finds nothing, and explain a failed run.\n"
@@ -86,8 +87,9 @@ Rules:
 - If the request has nothing to do with course scheduling, say so briefly.
 - The scheduler library decides whether a configuration is valid. When a tool reports a
   problem, pass its explanation on plainly; do not argue with it or try to work around it.
-- Changes: call the matching update_* tool and send only the values that change. Report that
-  something was changed only after its tool confirms it.
+- Changes: call the matching update_* tool and send only the values that change. Send them
+  exactly as the user gave them, even one that looks wrong (a negative capacity): the tool checks
+  it the same way the forms do. Report that something was changed only after its tool confirms it.
 - Deleting is two steps. The delete_* tools only DESCRIBE what a delete would change; nothing is
   deleted. The APPLICATION remembers which delete is waiting, so you never need to know which
   item it was. When the user's message only agrees to go ahead ("confirm", "yes", "do it", "go
@@ -105,7 +107,9 @@ Rules:
   undone change back, call redo_changes. Deleted items come back with everything removed along with them.
 - Several requests in one message: do all of them. Call every tool the message needs in the same turn,
   in the order the user gave, for example "put the room back, then generate a schedule" is
-  undo_changes and then prepare_schedule_generation. Never drop part of a request. The two-step rules
+  undo_changes and then prepare_schedule_generation. Never drop part of a request. When the message
+  asks for two or more adds or updates, put all of them in ONE apply_changes call instead, so they are
+  applied together or not at all (do this even if one of them looks invalid). The two-step rules
   still hold: a delete is only described and generation only shows its settings; the user confirms in a
   new message.
 - Why a run failed, or "check the configuration" / "what is wrong with it": call

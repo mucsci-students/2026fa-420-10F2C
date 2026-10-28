@@ -29,9 +29,11 @@ import logging
 import threading
 from collections.abc import Iterable
 from dataclasses import replace
+from typing import Any
 
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from app.memento import ConfigOriginator, MementoError
 from gui.ai.base import (
     NO_CONFIG_MESSAGE,
     UNDO_CHIP,
@@ -540,6 +542,103 @@ def add_class_pattern(request, args: AddPatternArgs) -> str:
 
 
 # ---------------------------------------------------------------------- #
+#  Several changes as one (#128) -- all of them, or none of them
+# ---------------------------------------------------------------------- #
+BATCH_PREFIXES = (
+    "add_",
+    "update_",
+)  # deletes need their own confirmation, so they stay out
+MAX_BATCH = 20  # most steps one apply_changes call may hold
+
+
+class OperationArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tool: str = Field(description='The add_ or update_ tool to run, e.g. "update_room"')
+    arguments: dict[str, Any] = Field(
+        default_factory=dict, description="That tool's arguments"
+    )
+
+
+class ApplyChangesArgs(BaseModel):
+    operations: list[OperationArgs] = Field(
+        min_length=1,
+        max_length=MAX_BATCH,
+        description="The changes, in order. They are applied all together, or not at all",
+    )
+
+
+def _batch_tools() -> dict[str, AiTool]:
+    return {
+        tool.name: tool
+        for tool in TOOLS
+        if tool.write and tool.name.startswith(BATCH_PREFIXES)
+    }
+
+
+def _roll_back(session, memento, checkpoint, dirty_before: bool) -> None:
+    """Put the configuration, the undo history and the unsaved flag back to how
+    they were before the first step (the memento was taken at that moment)."""
+    try:
+        ConfigOriginator(session.config).restore(memento)
+    except MementoError as error:
+        logger.error("apply_changes could not roll back: %s", error)
+        raise ControllerError(
+            "A step failed and the earlier steps could not be taken back automatically. "
+            "Check the History page and undo them there."
+        ) from error
+    if checkpoint is not None:
+        session.history.rewind_to(checkpoint)
+    session.dirty = dirty_before
+
+
+def apply_changes(request, args: ApplyChangesArgs) -> str:
+    """Run several add/update tools as ONE change (#128).
+
+    A memento of the whole configuration (app/memento.py) is taken before the
+    first step. If any step fails, the memento is restored and the history is
+    rewound (app/history.py checkpoint / rewind_to), so nothing is half-applied
+    and Undo still matches what the user sees. The steps run through a second
+    ToolBox, so each one gets exactly the checks it gets on its own.
+    """
+    allowed = _batch_tools()
+    refused = [
+        operation.tool for operation in args.operations if operation.tool not in allowed
+    ]
+    if refused:
+        raise ControllerError(
+            f"{_join(dict.fromkeys(refused))} can't be part of a combined change. "
+            "Only add_ and update_ actions can; deletes are confirmed one at a time."
+        )
+    session = get_session(request)
+    config = require_config(session, "making changes")
+    memento = ConfigOriginator(
+        config
+    ).create_memento()  # every part, before anything changes
+    history = getattr(session, "history", None)
+    checkpoint = history.checkpoint() if history is not None else None
+    dirty_before = session.dirty
+
+    steps = ToolBox(request, allowed.values())
+    done: list[str] = []
+    edited = False
+    for number, operation in enumerate(args.operations, start=1):
+        result = steps.call(operation.tool, operation.arguments)
+        if not result.ok:
+            _roll_back(session, memento, checkpoint, dirty_before)
+            # The step's own message already starts with "Could not ...".
+            raise ControllerError(
+                f"step {number} ({operation.tool}) failed. {result.message} "
+                f"None of the {_plural(len(args.operations), 'change')} were applied."
+            )
+        edited = edited or result.changed
+        done.append(f"{number}. {result.message}")
+    text = "\n".join(
+        [f"All {_plural(len(done), 'change')} were applied together:"] + done
+    )
+    return text if edited else Unchanged(text)
+
+
+# ---------------------------------------------------------------------- #
 #  The registry: every tool the model is offered, in one place
 # ---------------------------------------------------------------------- #
 TOOLS: tuple[AiTool, ...] = (
@@ -649,6 +748,14 @@ TOOLS: tuple[AiTool, ...] = (
         write=True,
     ),
     *CHANGE_TOOLS,
+    AiTool(
+        "apply_changes",
+        "Make several add_ or update_ changes as ONE change: either all of them are applied, or none are. "
+        "Use it whenever one message asks for more than one add or update.",
+        ApplyChangesArgs,
+        apply_changes,
+        write=True,
+    ),
     *GENERATION_TOOLS,
     *UNDO_TOOLS,
     *DIAGNOSE_TOOLS,
