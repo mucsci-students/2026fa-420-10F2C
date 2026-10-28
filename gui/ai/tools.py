@@ -705,11 +705,17 @@ class ToolBox:
             )
         except Exception:
             logger.exception("AI tool %s failed unexpectedly", name)
-            return self._record(ToolResult(name, False, UNEXPECTED_MESSAGE, write=tool.write))
+            return self._record(
+                ToolResult(name, False, UNEXPECTED_MESSAGE, write=tool.write)
+            )
         action = message.action if isinstance(message, BrowserAction) else None
         text = message.message if isinstance(message, BrowserAction) else message
         edited = tool.write and not isinstance(message, Unchanged)
-        return self._record(ToolResult(name, True, text, changed=edited, write=tool.write, action=action))
+        return self._record(
+            ToolResult(
+                name, True, text, changed=edited, write=tool.write, action=action
+            )
+        )
 
     def invalid(self, name: str, error: Exception) -> ToolResult:
         """Record arguments LangChain already rejected (wrong types, missing values)."""

@@ -71,7 +71,11 @@ def start_new_configuration(request, args: NoArgs) -> BrowserAction:
         f"{config_controller.RESTORE_HINT} Choose Save JSON to download the current configuration first "
         "(you can change its file name), Discard and Continue to start the new one, or Cancel to keep "
         f"everything as it is. Nothing changes until you choose. {DOWNLOAD_NOTE}",
-        {"kind": "replace", "token": outcome.token, **_file_name_field(outcome.export_name)},
+        {
+            "kind": "replace",
+            "token": outcome.token,
+            **_file_name_field(outcome.export_name),
+        },
     )
 
 

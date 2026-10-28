@@ -155,7 +155,9 @@ def config_save(request):
     if request.method != "POST":
         return redirect("gui:config_editor")
     try:
-        filename, content = config_controller.save_configuration(request, request.POST.get("filename") or None)
+        filename, content = config_controller.save_configuration(
+            request, request.POST.get("filename") or None
+        )
     except ControllerError as error:
         report = {
             "heading": "The configuration was not saved.",

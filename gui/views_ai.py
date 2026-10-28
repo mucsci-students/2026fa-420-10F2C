@@ -45,7 +45,11 @@ def assistant_ask(request):
             "changed": reply.changed,
             "busy": reply.busy,
             "dirty": _dirty(request),
-            "actions": [result.action for result in reply.results if result.ok and result.action is not None],
+            "actions": [
+                result.action
+                for result in reply.results
+                if result.ok and result.action is not None
+            ],
         },
         status=409 if reply.busy else 200,
     )
@@ -55,9 +59,19 @@ def assistant_ask(request):
 def configuration_new_confirm(request):
     """The chat's "Discard and Continue": replace the configuration the user was warned about."""
     try:
-        config_controller.confirm_new_configuration(request, request.POST.get("token", ""))
+        config_controller.confirm_new_configuration(
+            request, request.POST.get("token", "")
+        )
     except ControllerError as error:
-        return _json({"ok": False, "message": error.message, "changed": False, "dirty": _dirty(request)}, 400)
+        return _json(
+            {
+                "ok": False,
+                "message": error.message,
+                "changed": False,
+                "dirty": _dirty(request),
+            },
+            400,
+        )
     return _json(
         {
             "ok": True,
@@ -72,9 +86,19 @@ def configuration_new_confirm(request):
 def configuration_new_cancel(request):
     """The chat's "Cancel": forget the warning. Nothing about the configuration changes."""
     try:
-        config_controller.cancel_new_configuration(request, request.POST.get("token", ""))
+        config_controller.cancel_new_configuration(
+            request, request.POST.get("token", "")
+        )
     except ControllerError as error:
-        return _json({"ok": False, "message": error.message, "changed": False, "dirty": _dirty(request)}, 400)
+        return _json(
+            {
+                "ok": False,
+                "message": error.message,
+                "changed": False,
+                "dirty": _dirty(request),
+            },
+            400,
+        )
     return _json(
         {
             "ok": True,

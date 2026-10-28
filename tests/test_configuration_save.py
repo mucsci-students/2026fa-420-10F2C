@@ -67,7 +67,9 @@ def test_newer_edits_remain_unsaved_after_snapshot_completion(client):
     request = type("Request", (), {"session": client.session})()
     rooms.add_room(request, {"name": "NEW ROOM", "capacity": 30})
     client.post(BEGIN, {"token": prepared["token"], "filename": "snapshot.json"})
-    result = client.post(COMPLETE, {"token": prepared["token"], "filename": "snapshot.json"})
+    result = client.post(
+        COMPLETE, {"token": prepared["token"], "filename": "snapshot.json"}
+    )
     assert result.status_code == 200
     assert result.json()["dirty"] is True
     assert session.dirty
@@ -94,7 +96,12 @@ def test_cancel_invalidates_snapshot_without_clearing_dirty(client):
     current_session().dirty = True
     prepared = client.post(PREPARE).json()
     assert client.post(CANCEL, {"token": prepared["token"]}).status_code == 200
-    assert client.post(COMPLETE, {"token": prepared["token"], "filename": "fall.json"}).status_code == 400
+    assert (
+        client.post(
+            COMPLETE, {"token": prepared["token"], "filename": "fall.json"}
+        ).status_code
+        == 400
+    )
     assert current_session().dirty
 
 
@@ -125,12 +132,25 @@ def test_expired_and_other_session_tokens_are_rejected(client, monkeypatch):
     prepared = client.post(PREPARE).json()
     other = Client()
     other.get("/configuration/")
-    assert other.post(COMPLETE, {"token": prepared["token"], "filename": "fall.json"}).status_code == 400
+    assert (
+        other.post(
+            COMPLETE, {"token": prepared["token"], "filename": "fall.json"}
+        ).status_code
+        == 400
+    )
     monkeypatch.setattr(controller, "monotonic", lambda: float("inf"))
-    assert client.post(COMPLETE, {"token": prepared["token"], "filename": "fall.json"}).status_code == 400
+    assert (
+        client.post(
+            COMPLETE, {"token": prepared["token"], "filename": "fall.json"}
+        ).status_code
+        == 400
+    )
 
 
-@pytest.mark.parametrize("filename", ["../secret.json", "/tmp/file.json", r"C:\temp\file.json", "bad\nname.json"])
+@pytest.mark.parametrize(
+    "filename",
+    ["../secret.json", "/tmp/file.json", r"C:\temp\file.json", "bad\nname.json"],
+)
 def test_destinations_are_selected_by_picker_not_server_paths(client, filename):
     client.get("/configuration/")
     assert client.post(PREPARE, {"filename": filename}).status_code == 400
@@ -156,7 +176,12 @@ def test_pending_saves_are_bounded(client):
 
 def test_unicode_filename_is_preserved(client):
     client.get("/configuration/")
-    assert client.post(PREPARE, {"filename": "automne-\u00e9t\u00e9.json"}).json()["filename"] == "automne-\u00e9t\u00e9.json"
+    assert (
+        client.post(PREPARE, {"filename": "automne-\u00e9t\u00e9.json"}).json()[
+            "filename"
+        ]
+        == "automne-\u00e9t\u00e9.json"
+    )
 
 
 @pytest.mark.parametrize("url", [BEGIN, COMPLETE, CANCEL])
@@ -165,8 +190,12 @@ def test_save_endpoints_require_post_and_csrf(client, url):
     assert Client(enforce_csrf_checks=True).post(url).status_code == 403
 
 
-@pytest.mark.parametrize("text", ["Save my configuration", "Download my config", "Save as fall.json"])
-def test_chat_exposes_real_save_action_without_claiming_completion(client, monkeypatch, text):
+@pytest.mark.parametrize(
+    "text", ["Save my configuration", "Download my config", "Save as fall.json"]
+)
+def test_chat_exposes_real_save_action_without_claiming_completion(
+    client, monkeypatch, text
+):
     class Runner:
         def run(self, prompt, toolbox):
             assert prompt == text
@@ -209,7 +238,8 @@ def test_save_after_existing_create_or_load_workflow(client, monkeypatch, workfl
         response = client.post("/configuration/new/", {})
     else:
         uploaded = SimpleUploadedFile(
-            "loaded.json", Path("app/examples/config_example.json").read_bytes(),
+            "loaded.json",
+            Path("app/examples/config_example.json").read_bytes(),
             content_type="application/json",
         )
         response = client.post("/configuration/load/", {"load-config_file": uploaded})
@@ -218,7 +248,9 @@ def test_save_after_existing_create_or_load_workflow(client, monkeypatch, workfl
     assert json.loads(prepared["content"]) == json.loads(current_session().dumps())
 
 
-def test_chat_create_load_actions_do_not_bypass_discard_confirmation(client, monkeypatch):
+def test_chat_create_load_actions_do_not_bypass_discard_confirmation(
+    client, monkeypatch
+):
     class Runner:
         def run(self, prompt, toolbox):
             toolbox.call("configuration_actions", {})
@@ -229,6 +261,8 @@ def test_chat_create_load_actions_do_not_bypass_discard_confirmation(client, mon
     session = current_session()
     session.dirty = True
     before = session.dumps()
-    result = client.post("/assistant/ask/", {"message": "Create a configuration"}).json()
+    result = client.post(
+        "/assistant/ask/", {"message": "Create a configuration"}
+    ).json()
     assert result["actions"] == [{"kind": "configuration"}]
     assert session.dumps() == before and session.dirty

@@ -22,8 +22,16 @@ urlpatterns = [
     path("configuration/new/", views.config_new, name="config_new"),
     path("configuration/load/", views.config_load, name="config_load"),
     path("configuration/save/", views.config_save, name="config_save"),
-    path("configuration/new/confirm/", views_ai.configuration_new_confirm, name="config_new_confirm"),
-    path("configuration/new/cancel/", views_ai.configuration_new_cancel, name="config_new_cancel"),
+    path(
+        "configuration/new/confirm/",
+        views_ai.configuration_new_confirm,
+        name="config_new_confirm",
+    ),
+    path(
+        "configuration/new/cancel/",
+        views_ai.configuration_new_cancel,
+        name="config_new_cancel",
+    ),
     path("configuration/validate/", views.config_validate, name="config_validate"),
     path("configuration/history/undo/", views_history.undo, name="history_undo"),
     path("configuration/history/redo/", views_history.redo, name="history_redo"),

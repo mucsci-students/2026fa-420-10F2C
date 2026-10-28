@@ -79,7 +79,9 @@ def describe_configuration(request) -> dict:
         "has_config": config is not None,
         "dirty": dirty,
         "name": getattr(session, "config_name", None),
-        "export_name": _download_name(getattr(session, "config_name", None)),  # what Save would call the file
+        "export_name": _download_name(
+            getattr(session, "config_name", None)
+        ),  # what Save would call the file
         "filename_pattern": FILENAME_PATTERN,
         "max_filename_length": MAX_FILENAME_LENGTH,
         "schedule_count": schedule_count,
@@ -185,9 +187,13 @@ def _requested_filename(filename: str | None) -> str | None:
     if not name:
         return None
     if name in (".", "..") or not re.fullmatch(FILENAME_PATTERN, name):
-        raise ControllerError("Give a file name, not a path. Your browser decides where a download is saved.")
+        raise ControllerError(
+            "Give a file name, not a path. Your browser decides where a download is saved."
+        )
     if len(name) > MAX_FILENAME_LENGTH:
-        raise ControllerError(f"That file name is too long. Use at most {MAX_FILENAME_LENGTH} characters.")
+        raise ControllerError(
+            f"That file name is too long. Use at most {MAX_FILENAME_LENGTH} characters."
+        )
     return _download_name(name)
 
 
@@ -208,7 +214,9 @@ def _validated_session(request):
 
 
 def _export_name(session, filename: str | None) -> str:
-    return _requested_filename(filename) or _download_name(getattr(session, "config_name", None))
+    return _requested_filename(filename) or _download_name(
+        getattr(session, "config_name", None)
+    )
 
 
 def check_export(request, filename: str | None = None) -> str:
@@ -248,9 +256,7 @@ RESTORE_HINT = (
 )
 NEW_CONFIRM_SECONDS = 600  # a warning stops being confirmable after this long
 _PENDING_NEW_ATTR = "pending_new_configuration"
-NOTHING_WAITING = (
-    "Nothing is waiting for confirmation, so nothing was changed. Ask me to start a new configuration again."
-)
+NOTHING_WAITING = "Nothing is waiting for confirmation, so nothing was changed. Ask me to start a new configuration again."
 
 
 @dataclass(frozen=True)
@@ -271,7 +277,9 @@ class NewConfigurationOutcome:
     dirty: bool = False
     schedule_count: int = 0
     name: str | None = None
-    export_name: str = DEFAULT_FILENAME  # what Save JSON would call the current configuration's file
+    export_name: str = (
+        DEFAULT_FILENAME  # what Save JSON would call the current configuration's file
+    )
 
 
 def request_new_configuration(request) -> NewConfigurationOutcome:
@@ -289,7 +297,9 @@ def request_new_configuration(request) -> NewConfigurationOutcome:
         schedule_count=state["schedule_count"],
         created=monotonic(),
     )
-    setattr(session, _PENDING_NEW_ATTR, pending)  # one at a time: a newer warning replaces an older one
+    setattr(
+        session, _PENDING_NEW_ATTR, pending
+    )  # one at a time: a newer warning replaces an older one
     return NewConfigurationOutcome(
         started=False,
         token=pending.token,

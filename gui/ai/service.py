@@ -161,7 +161,12 @@ def _run(request, text: str) -> Reply:
         logger.warning("AI request failed: %s", type(error).__name__)
         if toolbox.results:
             reply = compose(toolbox.results)
-            return Reply(ok=False, message=f"{reply.message}\n{SERVICE_FAILED}", changed=reply.changed, results=reply.results)
+            return Reply(
+                ok=False,
+                message=f"{reply.message}\n{SERVICE_FAILED}",
+                changed=reply.changed,
+                results=reply.results,
+            )
         return Reply(ok=False, message=f"{SERVICE_FAILED} {UNCHANGED_NOTE}")
     reply = compose(toolbox.results, model_text)
     _remember(request, text, reply, limit)
