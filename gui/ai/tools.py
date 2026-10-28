@@ -26,6 +26,7 @@ controller checks as the Add forms, duplicate names included.
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Iterable
 from dataclasses import replace
 
@@ -33,6 +34,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from gui.ai.base import (
     NO_CONFIG_MESSAGE,
+    UNDO_CHIP,
     WEEKDAYS,
     AiTool,
     AvailabilityArgs,
@@ -52,10 +54,12 @@ from gui.ai.base import (
     _require,
     _resolve,
     find_name,
+    not_found,
 )
 from gui.ai.changes import CHANGE_TOOLS
 from gui.ai.lifecycle import LIFECYCLE_TOOLS
 from gui.ai.prompt import CAPABILITIES
+from gui.ai.undo import UNDO_TOOLS
 from gui.constants import DAY_NAMES
 from gui.controllers import (
     config_controller,
@@ -231,7 +235,7 @@ def get_room(request, args: NameArgs) -> str:
     items = _require(rooms.describe_rooms(request))["rooms"]
     found = find_name(args.name, [room["name"] for room in items])
     if found is None:
-        return f"No room named '{args.name}' exists."
+        return not_found("room", args.name, [room["name"] for room in items])
     room = next(room for room in items if room["name"] == found)
     used = f" Used by {_join(room['referenced_by'])}." if room["referenced_by"] else ""
     return f"Room {room['name']}: {_place(room)}.{used}"
@@ -250,7 +254,7 @@ def get_lab(request, args: NameArgs) -> str:
     items = _require(labs.describe_labs(request))["labs"]
     found = find_name(args.name, [lab["name"] for lab in items])
     if found is None:
-        return f"No lab named '{args.name}' exists."
+        return not_found("lab", args.name, [lab["name"] for lab in items])
     lab = next(lab for lab in items if lab["name"] == found)
     used = f" Used by {_join(lab['referenced_by'])}." if lab["referenced_by"] else ""
     return f"Lab {lab['name']}: {_place(lab)}.{used}"
@@ -272,7 +276,8 @@ def get_course(request, args: CourseArgs) -> str:
     rows = _require(courses.describe_courses(request))["courses"]
     found = find_name(args.course_id, sorted({row["course_id"] for row in rows}))
     if found is None:
-        return f"No course '{args.course_id}' exists."
+        ids = sorted({row["course_id"] for row in rows})
+        return not_found("course", args.course_id, ids).replace(" named '", " '", 1)
     sections = [row for row in rows if row["course_id"] == found]
     if len(sections) == 1:
         return _course_line(sections[0]) + "."
@@ -296,7 +301,9 @@ def get_faculty(request, args: NameArgs) -> str:
     people = _require(faculty.describe_faculty(request))["faculty"]
     found = find_name(args.name, [person["name"] for person in people])
     if found is None:
-        return f"No faculty member named '{args.name}' exists."
+        return not_found(
+            "faculty member", args.name, [person["name"] for person in people]
+        )
     person = next(person for person in people if person["name"] == found)
     available = (
         "; ".join(f"{row['day']} {row['ranges']}" for row in person["availability"])
@@ -643,6 +650,9 @@ TOOLS: tuple[AiTool, ...] = (
         write=True,
     ),
     *CHANGE_TOOLS,
+    *GENERATION_TOOLS,
+    *UNDO_TOOLS,
+    *DIAGNOSE_TOOLS,
 )
 
 TOOLS_BY_NAME = {tool.name: tool for tool in TOOLS}
@@ -678,8 +688,32 @@ class ToolBox:
         self.results: list[ToolResult] = []
         # The last few chat messages ({"role", "content"}) the runner may send along (story 6).
         self.history: list[dict] = list(history)
+        # The model may ask for several tools in one turn and LangChain runs them on threads: one at a time,
+        # so "undo that, then generate" never interleaves and the results stay in a clear order.
+        self._lock = threading.RLock()
 
     def call(self, name: str, arguments: dict | None = None) -> ToolResult:
+        """Run one tool, and note whether it replaced the configuration or the schedules in the viewer."""
+        with self._lock:
+            return self._locked_call(name, arguments)
+
+    def _locked_call(self, name: str, arguments: dict | None) -> ToolResult:
+        session = get_session(self.request)
+        config_before, schedules_before = session.config, tuple(session.schedules)
+        result = self._call(name, arguments)
+        replaced = session.config is not config_before
+        schedules = tuple(session.schedules)
+        schedules_changed = len(schedules) != len(schedules_before) or any(
+            now is not then for now, then in zip(schedules, schedules_before)
+        )
+        if replaced or schedules_changed:
+            result = replace(
+                result, config_replaced=replaced, schedules_changed=schedules_changed
+            )
+            self.results[-1] = result  # _call recorded exactly one result
+        return result
+
+    def _call(self, name: str, arguments: dict | None = None) -> ToolResult:
         tool = self.tools.get(name)
         if tool is None:
             return self._record(
@@ -700,8 +734,17 @@ class ToolBox:
         try:
             message = tool.handler(self.request, args)
         except ControllerError as error:
+            advice = tuple(
+                getattr(error, "suggestions", ())
+            )  # quick replies a failure can offer ("Undo the last change")
             return self._record(
-                ToolResult(name, False, _failure(tool, error.message), write=tool.write)
+                ToolResult(
+                    name,
+                    False,
+                    _failure(tool, error.message),
+                    write=tool.write,
+                    suggestions=advice,
+                )
             )
         except Exception:
             logger.exception("AI tool %s failed unexpectedly", name)

@@ -1,11 +1,11 @@
-{% load static %}
+{% load static assets %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Scheduler{% endblock %}</title>
-    <link rel="stylesheet" href="{% static 'gui/css/style.css' %}">
+    <link rel="stylesheet" href="{% versioned 'gui/css/style.css' %}">
     <script src="{% static 'gui/js/theme.js' %}"></script>
     {% block styles %}{% endblock %}
 </head>

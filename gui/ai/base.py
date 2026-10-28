@@ -6,7 +6,8 @@ delete tools. Both build their tools from the same few things, which live here s
 has to import the other:
 
     ToolResult / AiTool   what a tool call reports, and how a tool is described
-    find_name()           finds the item the user meant ("roddy140" -> "RODDY140"), never guessing
+    find_name()           finds the item the user meant ("136" -> "Roddy 136"), asking when two fit
+    not_found()           "No room named 'X' exists. Did you mean ...?"
     _join, _plural, ...   the small wording helpers every tool reply uses
     NoArgs, NameArgs,     argument shapes several tools share
     CourseArgs, AvailabilityArgs
@@ -14,6 +15,7 @@ has to import the other:
 
 from __future__ import annotations
 
+import difflib
 import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -29,6 +31,7 @@ WEEKDAYS = tuple(DAY_NAMES)
 
 
 LOOKUP_PREFIXES = ("list_", "get_", "show_")
+UNDO_CHIP = "Undo the last change"  # the quick reply offered after every real change
 
 
 @dataclass(frozen=True)
@@ -98,15 +101,63 @@ def _without_title(name: str) -> str:
     )
 
 
+# Words that only say what kind of thing a name is ("room 136", "professor Hogg"); they are not part of it.
+_NOISE = frozenset(
+    [
+        "room",
+        "rooms",
+        "lab",
+        "labs",
+        "course",
+        "courses",
+        "section",
+        "sections",
+        "class",
+        "faculty",
+        "professor",
+        "prof",
+        "dr",
+        "mr",
+        "mrs",
+        "ms",
+        "instructor",
+        "teacher",
+        "the",
+        "a",
+        "an",
+        "called",
+        "named",
+    ]
+)
+
+
+def _tokens(text: str) -> list[str]:
+    """Words and numbers of a name, so "Roddy 136" and "RODDY136" both give ["roddy", "136"]."""
+    return re.findall(r"[0-9]+|[^\W\d_]+", str(text).casefold())
+
+
+def _ask_which(wanted: str, fits: list[str]) -> ControllerError:
+    # Never guess between two real items (e.g. "RODDY140" and "Roddy 140").
+    return ControllerError(
+        f"'{wanted}' could mean {_join(fits)}. Say which one you mean."
+    )
+
+
 def find_name(wanted: str, names: Iterable[str]) -> str | None:
     """The existing name the user meant, or None.
 
-    Exact match first, then ignoring case/spaces/punctuation ("roddy140" finds
-    "RODDY140"), then ignoring a title ("Dr. Hogg" finds "Hogg"). A loose
-    match only counts when exactly one name fits; when several fit, a
-    ControllerError asks the user which one they mean, so nothing is guessed.
+    Tried in this order, and the first step that finds anything decides:
+      1. exactly as written;
+      2. ignoring case, spaces and punctuation ("roddy140" finds "RODDY140");
+      3. ignoring a title ("Dr. Hogg" finds "Hogg");
+      4. by its words: "136" or "room 136" finds "Roddy 136", "hogg" finds "Dr. Hogg",
+         "cmsc 140" finds "CMSC 140.01" (every word typed must be a whole word of the name);
+      5. by the start of a word: "hog" finds "Hogg" (letters only, at least three).
+    A loose match only counts when exactly one name fits; when several fit, a ControllerError
+    asks the user which one they mean, so nothing is guessed between real items.
     """
     names = list(names)
+    wanted = str(wanted).strip()
     if wanted in names:
         return wanted
     for loosen in (_key, lambda value: _key(_without_title(value))):
@@ -114,11 +165,56 @@ def find_name(wanted: str, names: Iterable[str]) -> str | None:
         if len(fits) == 1:
             return fits[0]
         if len(fits) > 1:
-            # Never guess between two real items (e.g. "RODDY140" and "Roddy 140").
-            raise ControllerError(
-                f"'{wanted}' could mean {_join(fits)}. Say which one you mean."
+            raise _ask_which(wanted, fits)
+
+    typed = [token for token in _tokens(wanted) if token not in _NOISE]
+    if not typed:
+        return None
+    by_words = [name for name in names if set(typed) <= set(_tokens(name))]
+    if len(by_words) == 1:
+        return by_words[0]
+    if len(by_words) > 1:
+        raise _ask_which(wanted, by_words)
+    if all(token.isalpha() and len(token) >= 3 for token in typed):
+        by_start = [
+            name
+            for name in names
+            if all(
+                any(word.startswith(token) for word in _tokens(name)) for token in typed
             )
+        ]
+        if len(by_start) == 1:
+            return by_start[0]
+        if len(by_start) > 1:
+            raise _ask_which(wanted, by_start)
     return None
+
+
+def suggest(wanted: str, names: Iterable[str], limit: int = 3) -> list[str]:
+    """Existing names that look like what the user typed (a typo, a part of a name), best first."""
+    names = list(names)
+    typed = _key(wanted)
+    if not typed:
+        return []
+    scored = []
+    for name in names:
+        key = _key(name)
+        ratio = difflib.SequenceMatcher(None, typed, key).ratio()
+        if typed in key or key in typed:
+            ratio = max(ratio, 0.8)
+        if ratio >= 0.72:
+            scored.append((ratio, name))
+    return [name for _ratio, name in sorted(scored, key=lambda pair: -pair[0])[:limit]]
+
+
+def not_found(label: str, wanted: str, names: Iterable[str]) -> str:
+    """ "No room named 'X' exists." plus a "Did you mean ...?" when something looks close."""
+    text = f"No {label} named '{str(wanted).strip()}' exists."
+    close = suggest(wanted, names)
+    if close:
+        quoted = [f"'{name}'" for name in close]
+        text += f" Did you mean {quoted[0] if len(quoted) == 1 else ', '.join(quoted[:-1]) + ' or ' + quoted[-1]}?"
+    return text
 
 
 def _resolve(wanted: Iterable[str], names: Iterable[str]) -> list[str]:

@@ -15,6 +15,8 @@ One AI request from start to finish (Sprint 3 user stories 2, 3 and 6).
   * The AI also gets the last few chat messages (AI_HISTORY_MESSAGES, default
     6, 0 turns it off), only so it can understand "yes", "that one" or "make
     it 40 instead". They are never a source of data: the tools are.
+  * Every request and reply is kept in the browser's chat (gui/ai/chats.py), so the panel
+    shows the conversation again after a page change or reload.
   * The reply is built from the tool results, so it only says something
     happened when the application really did it, and it says whether the
     configuration was changed. Plain lookups are for the AI to read; when a
@@ -26,8 +28,9 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
+from gui.ai import chats
 from gui.ai.runner import LangChainRunner, NotConfigured, Runner
 from gui.ai.tools import ToolBox, ToolResult
 from gui.session_store import get_session
@@ -64,6 +67,11 @@ class Reply:
     changed: bool = False
     busy: bool = False
     results: list[ToolResult] = field(default_factory=list)
+    schedules_changed: bool = (
+        False  # the schedules in the Schedule Viewer were replaced or cleared
+    )
+    refresh: bool = False  # the page behind the chat is out of date (a different configuration or schedules)
+    suggestions: tuple[str, ...] = ()  # short replies the chat offers as buttons
 
 
 def get_runner() -> Runner:
@@ -82,7 +90,24 @@ def history_limit() -> int:
 
 
 def compose(results: list[ToolResult], model_text: str = "") -> Reply:
-    """Turn what the tools really did into one plain-language reply."""
+    """Turn what the tools really did into one plain-language reply, plus what the chat should do next:
+    offer quick replies, and say whether the schedules or configuration behind the page were replaced."""
+    reply = _compose(results, model_text)
+    shown = [result for result in results if result.final] or list(results)
+    offered = next(
+        (result.suggestions for result in reversed(shown) if result.suggestions), ()
+    )
+    schedules_changed = any(result.schedules_changed for result in results)
+    replaced = any(result.config_replaced for result in results)
+    return replace(
+        reply,
+        schedules_changed=schedules_changed,
+        refresh=schedules_changed or replaced,
+        suggestions=offered,
+    )
+
+
+def _compose(results: list[ToolResult], model_text: str = "") -> Reply:
     if not results:
         return Reply(ok=bool(model_text), message=model_text or NO_ANSWER)
 
@@ -97,11 +122,14 @@ def compose(results: list[ToolResult], model_text: str = "") -> Reply:
     lines = [result.message for result in shown]
     changed = [result for result in shown if result.changed]
     failed_writes = [result for result in shown if result.write and not result.ok]
-    if changed and failed_writes:
+    unsaved = [
+        result for result in changed if result.note
+    ]  # undo and redo say what they did themselves
+    if unsaved and failed_writes:
         lines.append(PARTLY_SAVED_NOTE)
-    elif changed:
-        lines.append(SAVED_NOTE if len(changed) == 1 else SAVED_NOTE_MANY)
-    elif failed_writes:
+    elif unsaved:
+        lines.append(SAVED_NOTE if len(unsaved) == 1 else SAVED_NOTE_MANY)
+    elif failed_writes and not changed:
         lines.append(UNCHANGED_NOTE)
     return Reply(
         ok=all(result.ok for result in shown),
@@ -123,6 +151,12 @@ def _remember(request, text: str, reply: Reply, limit: int) -> None:
     setattr(session, HISTORY_ATTR, kept[-limit:])
 
 
+def is_busy(request) -> bool:
+    """True while a request of this browser is still running (the chat panel shows it after a page change)."""
+    with _BUSY_LOCK:
+        return id(get_session(request)) in _BUSY
+
+
 def handle_request(request, text: str) -> Reply:
     text = (text or "").strip()
     if not text:
@@ -136,7 +170,19 @@ def handle_request(request, text: str) -> Reply:
             return Reply(ok=False, message=BUSY_MESSAGE, busy=True)
         _BUSY.add(key)
     try:
-        return _run(request, text)
+        session = get_session(request)
+        chats.record(
+            session, "user", text
+        )  # kept at once, so a page change while it runs still shows it
+        reply = _run(request, text)
+        chats.record(
+            session,
+            "assistant" if reply.ok else "error",
+            reply.message,
+            suggestions=reply.suggestions,
+            generated=reply.ok and reply.schedules_changed,
+        )
+        return reply
     finally:
         with _BUSY_LOCK:
             _BUSY.discard(key)

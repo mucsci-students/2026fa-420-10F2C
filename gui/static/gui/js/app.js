@@ -17,6 +17,10 @@
     }
 
     function setUp(input) {
+        if (input.getAttribute("data-filter-ready") === "1") {
+            return;   // set up already (the page content can be swapped in place by the AI chat)
+        }
+        input.setAttribute("data-filter-ready", "1");
         var list = document.querySelector(input.getAttribute("data-filter-input"));
         if (!list) {
             return;
@@ -54,6 +58,9 @@
         var inputs = document.querySelectorAll("[data-filter-input]");
         Array.prototype.forEach.call(inputs, setUp);
     }
+
+    // The AI chat swaps the page content in place after it changes something (js/chat.js).
+    document.addEventListener("scheduler:content-updated", init);
 
     if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", init);

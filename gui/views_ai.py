@@ -16,8 +16,9 @@ The API key stays on the server: the browser only ever sees the reply text.
 
 from __future__ import annotations
 
+from django.contrib import messages
 from django.http import JsonResponse
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from gui.ai import service
 from gui.controllers import config_controller

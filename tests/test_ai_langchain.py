@@ -317,3 +317,85 @@ def test_service_errors_stop_after_a_fixed_number_of_attempts(monkeypatch):
     assert (
         session_store.get_session(request).require_config().model_dump_json() == before
     )
+
+
+def test_generation_is_reviewed_in_one_message_and_run_in_the_next(monkeypatch):
+    from app import schedule_ops
+    from app.schedule_io import Assignment, MeetingTime
+
+    class FakeScheduler:
+        def __init__(self, config):
+            pass
+
+        def get_models(self):
+            for number in range(2):
+                yield [
+                    Assignment(
+                        f"CMSC 14{number}.01",
+                        "Hogg",
+                        "Roddy 136",
+                        None,
+                        (MeetingTime("MON", "09:00", "09:50", 50),),
+                    )
+                ]
+
+    monkeypatch.setattr(schedule_ops, "Scheduler", FakeScheduler)
+    calls = []
+
+    def respond(request):
+        calls.append(json.loads(request.content))
+        if len(calls) == 1:
+            return response(
+                1, tool_calls(("prepare_schedule_generation", {"limit": 2}))
+            )
+        return response(2, tool_calls(("confirm_schedule_generation", {})))
+
+    use(monkeypatch, respond)
+    request = FakeRequest()
+    review = service.handle_request(request, "Generate 2 schedules")
+    assert review.ok and not review.schedules_changed
+    assert "Generation limit: 2" in review.message and review.suggestions == (
+        "Go ahead and generate",
+        "Cancel",
+    )
+    assert session_store.get_session(request).schedules == []
+
+    later = FakeRequest()
+    later.session = request.session  # the next message from the same browser
+    done = service.handle_request(later, "Go ahead")
+    assert (
+        done.ok
+        and done.schedules_changed
+        and done.message.startswith("Generated 2 schedules.")
+    )
+    assert len(session_store.get_session(request).schedules) == 2
+    assert len(calls) == 2  # one model call per message
+    assert {"prepare_schedule_generation", "confirm_schedule_generation"} <= {
+        tool["name"] for tool in calls[0]["tools"]
+    }
+
+
+def test_several_tools_in_one_turn_are_all_carried_out(monkeypatch):
+    """ "Add two rooms" in one message: the model asks for both tools in a single turn and both run."""
+
+    def respond(request):
+        return response(
+            1,
+            tool_calls(
+                ("add_room", {"name": "RODDY150", "capacity": 35}),
+                ("add_room", {"name": "RODDY151", "capacity": 30}),
+            ),
+        )
+
+    use(monkeypatch, respond)
+    request = FakeRequest()
+    reply = service.handle_request(request, "Add RODDY150 (35) and RODDY151 (30)")
+    assert reply.ok and reply.changed
+    assert "Room 'RODDY150' added with capacity 35." in reply.message
+    assert "Room 'RODDY151' added with capacity 30." in reply.message
+    names = {
+        room.name
+        for room in session_store.get_session(request).require_config().config.rooms
+    }
+    assert {"RODDY150", "RODDY151"} <= names
+    assert reply.suggestions == ("Undo the last change",)
