@@ -26,7 +26,13 @@ import re
 
 from django import forms
 
-from gui.constants import DAY_NAMES, OPTIMIZER_FLAG_HELP, OPTIMIZER_FLAGS_INTRO
+from gui.constants import (
+    DAY_NAMES,
+    FILENAME_PATTERN,
+    MAX_FILENAME_LENGTH,
+    OPTIMIZER_FLAG_HELP,
+    OPTIMIZER_FLAGS_INTRO,
+)
 
 # <input type="time"> submits "HH:MM" (or "HH:MM:SS" if a step is set); a plain
 # text fallback in older browsers may send "9:00", which %H:%M also accepts.
@@ -320,6 +326,29 @@ class ConfigLoadForm(ConfirmReplaceMixin, forms.Form):
             ),
             error=f"Tick this box to confirm discarding {discard_note}.",
         )
+
+
+class ConfigSaveForm(forms.Form):
+    """Configuration Editor: the file name box next to Save (Section 9).
+
+    Usability only: the controller makes the name safe and adds .json, and the
+    browser decides where the download goes. The AI chat's Save JSON box has
+    the same limits (gui/constants.py FILENAME_PATTERN / MAX_FILENAME_LENGTH).
+    """
+
+    filename = forms.CharField(
+        label="File name",
+        required=False,
+        max_length=MAX_FILENAME_LENGTH,
+        help_text="Letters, numbers, spaces, dots, dashes and underscores. .json is added if it is missing.",
+        widget=forms.TextInput(
+            attrs={"pattern": FILENAME_PATTERN, "autocomplete": "off"}
+        ),
+    )
+
+    def __init__(self, *args, save_name="", **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["filename"].initial = save_name
 
 
 # ---------------------------------------------------------------------- #

@@ -149,6 +149,11 @@ urlpatterns = [
     path("schedules/export/", views.schedule_export, name="schedule_export"),
     path("schedules/export/json/", views.schedule_export, name="schedule_export_json"),
     path("assistant/ask/", views_ai.assistant_ask, name="assistant_ask"),
+    path(
+        "assistant/new/",
+        views_ai.assistant_new_configuration,
+        name="assistant_new_configuration",
+    ),
     path("assistant/status/", views_ai.assistant_status, name="assistant_status"),
     path("assistant/chat/", views_ai.assistant_chat, name="assistant_chat"),
     path("assistant/chat/new/", views_ai.assistant_chat_new, name="assistant_chat_new"),

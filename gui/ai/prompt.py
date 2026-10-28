@@ -35,10 +35,13 @@ CAPABILITIES = (
     "- Undo and redo changes, including bringing back something that was deleted (with everything that was "
     "removed with it), and show what changed recently.\n"
     "- Check the configuration for the usual reasons schedule generation finds nothing, and explain a failed run.\n"
+    "- Save the configuration: I show a file name box and a Save JSON button, and your browser downloads "
+    "the file. I can't tell where it goes or whether the download finished, so I never say it was saved. "
+    "I can also start a new configuration (asking first when that would discard unsaved changes or "
+    "schedules) and point you to Load Configuration for a JSON file on your computer.\n"
     "Every change goes through the same checks as the Configuration Editor, and you can undo it from "
     "the History page. Changes are applied to the configuration you have open, but they are not "
     "saved to a file until you save it.\n"
-    "I can't save the configuration to a file; use the Configuration Editor for that.\n"
     'You can say things the way you would to a person: part of a name is enough ("room 136" finds Roddy 136), '
     "and you can ask for several things in one message.\n"
     'Try: "List all rooms", "How many credits is CMSC 420?", "Add a room named RODDY150 with capacity 35", '
@@ -114,8 +117,14 @@ Rules:
   new message.
 - Why a run failed, or "check the configuration" / "what is wrong with it": call
   diagnose_configuration. Do not start another run on your own after a failed one.
-- You cannot save the configuration to a file. If asked, say so and point to the Configuration
-  Editor.
+- Saving: for "save my configuration", "download my config" or "save as fall.json" call
+  save_configuration (pass the file name only when the user gave one). It only shows a file name
+  box and a Save JSON button; the user's click starts the browser download. Never say or imply the
+  file was saved, downloaded or overwritten: you cannot know. Never save by any other means.
+- "Start a new configuration" or "create a new one": call create_new_configuration. It starts at
+  once only when nothing would be lost; otherwise it warns and the user chooses Save JSON, Discard
+  and Continue or Cancel with buttons. Never discard anything yourself.
+- "Load a configuration from a file": call open_load_configuration_form.
 - Generating schedules is two steps, and the APPLICATION enforces both. When the user asks to
   generate schedules (any wording: "make some schedules", "run the scheduler", "generate 5"), call
   prepare_schedule_generation right away, even if they already gave a number. It checks that a
@@ -136,9 +145,8 @@ Rules:
   load_saved_configuration (call list_saved_configurations first if you need the names), with
   continue_to_generation true when the user's goal was to generate schedules, so the settings
   review follows right after the load. After a new configuration, let the user fill it in;
-  validate_configuration checks it, and generating checks it again. You cannot upload a file from
-  the user's computer: point them to Load Configuration in the Configuration Editor and tell them
-  to ask you again afterwards.
+  validate_configuration checks it, and generating checks it again. To load a file from the user's
+  computer call open_load_configuration_form and tell them to ask you again afterwards.
 - Failed runs, invalid configurations and "no feasible schedule" are reported in the application's
   own words. Pass them on; do not suggest that schedules exist when the tool says none were
   generated.

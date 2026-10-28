@@ -28,6 +28,11 @@
  *     generated, the reply links to the Schedule Viewer (data-viewer-url).
  *   - Quick replies: a reply can carry a few short suggestions ("Go ahead and generate", "Cancel").
  *     They show as buttons under that reply; clicking one sends its text as an ordinary new message.
+ *   - File actions: a reply can carry an action (gui/ai/lifecycle.py). "export" draws a file name box and
+ *     Save JSON, a real form post to the Configuration Editor's save view, so the browser starts a normal
+ *     download; the chat only notes that a download was requested, never that it finished. "replace"
+ *     adds Discard and Continue and Cancel for starting a new configuration (posted to data-new-url, which
+ *     checks the warning's token). "configuration" links to the Editor's Load Configuration form.
  *
  * Enter sends, Shift+Enter starts a new line. Messages are inserted as text, never as HTML.
  * Whether the panel is open is remembered for this tab (sessionStorage, if it is available).
@@ -64,6 +69,9 @@
     var deleteUrl = root.getAttribute("data-chat-delete-url");
     var statusUrl = root.getAttribute("data-status-url");
     var viewerUrl = root.getAttribute("data-viewer-url");
+    var saveUrl = root.getAttribute("data-save-url");
+    var newConfigUrl = root.getAttribute("data-new-url");
+    var editorUrl = root.getAttribute("data-editor-url");
     var progressTimer = null;
     var resumeTimer = null;
     var confirmId = null;
@@ -209,6 +217,9 @@
         if (body.suggestions && body.suggestions.length) {
             addSuggestions(item, body.suggestions);
         }
+        if (body.action) {
+            addAction(item, body.action);
+        }
         if (body.changed || body.refresh || body.generated) {
             liveUpdate(item);   // the page behind the chat was drawn before the change: update it in place
         }
@@ -256,9 +267,121 @@
     }
 
     function clearSuggestions() {
-        var rows = log.querySelectorAll(".chat-suggestions");
+        var rows = log.querySelectorAll(".chat-suggestions, .chat-action");
         for (var index = 0; index < rows.length; index++) {
-            rows[index].remove();   // only the newest message offers quick replies
+            rows[index].remove();   // only the newest message offers quick replies, a Save JSON box or choices
+        }
+    }
+
+    // -- file actions under a reply (gui/ai/lifecycle.py) ------------------------------------------- //
+    // The server sends plain data; the pieces are built here and always posted to the server, which checks
+    // everything again. Nothing here saves or discards by itself: the user's own click does.
+    function actionButton(label, className, onClick) {
+        var button = document.createElement("button");
+        button.type = onClick ? "button" : "submit";
+        button.className = "btn " + className;
+        button.textContent = label;
+        if (onClick) {
+            button.addEventListener("click", onClick);
+        }
+        return button;
+    }
+
+    // The Configuration Editor's own Save: a real form post, so the browser starts a normal download.
+    function saveForm(action) {
+        var saveForm = document.createElement("form");
+        saveForm.className = "chat-action__form";
+        saveForm.method = "post";
+        saveForm.action = saveUrl;
+        saveForm.setAttribute("data-loading", "Loading…");   // loading.js: busy state, and no double submit
+        saveForm.setAttribute("data-loading-download", "");
+
+        var token = document.createElement("input");
+        token.type = "hidden";
+        token.name = "csrfmiddlewaretoken";
+        token.value = csrfData().get("csrfmiddlewaretoken");
+
+        var field = document.createElement("input");
+        field.type = "text";
+        field.name = "filename";
+        field.id = "chat-save-name";
+        field.className = "chat-action__input";
+        field.value = action.filename || "";
+        field.required = true;
+        field.autocomplete = "off";
+        if (action.pattern) {
+            field.pattern = action.pattern;
+        }
+        if (action.maxlength) {
+            field.maxLength = action.maxlength;
+        }
+        var label = document.createElement("label");
+        label.className = "chat-action__label";
+        label.htmlFor = field.id;
+        label.textContent = "File name";
+
+        saveForm.appendChild(token);
+        saveForm.appendChild(label);
+        saveForm.appendChild(field);
+        saveForm.appendChild(actionButton("Save JSON", "btn-small btn-primary", null));
+        saveForm.addEventListener("submit", function () {
+            if (saveForm.dataset.submitting) {
+                return;   // a second click while the first is still being sent
+            }
+            // The download is only requested: the app cannot see whether the browser finished it.
+            addMessage("notice", "Download requested. Your browser decides where the file goes, and I can't tell whether it finished.");
+            window.setTimeout(updatePage, 1500);   // the page's "Unsaved changes" label follows the save
+        });
+        return saveForm;
+    }
+
+    function resolveNew(choice, token) {
+        if (pending) {
+            return;
+        }
+        clearSuggestions();
+        setPending(true);
+        var thinking = addMessage("status", "Working on it…");
+        chatRequest(newConfigUrl, { choice: choice, token: token })
+            .catch(function () {
+                return { ok: false, body: null };
+            })
+            .then(function (result) {
+                show(thinking, result);
+                setPending(false);
+            });
+    }
+
+    function addAction(item, action) {
+        if (!action || typeof action.kind !== "string") {
+            return;
+        }
+        var box = document.createElement("span");
+        box.className = "chat-action";
+        if ((action.kind === "export" || action.kind === "replace") && saveUrl) {
+            box.appendChild(saveForm(action));
+        }
+        if (action.kind === "replace" && newConfigUrl) {
+            var choices = document.createElement("span");
+            choices.className = "chat-action__choices";
+            choices.appendChild(actionButton("Discard and Continue", "btn-small btn-danger", function () {
+                resolveNew("discard", action.token || "");
+            }));
+            choices.appendChild(actionButton("Cancel", "btn-small", function () {
+                resolveNew("cancel", action.token || "");
+            }));
+            box.appendChild(choices);
+        }
+        if (action.kind === "configuration" && editorUrl) {
+            var link = document.createElement("a");
+            link.className = "btn btn-small btn-primary";
+            link.href = editorUrl + "#load-configuration";
+            link.textContent = "Load Configuration";
+            box.appendChild(link);
+        }
+        if (box.childNodes.length) {
+            item.appendChild(box);
+            log.scrollTop = log.scrollHeight;
         }
     }
 
@@ -734,6 +857,9 @@
             }
             if (index === state.messages.length - 1 && message.suggestions && message.suggestions.length) {
                 addSuggestions(item, message.suggestions);
+            }
+            if (index === state.messages.length - 1 && message.action) {
+                addAction(item, message.action);   // a warning or Save JSON box still waiting for the user
             }
         });
         updatePicker(state);

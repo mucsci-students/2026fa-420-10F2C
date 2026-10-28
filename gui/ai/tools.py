@@ -60,6 +60,7 @@ from gui.ai.base import (
 from gui.ai.changes import CHANGE_TOOLS
 from gui.ai.diagnose import DIAGNOSE_TOOLS
 from gui.ai.generation import GENERATION_TOOLS
+from gui.ai.lifecycle import LIFECYCLE_TOOLS
 from gui.ai.prompt import CAPABILITIES
 from gui.ai.undo import UNDO_TOOLS
 from gui.constants import DAY_NAMES
@@ -757,6 +758,7 @@ TOOLS: tuple[AiTool, ...] = (
         write=True,
     ),
     *GENERATION_TOOLS,
+    *LIFECYCLE_TOOLS,
     *UNDO_TOOLS,
     *DIAGNOSE_TOOLS,
 )
@@ -875,6 +877,7 @@ class ToolBox:
                 write=tool.write,
                 suggestions=suggestions,
                 note=note,
+                action=getattr(message, "action", None),
             )
         )
 

@@ -88,7 +88,12 @@ def _title(text: str) -> str:
 
 
 def record(
-    session, kind: str, text: str, suggestions=(), generated: bool = False
+    session,
+    kind: str,
+    text: str,
+    suggestions=(),
+    generated: bool = False,
+    action: dict | None = None,
 ) -> None:
     """Add one line to the active chat. kind: "user", "assistant" or "error"."""
     with _LOCK:
@@ -103,6 +108,7 @@ def record(
                 "text": text[:TEXT_LIMIT],
                 "suggestions": list(suggestions),
                 "generated": bool(generated),
+                "action": dict(action) if action else None,
             }
         )
         del chat["messages"][:-MAX_MESSAGES]

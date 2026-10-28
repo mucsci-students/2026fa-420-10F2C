@@ -377,7 +377,13 @@ def test_the_panel_can_load_the_saved_chat_on_any_page(client, runner):
             body["chats"][0]["active"] is True
             and body["chats"][0]["title"] == "add a room"
         )
-        assert set(body["messages"][0]) == {"kind", "text", "suggestions", "generated"}
+        assert set(body["messages"][0]) == {
+            "kind",
+            "text",
+            "suggestions",
+            "generated",
+            "action",
+        }
 
 
 def test_new_switch_and_delete_through_the_endpoints(client, runner):

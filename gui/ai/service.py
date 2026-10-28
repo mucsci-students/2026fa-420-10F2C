@@ -72,6 +72,9 @@ class Reply:
     )
     refresh: bool = False  # the page behind the chat is out of date (a different configuration or schedules)
     suggestions: tuple[str, ...] = ()  # short replies the chat offers as buttons
+    action: dict | None = (
+        None  # a Save JSON box or warning choices the chat draws (see gui/ai/lifecycle.py)
+    )
 
 
 def get_runner() -> Runner:
@@ -97,6 +100,7 @@ def compose(results: list[ToolResult], model_text: str = "") -> Reply:
     offered = next(
         (result.suggestions for result in reversed(shown) if result.suggestions), ()
     )
+    action = next((result.action for result in reversed(shown) if result.action), None)
     schedules_changed = any(result.schedules_changed for result in results)
     replaced = any(result.config_replaced for result in results)
     return replace(
@@ -104,6 +108,7 @@ def compose(results: list[ToolResult], model_text: str = "") -> Reply:
         schedules_changed=schedules_changed,
         refresh=schedules_changed or replaced,
         suggestions=offered,
+        action=action,
     )
 
 
@@ -181,6 +186,7 @@ def handle_request(request, text: str) -> Reply:
             reply.message,
             suggestions=reply.suggestions,
             generated=reply.ok and reply.schedules_changed,
+            action=reply.action,
         )
         return reply
     finally:

@@ -17,11 +17,14 @@ every failure leaves the previous valid configuration exactly as it was.
 from __future__ import annotations
 
 import re
+import secrets
+from dataclasses import dataclass
 
 from scheduler.config import ValidationError
 
 from app.commands.configuration import revalidate
 from app.session import ConfigError
+from gui import constants
 from gui.controllers.common import require_config
 from gui.controllers.errors import ControllerError, FieldError, describe_problems
 from gui.controllers.uploads import read_upload
@@ -31,6 +34,18 @@ LOAD_FIELD = "config_file"
 DEFAULT_FILENAME = "scheduler_config.json"
 MAX_PROBLEMS = 8  # how many validation problems to list before "...and N more"
 KEPT = "Your current configuration was kept."
+FILENAME_PATTERN = (
+    constants.FILENAME_PATTERN
+)  # what _download_name keeps; every file name box uses it
+MAX_FILENAME_LENGTH = constants.MAX_FILENAME_LENGTH
+STARTED_NEW = (
+    "Started a new configuration. It begins with one placeholder room, course, "
+    "faculty member and class pattern; edit or replace them."
+)
+RESTORE_HINT = "Restore previous configuration in the Configuration Editor brings back the one you have now."
+PENDING_NEW_ATTR = (
+    "pending_new_configuration"  # token of a New waiting for the user's choice
+)
 
 
 # ---------------------------------------------------------------------- #
@@ -76,6 +91,7 @@ def describe_configuration(request) -> dict:
         "has_config": config is not None,
         "dirty": dirty,
         "name": getattr(session, "config_name", None),
+        "save_name": _download_name(getattr(session, "config_name", None)),
         "schedule_count": schedule_count,
         "counts": {},
         "discard_note": discard_note(dirty, schedule_count),
@@ -115,6 +131,66 @@ def new_configuration(request) -> None:
         raise ControllerError(
             f"A new configuration could not be created. {KEPT}"
         ) from error
+
+
+@dataclass(frozen=True)
+class NewRequest:
+    """What asking for a new configuration did.
+
+    started: it was started at once (nothing would have been lost).
+    Otherwise `dirty`, `schedule_count` say what a new one would discard, `token`
+    identifies this warning (confirm_new_configuration needs it) and `export_name`
+    is the file name Save JSON offers.
+    """
+
+    started: bool
+    dirty: bool = False
+    schedule_count: int = 0
+    token: str = ""
+    export_name: str = DEFAULT_FILENAME
+
+
+def request_new_configuration(request) -> NewRequest:
+    """Start a new configuration only when that loses nothing; otherwise change
+    nothing and remember the warning, so confirm_new_configuration can be
+    refused for anything that was not warned about."""
+    session = get_session(request)
+    dirty = bool(session.dirty) and session.config is not None
+    schedule_count = len(session.schedules) if session.config is not None else 0
+    if not discard_note(dirty, schedule_count):
+        setattr(session, PENDING_NEW_ATTR, None)
+        new_configuration(request)
+        return NewRequest(started=True)
+    token = secrets.token_urlsafe(8)
+    setattr(session, PENDING_NEW_ATTR, token)
+    return NewRequest(
+        started=False,
+        dirty=dirty,
+        schedule_count=schedule_count,
+        token=token,
+        export_name=_download_name(getattr(session, "config_name", None)),
+    )
+
+
+def confirm_new_configuration(request, token: str) -> None:
+    """Discard and Continue: start the new configuration the user was warned about."""
+    session = get_session(request)
+    waiting = getattr(session, PENDING_NEW_ATTR, None)
+    if not waiting or not secrets.compare_digest(waiting, str(token or "")):
+        raise ControllerError(
+            f"That choice is no longer current, so nothing was discarded. {KEPT} "
+            "Ask me to start a new configuration again if you still want one."
+        )
+    setattr(session, PENDING_NEW_ATTR, None)
+    new_configuration(request)
+
+
+def cancel_new_configuration(request, token: str) -> bool:
+    """Cancel: forget the warning and change nothing. True when one was waiting."""
+    session = get_session(request)
+    waiting = getattr(session, PENDING_NEW_ATTR, None)
+    setattr(session, PENDING_NEW_ATTR, None)
+    return bool(waiting) and secrets.compare_digest(waiting, str(token or ""))
 
 
 def load_configuration(request, uploaded_file) -> str:
@@ -165,16 +241,18 @@ def _download_name(name: str | None) -> str:
     return cleaned if cleaned.lower().endswith(".json") else f"{cleaned}.json"
 
 
-def save_configuration(request) -> tuple[str, str]:
-    """Validate the configuration, then return (file name, JSON text).
+def _chosen_name(session, filename: str | None) -> str:
+    """The name the user typed (checked for length), else the configuration's own name."""
+    typed = (filename or "").strip()
+    if len(typed) > MAX_FILENAME_LENGTH:
+        raise ControllerError(
+            f"That file name is too long. Use at most {MAX_FILENAME_LENGTH} characters."
+        )
+    return _download_name(typed or getattr(session, "config_name", None))
 
-    The text comes from the library's own Pydantic serialization. The view
-    sends it as a download, so the browser decides where it goes and asks
-    before replacing an existing file -- the app never overwrites anything
-    on disk (Section 9). The unsaved-changes flag is cleared once the text
-    is handed over.
-    """
-    session = get_session(request)
+
+def _require_valid(session) -> None:
+    """Raise unless a configuration is open and passes the library's validation."""
     require_config(session, "saving it")
     error = revalidate(session)
     if error is not None:
@@ -185,11 +263,36 @@ def save_configuration(request) -> tuple[str, str]:
                 for text in describe_problems(error, MAX_PROBLEMS)
             ]
         )
-    filename = _download_name(getattr(session, "config_name", None))
+
+
+def export_name(request, filename: str | None = None) -> str:
+    """The file name a save would offer, after the same checks as saving.
+
+    Changes nothing: the AI chat uses it to show the file name box before the
+    user clicks Save JSON, which then goes through save_configuration.
+    """
+    session = get_session(request)
+    _require_valid(session)
+    return _chosen_name(session, filename)
+
+
+def save_configuration(request, filename: str | None = None) -> tuple[str, str]:
+    """Validate the configuration, then return (file name, JSON text).
+
+    `filename` is what the user typed in the file name box (blank = the name
+    the configuration was loaded from or last saved as). The text comes from
+    the library's own Pydantic serialization. The view sends it as a download,
+    so the browser decides where it goes and what happens to an existing file
+    -- the app never writes or overwrites anything on disk (Section 9). The
+    unsaved-changes flag is cleared once the text is handed over.
+    """
+    session = get_session(request)
+    _require_valid(session)
+    name = _chosen_name(session, filename)
     content = session.dumps()
-    session.mark_saved(filename)
-    session.remember_config(filename, content)
-    return filename, content
+    session.mark_saved(name)
+    session.remember_config(name, content)
+    return name, content
 
 
 def saved_config_choices(request) -> list[tuple[str, str]]:

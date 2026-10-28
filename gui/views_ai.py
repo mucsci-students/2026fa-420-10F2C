@@ -4,6 +4,7 @@ hands it to gui.ai.service, and returns the reply as JSON.
 
     POST /assistant/ask/      one request from the chat panel (components/chat_widget.html,
                               js/chat.js). 409 when the browser's previous request is still running.
+    POST /assistant/new/      Discard and Continue / Cancel on the chat's "start a new configuration" warning.
     GET  /assistant/chat/     the saved chats of this browser and the open chat's lines, so the panel can
                               draw them again after a page change or reload (js/chat.js).
     POST /assistant/chat/new/ | switch/ | delete/   start a new chat, open an older one, remove one.
@@ -21,7 +22,7 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_POST
 
-from gui.ai import chats, service
+from gui.ai import chats, lifecycle, service
 from gui.controllers import schedule_controller
 from gui.session_store import get_session
 
@@ -46,8 +47,39 @@ def assistant_ask(request):
             "schedule_count": count,
             "refresh": reply.refresh,
             "suggestions": list(reply.suggestions),
+            "action": reply.action,
         },
         status=409 if reply.busy else 200,
+    )
+
+
+@require_POST
+def assistant_new_configuration(request):
+    """Discard and Continue / Cancel on the chat's new-configuration warning (gui/ai/lifecycle.py).
+
+    The warning's token is checked, so only the warning that was just shown can discard anything."""
+    session = get_session(request)
+    if service.is_busy(request):
+        return JsonResponse(
+            {"ok": False, "reply": service.BUSY_MESSAGE, "busy": True}, status=409
+        )
+    result = lifecycle.choose_new_configuration(
+        request, request.POST.get("choice", ""), request.POST.get("token", "")
+    )
+    chats.record(session, "assistant" if result.ok else "error", result.message)
+    return JsonResponse(
+        {
+            "ok": result.ok,
+            "reply": result.message,
+            "changed": False,
+            "busy": False,
+            "dirty": bool(session.dirty),
+            "generated": False,
+            "schedule_count": schedule_controller.schedule_count(request),
+            "refresh": result.refresh,
+            "suggestions": [],
+            "action": None,
+        }
     )
 
 

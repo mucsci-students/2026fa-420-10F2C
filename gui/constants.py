@@ -28,6 +28,11 @@ NO_LOCATION_LABEL = "No room assigned"
 # Block text for a meeting whose course has no faculty member assigned.
 NO_FACULTY_LABEL = "No faculty assigned"
 
+# The file name box beside every Save JSON button (Configuration Editor and AI chat):
+# what the browser may accept and how long a name may be. The controller makes the name safe anyway.
+FILENAME_PATTERN = r"[A-Za-z0-9._ \-]+"
+MAX_FILENAME_LENGTH = 100
+
 # Plain-language descriptions of the scheduler library's optimizer flags
 # (user story 53: hovering over or focusing an option such as "pack_rooms"
 # shows what it does). Worded from the library's own OptimizerFlags

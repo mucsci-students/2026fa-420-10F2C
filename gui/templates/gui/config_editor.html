@@ -71,19 +71,21 @@
     <section class="card" aria-labelledby="save-validate">
         <h3 id="save-validate" class="card__title">Save and validate</h3>
         <p class="help">
-            Saving checks the whole configuration first, then downloads it as a JSON file. Your browser decides where
-            it goes and asks before replacing an existing file. Validating re-checks every rule without saving.
+            Saving checks the whole configuration first, then downloads it as a JSON file with the file name below.
+            Your browser decides where it goes and what happens if a file with that name already exists.
+            Validating re-checks every rule without saving.
         </p>
-        <div class="button-row">
-            <form method="post" action="{% url 'gui:config_save' %}" data-loading="Loading…" data-loading-download>
-                {% csrf_token %}
+        <form method="post" action="{% url 'gui:config_save' %}" class="edit-form" data-loading="Loading…" data-loading-download>
+            {% csrf_token %}
+            {% include "gui/components/field.html" with field=save_form.filename %}
+            <div class="button-row">
                 <button type="submit" class="btn btn-primary"{% if not has_config %} disabled{% endif %}>Save configuration</button>
-            </form>
-            <form method="post" action="{% url 'gui:config_validate' %}" data-loading="Validating…">
-                {% csrf_token %}
-                <button type="submit" class="btn"{% if not has_config %} disabled{% endif %}>Validate configuration</button>
-            </form>
-        </div>
+            </div>
+        </form>
+        <form method="post" action="{% url 'gui:config_validate' %}" data-loading="Validating…">
+            {% csrf_token %}
+            <button type="submit" class="btn"{% if not has_config %} disabled{% endif %}>Validate configuration</button>
+        </form>
     </section>
 
     <section class="card" aria-labelledby="new-configuration">

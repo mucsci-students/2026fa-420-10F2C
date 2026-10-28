@@ -43,6 +43,7 @@ from gui.forms import (
     AddTimeBlockForm,
     ConfigLoadForm,
     ConfigNewForm,
+    ConfigSaveForm,
     GenerationOverrideForm,
     SavedConfigSelectionForm,
     ScheduleExportForm,
@@ -86,19 +87,24 @@ def _config_areas(counts):
     ]
 
 
-def _render_config_editor(request, new_form=None, load_form=None, report=None):
+def _render_config_editor(
+    request, new_form=None, load_form=None, report=None, save_form=None
+):
     state = config_controller.describe_configuration(request)
     note = state["discard_note"]
     if new_form is None:
         new_form = ConfigNewForm(discard_note=note)
     if load_form is None:
         load_form = ConfigLoadForm(discard_note=note)
+    if save_form is None:
+        save_form = ConfigSaveForm(save_name=state["save_name"])
     context = {
         "active": "config",
         **state,
         "areas": _config_areas(state["counts"]),
         "new_form": new_form,
         "load_form": load_form,
+        "save_form": save_form,
         "report": report,
     }
     return render(request, "gui/config_editor.html", context)
@@ -124,11 +130,7 @@ def config_new(request):
         except ControllerError as error:
             _attach_errors(form, error)
         else:
-            messages.success(
-                request,
-                "Started a new configuration. It begins with one placeholder room, course, "
-                "faculty member and class pattern; edit or replace them.",
-            )
+            messages.success(request, config_controller.STARTED_NEW)
             return redirect("gui:config_editor")
     return _render_config_editor(request, new_form=form)
 
@@ -152,17 +154,26 @@ def config_load(request):
 
 
 def config_save(request):
-    """Validate, then send the configuration as a file download (Section 9)."""
+    """Validate, then send the configuration as a file download (Section 9).
+
+    An optional `filename` (the Editor's and the AI chat's file name box)
+    names the download; blank keeps the configuration's own name."""
     if request.method != "POST":
         return redirect("gui:config_editor")
     try:
-        filename, content = config_controller.save_configuration(request)
+        filename, content = config_controller.save_configuration(
+            request, request.POST.get("filename")
+        )
     except ControllerError as error:
         report = {
             "heading": "The configuration was not saved.",
             "items": [item.message for item in error.errors],
         }
-        return _render_config_editor(request, report=report)
+        return _render_config_editor(
+            request,
+            report=report,
+            save_form=ConfigSaveForm(request.POST, save_name=""),
+        )
     return download_response(
         filename, content, "application/json; charset=utf-8", download_token(request)
     )
