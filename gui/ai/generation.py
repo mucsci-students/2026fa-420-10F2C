@@ -73,6 +73,12 @@ _now: Callable[[], float] = (
 # ---------------------------------------------------------------------- #
 #  Argument schemas (what the model must send; checked before anything runs)
 # ---------------------------------------------------------------------- #
+class ControllerErrorWithChips(ControllerError):
+    """A refusal that also offers quick replies (read by the tool box when it builds the answer)."""
+
+    suggestions: tuple[str, ...] = ()
+
+
 class PrepareArgs(BaseModel):
     limit: int | None = Field(
         default=None,
@@ -382,7 +388,7 @@ def _report(request, *, before: int | None, limit: int | None) -> str:
         if before:
             text += f" The {_plural(before, 'schedule')} loaded before {'was' if before == 1 else 'were'} cleared."
         text += diagnose.explain_no_feasible(request)
-        error = ControllerError(_short(text, 1200))
+        error = ControllerErrorWithChips(_short(text, 1200))
         error.suggestions = (
             diagnose.CHECK_CHIP,
             *((UNDO_CHIP,) if recent_changes(request, 1) else ()),

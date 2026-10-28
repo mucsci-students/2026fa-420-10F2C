@@ -991,6 +991,7 @@ def test_the_progress_endpoint_is_read_only_and_reports_a_run_in_progress(client
 
     slow.gate.set()
     job = next(iter(session_store._SESSIONS.values())).generation_job
+    assert job is not None
     assert job.wait(5)
     assert client.get(STATUS_URL).json()["state"] == "finished"
     assert (
