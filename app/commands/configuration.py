@@ -1,6 +1,6 @@
 """Configuration lifecycle commands."""
+
 from scheduler.config import CombinedConfig
-from app.session import ConfigError
 
 
 def new_config(session):
@@ -11,10 +11,7 @@ def new_config(session):
 
 def load_config(session, path):
     """Load and validate a configuration from the supplied path."""
-    try:
-        session.load(path)
-    except ConfigError as error:
-        raise error
+    session.load(path)
     print(f"Loaded and validated '{path}'.")
 
 

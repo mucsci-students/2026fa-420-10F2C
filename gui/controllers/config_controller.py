@@ -93,7 +93,9 @@ def describe_configuration(request) -> dict:
         "faculty": _size(getattr(entities, "faculty", None)),
         "time_blocks": sum(_size(blocks) for blocks in slots.times.values()),
         "patterns": len(patterns),
-        "meetings": sum(_size(getattr(pattern, "meetings", None)) for pattern in patterns),
+        "meetings": sum(
+            _size(getattr(pattern, "meetings", None)) for pattern in patterns
+        ),
         "settings": None,
     }
     return state
@@ -131,9 +133,14 @@ def load_configuration(request, uploaded_file) -> str:
         session.remember_config(name)
     except ConfigError as error:
         raise ControllerError(_load_problems(error)) from error
-    except Exception as error:  # noqa: BLE001 -- last resort; never lose the user's configuration
+    except Exception as error:
         raise ControllerError(
-            [FieldError(LOAD_FIELD, f"'{name}' could not be loaded as a configuration. {KEPT}")]
+            [
+                FieldError(
+                    LOAD_FIELD,
+                    f"'{name}' could not be loaded as a configuration. {KEPT}",
+                )
+            ]
         ) from error
     return name
 
@@ -142,7 +149,10 @@ def _load_problems(error: ConfigError) -> list[FieldError]:
     items = [FieldError(LOAD_FIELD, f"{error} {KEPT}")]
     cause = error.__cause__
     if isinstance(cause, ValidationError):
-        items += [FieldError(LOAD_FIELD, text) for text in describe_problems(cause, MAX_PROBLEMS)]
+        items += [
+            FieldError(LOAD_FIELD, text)
+            for text in describe_problems(cause, MAX_PROBLEMS)
+        ]
     return items
 
 
@@ -170,7 +180,10 @@ def save_configuration(request) -> tuple[str, str]:
     if error is not None:
         raise ControllerError(
             [FieldError(None, "Not saved: the configuration is not valid.")]
-            + [FieldError(None, text) for text in describe_problems(error, MAX_PROBLEMS)]
+            + [
+                FieldError(None, text)
+                for text in describe_problems(error, MAX_PROBLEMS)
+            ]
         )
     filename = _download_name(getattr(session, "config_name", None))
     content = session.dumps()

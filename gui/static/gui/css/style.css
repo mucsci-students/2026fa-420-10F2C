@@ -1767,3 +1767,438 @@ html[data-theme="dark"] .list-toolbar input { background: #18181b; color: #f3f4f
 .previous-config { margin: 1rem 0; }
 .previous-config form { margin: 0.5rem 0 0; }
 .stale-schedules p { margin: 0; }
+
+/* ------------------------------------------------------------------ *
+ * AI chat (Sprint 3 Section 3). The round button is pinned to the    *
+ * bottom-right corner of the SCREEN, so it stays in view while the   *
+ * page scrolls. Hovering it (or the space just to its right) shows a *
+ * small "hide" arrow; the button then slides off the right edge and  *
+ * a small tab stays behind to bring it back.                         *
+ * Markup: components/chat_widget.html; behaviour: js/chat.js.        *
+ * ------------------------------------------------------------------ */
+.chat-widget {
+    position: fixed;
+    right: 1.25rem;
+    bottom: 1.25rem;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.75rem;
+    /* The box itself never blocks clicks on the page behind it; only its parts below do. */
+    pointer-events: none;
+}
+.chat-panel,
+.chat-dock,
+.chat-tab { pointer-events: auto; }
+
+/* The dock holds the round button and the hide arrow. It reaches the screen edge, so hovering
+   just to the right of the button counts as hovering the button. */
+.chat-dock {
+    position: relative;
+    display: flex;
+    align-items: center;
+    margin-right: -1.25rem;
+    padding-right: 1.25rem;
+    transition: transform 0.25s ease, visibility 0s linear 0s;
+}
+.chat-widget--tucked .chat-dock {
+    transform: translateX(calc(100% + 1.5rem));
+    visibility: hidden;   /* off screen and out of the tab order */
+    transition: transform 0.25s ease, visibility 0s linear 0.25s;
+}
+
+.chat-launcher {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 3.5rem;
+    height: 3.5rem;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    box-shadow: var(--shadow-hover);
+    cursor: pointer;
+}
+.chat-launcher:hover { background: var(--accent-strong); }
+.chat-launcher:focus-visible,
+.chat-hide:focus-visible,
+.chat-tab:focus-visible,
+.chat-form textarea:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+}
+.chat-launcher[hidden],
+.chat-hide[hidden],
+.chat-tab[hidden],
+.chat-panel[hidden] { display: none; }
+
+/* The hide arrow: invisible until the dock is hovered or focused. */
+.chat-hide {
+    position: absolute;
+    right: 0.05rem;
+    top: 50%;
+    width: 1.1rem;
+    height: 2.2rem;
+    margin-top: -1.1rem;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--header-bg);
+    color: #fff;
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+.chat-dock:hover .chat-hide,
+.chat-dock:focus-within .chat-hide,
+.chat-hide:focus-visible { opacity: 1; }
+/* Touch screens cannot hover, so the arrow is always faintly visible there. */
+@media (hover: none) { .chat-hide { opacity: 0.85; } }
+
+/* The tab left at the screen edge while the button is tucked away. */
+.chat-tab {
+    position: absolute;
+    right: -1.25rem;
+    bottom: 0.65rem;
+    width: 1.5rem;
+    height: 2.5rem;
+    padding: 0 0 0 0.15rem;
+    border: 0;
+    border-radius: var(--radius) 0 0 var(--radius);
+    background: var(--accent);
+    color: #fff;
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: var(--shadow-hover);
+    visibility: hidden;
+    transform: translateX(100%);
+    transition: transform 0.25s ease 0.1s, visibility 0s linear 0.35s;
+}
+.chat-tab:hover { background: var(--accent-strong); }
+.chat-widget--tucked .chat-tab {
+    visibility: visible;
+    transform: translateX(0);
+    transition: transform 0.25s ease 0.1s, visibility 0s linear 0s;
+}
+
+/* No sliding on page load (the saved choice is applied instantly) or when the visitor asks for
+   less motion. */
+.chat-widget--no-motion .chat-dock,
+.chat-widget--no-motion .chat-tab { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+    .chat-dock,
+    .chat-tab,
+    .chat-hide { transition: none; }
+}
+
+.chat-panel {
+    position: relative;
+    display: flex;
+    width: min(24rem, calc(100vw - 2.5rem));
+    height: min(32rem, 70vh);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow-hover);
+    overflow: hidden;
+    transition: width 0.22s ease;
+}
+/* With the history open the panel grows to the left, so the conversation keeps its width. */
+.chat-panel--sidebar { width: min(38rem, calc(100vw - 2.5rem)); }
+.chat-main {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+}
+.chat-panel__header {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.5rem 0.5rem 0.5rem 0.85rem;
+    background: var(--header-bg);
+    color: #fff;
+}
+.chat-panel__header .chat-icon-button:first-child { margin-left: -0.35rem; margin-right: 0.15rem; }
+.chat-panel__heading { flex: 1 1 auto; min-width: 0; padding-right: 0.25rem; }
+.chat-panel__title { margin: 0; font-size: 1rem; line-height: 1.25; }
+.chat-panel__subtitle {
+    margin: 0.05rem 0 0;
+    overflow: hidden;
+    color: #cbd5e1;
+    font-size: 0.75rem;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.chat-panel__subtitle[hidden] { display: none; }
+
+/* One look for every control in the header. */
+.chat-icon-button {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: #e5e7eb;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+.chat-icon-button:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
+.chat-icon-button[aria-expanded="true"] { background: rgba(255, 255, 255, 0.18); color: #fff; }
+.chat-icon-button[hidden] { display: none; }
+.chat-icon-button:focus-visible { outline: 2px solid #93c5fd; outline-offset: 1px; }
+
+/* The history sidebar. */
+.chat-sidebar {
+    display: flex;
+    flex: 0 0 13.5rem;
+    flex-direction: column;
+    min-width: 0;
+    border-right: 1px solid var(--border);
+    background: var(--surface-alt);
+}
+.chat-sidebar[hidden] { display: none; }
+.chat-sidebar__top { padding: 0.6rem 0.6rem 0.4rem; }
+.chat-sidebar__new {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    width: 100%;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.chat-sidebar__new:hover { border-color: var(--accent); background: var(--accent-soft); }
+.chat-sidebar__new:disabled,
+.chat-icon-button:disabled { cursor: default; opacity: 0.5; }
+.chat-sidebar__new:focus-visible,
+.chat-history button:focus-visible,
+.chat-sidebar button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.chat-history {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0.2rem 0.4rem 0.6rem;
+    overflow-y: auto;
+}
+.chat-history__group {
+    margin: 0.7rem 0.4rem 0.25rem;
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+.chat-history__group:first-child { margin-top: 0.3rem; }
+.chat-history__list { margin: 0; padding: 0; list-style: none; }
+.chat-history__row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    margin: 1px 0;
+    border-radius: var(--radius-sm);
+}
+.chat-history__row:hover { background: var(--border); }
+.chat-history__row.is-active { background: var(--accent-soft); }
+.chat-history__row.is-active::before {
+    position: absolute;
+    top: 0.45rem;
+    bottom: 0.45rem;
+    left: 0;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--accent);
+    content: "";
+}
+.chat-history__item {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0.45rem 0.35rem 0.45rem 0.65rem;
+    overflow: hidden;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.88rem;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.chat-history__row.is-active .chat-history__item { color: var(--accent-strong); font-weight: 600; }
+.chat-history__item:disabled { cursor: default; }
+.chat-history__delete {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    margin-right: 0.2rem;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted);
+    opacity: 0;
+    cursor: pointer;
+    transition: opacity 0.12s ease, color 0.12s ease, background-color 0.12s ease;
+}
+.chat-history__row:hover .chat-history__delete,
+.chat-history__row:focus-within .chat-history__delete,
+.chat-history__row.is-active .chat-history__delete { opacity: 1; }
+.chat-history__delete:hover { background: var(--danger-soft); color: var(--danger); }
+.chat-history__delete:disabled { opacity: 0.35; cursor: default; }
+/* Touch screens have no hover: keep the delete button visible. */
+@media (hover: none) { .chat-history__delete { opacity: 1; } }
+
+/* Asking before a delete, inside the row (no pop-up). */
+.chat-history__row.is-confirming { flex-wrap: wrap; gap: 0.3rem; padding: 0.45rem 0.5rem 0.5rem 0.65rem; background: var(--danger-soft); }
+.chat-history__row.is-confirming::before { background: var(--danger); }
+.chat-history__ask { flex: 1 0 100%; margin: 0; font-size: 0.82rem; color: var(--text); }
+.chat-history__yes,
+.chat-history__no {
+    padding: 0.25rem 0.65rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+.chat-history__yes { border-color: var(--danger); background: var(--danger); color: #fff; font-weight: 600; }
+.chat-history__yes:hover { filter: brightness(0.92); }
+.chat-history__no:hover { background: var(--border); }
+.chat-scrim { display: none; }
+
+/* A narrow screen has no room for the history beside the chat: it slides over it instead. */
+@media (max-width: 40rem) {
+    .chat-panel--sidebar { width: min(24rem, calc(100vw - 2.5rem)); }
+    .chat-sidebar {
+        position: absolute;
+        z-index: 2;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: min(15rem, 82%);
+        box-shadow: var(--shadow-hover);
+    }
+    .chat-panel--sidebar .chat-scrim {
+        position: absolute;
+        z-index: 1;
+        inset: 0;
+        display: block;
+        border: 0;
+        background: rgba(0, 0, 0, 0.35);
+        cursor: pointer;
+    }
+    .chat-scrim[hidden] { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .chat-panel,
+    .chat-icon-button,
+    .chat-sidebar__new,
+    .chat-history__delete { transition: none; }
+}
+.chat-log {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    overflow-y: auto;
+    background: var(--surface-alt);
+}
+.chat-message {
+    max-width: 85%;
+    margin: 0;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+.chat-message--user {
+    align-self: flex-end;
+    background: var(--accent-soft);
+    border-color: var(--accent);
+}
+.chat-message--status { color: var(--muted); font-style: italic; border-style: dashed; }
+.chat-message--notice { background: var(--warn-soft); border-color: var(--warn); color: var(--warn-text); }
+.chat-message--error { background: var(--danger-soft); border-color: var(--danger); }
+.chat-form {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0.6rem;
+    border-top: 1px solid var(--border);
+}
+.chat-form textarea {
+    flex: 1;
+    min-height: 2.6rem;
+    max-height: 8rem;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid #9ca3af;
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    resize: vertical;
+}
+
+.chat-refresh { display: block; margin-top: 0.5rem; }
+.chat-suggestions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
+.chat-suggestion { white-space: normal; text-align: left; }
+
+html[data-theme="dark"] .chat-panel { background: #18181b; color: #f3f4f6; border-color: #52525b; }
+html[data-theme="dark"] .chat-panel__header { background: #000; }
+html[data-theme="dark"] .chat-sidebar { background: #111113; border-right-color: #3f3f46; }
+html[data-theme="dark"] .chat-sidebar__new { background: #18181b; border-color: #52525b; }
+html[data-theme="dark"] .chat-sidebar__new:hover { background: #172554; border-color: #60a5fa; }
+html[data-theme="dark"] .chat-history__row:hover { background: #27272a; }
+html[data-theme="dark"] .chat-history__row.is-active { background: #172554; }
+html[data-theme="dark"] .chat-history__row.is-active .chat-history__item { color: #bfdbfe; }
+html[data-theme="dark"] .chat-history__row.is-confirming { background: #450a0a; }
+html[data-theme="dark"] .chat-history__yes,
+html[data-theme="dark"] .chat-history__no { background: #18181b; border-color: #52525b; color: #f3f4f6; }
+html[data-theme="dark"] .chat-history__yes { background: #b91c1c; border-color: #ef4444; color: #fff; }
+html[data-theme="dark"] .chat-hide { background: #27272a; border: 1px solid #52525b; }
+/* Dark mode turns --accent into a light blue meant for text; solid buttons need the darker blue
+   (the same fix .btn-primary uses), or the white icon is hard to see. */
+html[data-theme="dark"] .chat-launcher,
+html[data-theme="dark"] .chat-tab { background: #2563eb; }
+html[data-theme="dark"] .chat-launcher:hover,
+html[data-theme="dark"] .chat-tab:hover { background: #1d4ed8; }
+html[data-theme="dark"] .chat-log { background: #0b0b0c; }
+html[data-theme="dark"] .chat-message { background: #18181b; border-color: #52525b; }
+html[data-theme="dark"] .chat-message--user { background: #172554; border-color: #60a5fa; }
+html[data-theme="dark"] .chat-message--status { color: #a1a1aa; }
+html[data-theme="dark"] .chat-message--notice { background: #451a03; border-color: #f59e0b; color: #fde68a; }
+html[data-theme="dark"] .chat-message--error { background: #450a0a; border-color: #f87171; }
+html[data-theme="dark"] .chat-form { border-top-color: #3f3f46; }
+html[data-theme="dark"] .chat-form textarea { background: #18181b; color: #f3f4f6; border-color: #52525b; }
+
+@media print { .chat-widget { display: none; } }

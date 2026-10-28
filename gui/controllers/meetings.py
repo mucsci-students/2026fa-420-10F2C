@@ -41,7 +41,11 @@ from scheduler.config import Meeting, ValidationError
 from app.commands.common import VALID_DAYS
 from gui.constants import DAY_NAMES
 from gui.controllers.common import apply_config_edit, require_config
-from gui.controllers.errors import ControllerError, FieldError, translate_validation_error
+from gui.controllers.errors import (
+    ControllerError,
+    FieldError,
+    translate_validation_error,
+)
 from gui.controllers.timeslots import _fit_warnings
 from gui.session_store import get_session
 
@@ -49,9 +53,7 @@ MEETING_FIELDS = ("day", "duration", "lab", "delivery", "start_time")
 DELIVERY_MODES = ("in_person", "online", "hybrid")
 DELIVERY_LABELS = {"in_person": "In person", "online": "Online", "hybrid": "Hybrid"}
 
-LAST_MEETING_MESSAGE = (
-    "Can't delete the only meeting on this pattern -- delete the pattern instead if you don't need it."
-)
+LAST_MEETING_MESSAGE = "Can't delete the only meeting on this pattern -- delete the pattern instead if you don't need it."
 
 
 # ---------------------------------------------------------------------- #
@@ -73,17 +75,23 @@ def _patterns(config):
 def _check_pattern_index(config, pattern_index: int):
     patterns = _patterns(config)
     if not 0 <= pattern_index < len(patterns):
-        raise ControllerError("That class pattern no longer exists. Refresh the page and try again.")
+        raise ControllerError(
+            "That class pattern no longer exists. Refresh the page and try again."
+        )
     return patterns[pattern_index]
 
 
 def _check_meeting_index(pattern, meeting_index: int) -> None:
     if not 0 <= meeting_index < len(pattern.meetings):
-        raise ControllerError("That meeting no longer exists. Refresh the page and try again.")
+        raise ControllerError(
+            "That meeting no longer exists. Refresh the page and try again."
+        )
 
 
 def _apply(session, config, mutate, label=None) -> None:
-    apply_config_edit(session, config, "meeting", mutate, form_fields=MEETING_FIELDS, label=label)
+    apply_config_edit(
+        session, config, "meeting", mutate, form_fields=MEETING_FIELDS, label=label
+    )
 
 
 def meeting_summary(meeting) -> str:
@@ -139,13 +147,18 @@ def build_meeting(form_data, prefix: str = "") -> Meeting:
         )
     duration = read("duration")
     if isinstance(duration, bool) or not isinstance(duration, int) or duration <= 0:
-        errors.append(FieldError(prefix + "duration", "Duration must be a positive whole number of minutes."))
+        errors.append(
+            FieldError(
+                prefix + "duration",
+                "Duration must be a positive whole number of minutes.",
+            )
+        )
     if errors:
         raise ControllerError(errors)
 
     try:
         return Meeting(
-            day=day,
+            day=day,  # ty: ignore[invalid-argument-type]
             duration=duration,
             lab=bool(read("lab")),
             delivery=read("delivery") or "in_person",
@@ -154,7 +167,10 @@ def build_meeting(form_data, prefix: str = "") -> Meeting:
     except ValidationError as error:
         items = translate_validation_error(error, form_fields=MEETING_FIELDS)
         raise ControllerError(
-            [FieldError(prefix + item.field if item.field else None, item.message) for item in items]
+            [
+                FieldError(prefix + item.field if item.field else None, item.message)
+                for item in items
+            ]
         ) from error
 
 
@@ -173,7 +189,9 @@ def describe_meetings(request) -> dict:
 
     patterns = []
     for pattern_index, pattern in enumerate(_patterns(config)):
-        rows = [meeting_row(pattern_index, i, m) for i, m in enumerate(pattern.meetings)]
+        rows = [
+            meeting_row(pattern_index, i, m) for i, m in enumerate(pattern.meetings)
+        ]
         patterns.append(
             {
                 "index": pattern_index,
@@ -219,7 +237,9 @@ def add_meeting(request, pattern_index: int, form_data) -> list[str]:
     return _fit_warnings(config, _value(meeting.day))
 
 
-def update_meeting(request, pattern_index: int, meeting_index: int, form_data) -> list[str]:
+def update_meeting(
+    request, pattern_index: int, meeting_index: int, form_data
+) -> list[str]:
     """Replace the meeting at (pattern_index, meeting_index)."""
     session = get_session(request)
     config = _require_config(session)

@@ -16,8 +16,9 @@ from app.crud import apply_edit
 from gui import session_store
 from gui.ai import service
 from gui.ai.prompt import AREAS, CAPABILITIES
-from gui.ai.tools import NO_CONFIG_MESSAGE, NOTHING_TO_VALIDATE, TOOLS, TOOLS_BY_NAME, ToolBox, find_name
+from gui.ai.tools import NO_CONFIG_MESSAGE, TOOLS, TOOLS_BY_NAME, ToolBox, find_name
 from gui.controllers import rooms
+from gui.controllers.errors import ControllerError
 
 
 class FakeRequest:
@@ -104,7 +105,11 @@ def test_read_and_add_tools_are_registered():
         "add_class_pattern",
     ):
         assert name in TOOLS_BY_NAME
-    assert not any(tool.write for tool in TOOLS if tool.name.startswith(("list_", "get_", "show_", "describe_")))
+    assert not any(
+        tool.write
+        for tool in TOOLS
+        if tool.name.startswith(("list_", "get_", "show_", "describe_"))
+    )
     assert all(tool.write for tool in TOOLS if tool.name.startswith("add_"))
 
 
@@ -142,7 +147,14 @@ def test_find_name_matches_loosely_only_when_unambiguous():
     assert find_name("roddy 140", names) == "RODDY140"
     assert find_name("Dr. Hogg", names) == "Hogg"
     assert find_name("Dr. Nobody", names) is None
-    assert find_name("roddy", names) is None
+    # By the words of the name: "136" or "room 136" is enough when only one name has it.
+    assert find_name("136", names) == "Roddy 136"
+    assert find_name("room 136", names) == "Roddy 136"
+    assert find_name("hog", names) == "Hogg"
+    assert find_name("13", names) is None  # half a number is not a name
+    # ... and never a guess between two real items:
+    with pytest.raises(ControllerError, match="could mean RODDY140, Roddy 136"):
+        find_name("roddy", names)
 
 
 # ---------------------------------------------------------------------- #
@@ -153,15 +165,12 @@ def test_story_7_capabilities_list_every_area_and_action(box, request_):
     result = box.call("describe_capabilities")
     assert result.ok and not result.changed
     text = result.message.lower()
-    for verb in ("view", "add", "change", "validate", "all of them are applied, or none are"):
+    for verb in ("view", "add", "change", "delete"):
         assert verb in text
     for area in AREAS:
         assert area in text
-    # Only what really exists is offered; the rest is named as not available yet.
-    assert "aren't available in the chat yet" in text
-    for missing in ("delet", "sav", "generat"):
-        assert missing in text
-        assert not any(tool.name.startswith(missing) for tool in TOOLS)
+    for action in ("validate", "save", "generat"):
+        assert action in text
     assert result.message == CAPABILITIES
     assert snapshot(request_) == before
 
@@ -229,7 +238,9 @@ def test_story_8_no_configuration_loaded(no_config, box):
         ("get_global_settings", {}, "Generation limit: 100"),
     ],
 )
-def test_every_read_tool_reports_current_data_without_changing_it(box, request_, tool, args, expected):
+def test_every_read_tool_reports_current_data_without_changing_it(
+    box, request_, tool, args, expected
+):
     before = snapshot(request_)
     result = box.call(tool, args)
     assert result.ok, result.message
@@ -240,16 +251,26 @@ def test_every_read_tool_reports_current_data_without_changing_it(box, request_,
 
 
 def test_unknown_room_lab_and_course(box):
-    assert box.call("get_room", {"name": "NOPE100"}).message == "No room named 'NOPE100' exists."
-    assert box.call("get_lab", {"name": "NOPE"}).message == "No lab named 'NOPE' exists."
-    assert box.call("get_course", {"course_id": "CMSC 999"}).message == "No course 'CMSC 999' exists."
+    assert (
+        box.call("get_room", {"name": "NOPE100"}).message
+        == "No room named 'NOPE100' exists."
+    )
+    assert (
+        box.call("get_lab", {"name": "NOPE"}).message == "No lab named 'NOPE' exists."
+    )
+    assert (
+        box.call("get_course", {"course_id": "CMSC 999"}).message
+        == "No course 'CMSC 999' exists."
+    )
 
 
 # ---------------------------------------------------------------------- #
 #  Story 6: tools read the state as it is now
 # ---------------------------------------------------------------------- #
 def test_story_6_tools_see_a_manual_edit(roddy, box):
-    rooms.update_room(roddy, "RODDY140", {"name": "RODDY140", "capacity": 40})  # what the edit page calls
+    rooms.update_room(
+        roddy, "RODDY140", {"name": "RODDY140", "capacity": 40}
+    )  # what the edit page calls
     result = box.call("get_room", {"name": "RODDY140"})
     assert "capacity 40" in result.message
 
@@ -270,7 +291,13 @@ def test_story_9_add_a_room(box, request_):
 def test_story_9_add_a_course_that_uses_existing_items(roddy, box):
     assert box.call("add_faculty", {"name": "Dr. Hogg"}).ok
     result = box.call(
-        "add_course", {"course_id": "CMSC 421", "credits": 3, "faculty": ["Dr. Hogg"], "rooms": ["RODDY140"]}
+        "add_course",
+        {
+            "course_id": "CMSC 421",
+            "credits": 3,
+            "faculty": ["Dr. Hogg"],
+            "rooms": ["RODDY140"],
+        },
     )
     assert result.ok, result.message
     course = next(c for c in config(roddy).config.courses if c.course_id == "CMSC 421")
@@ -283,7 +310,13 @@ def test_story_9_add_a_course_that_uses_existing_items(roddy, box):
 
 def test_add_course_finds_existing_names_loosely(roddy, box):
     result = box.call(
-        "add_course", {"course_id": "CMSC 422", "credits": 3, "faculty": ["Dr. Hogg"], "rooms": ["roddy 141"]}
+        "add_course",
+        {
+            "course_id": "CMSC 422",
+            "credits": 3,
+            "faculty": ["Dr. Hogg"],
+            "rooms": ["roddy 141"],
+        },
     )
     assert result.ok, result.message
     course = next(c for c in config(roddy).config.courses if c.course_id == "CMSC 422")
@@ -293,7 +326,9 @@ def test_add_course_finds_existing_names_loosely(roddy, box):
 def test_an_ambiguous_name_asks_which_one(roddy, box):
     # The example already has "Roddy 140", so "roddy 140" could mean either room.
     before = snapshot(roddy)
-    result = box.call("add_course", {"course_id": "CMSC 422", "credits": 3, "rooms": ["roddy 140"]})
+    result = box.call(
+        "add_course", {"course_id": "CMSC 422", "credits": 3, "rooms": ["roddy 140"]}
+    )
     assert not result.ok
     assert "could mean" in result.message
     assert "RODDY140" in result.message and "Roddy 140" in result.message
@@ -309,9 +344,40 @@ def test_add_course_with_no_capacity_and_no_room_asks_for_it(box, request_):
     assert snapshot(request_) == before
 
 
+def test_add_course_asks_for_everything_that_is_missing_at_once(box, request_):
+    before = snapshot(request_)
+    result = box.call("add_course", {"course_id": "CMSC 423", "credits": 3})
+    assert not result.ok
+    assert (
+        "Capacity is required" in result.message
+        and "Faculty is required" in result.message
+    )
+    assert snapshot(request_) == before
+
+
+def test_add_course_does_not_ask_for_faculty_when_someone_already_prefers_it(
+    box, request_
+):
+    # CMSC 420 is in the example and a faculty member already prefers it.
+    result = box.call(
+        "add_course",
+        {"course_id": "cmsc420", "credits": 3, "capacity": 20, "rooms": ["Roddy 140"]},
+    )
+    assert "Faculty is required" not in result.message
+
+
 def test_add_course_with_an_unknown_room_is_rejected(box, request_):
     before = snapshot(request_)
-    result = box.call("add_course", {"course_id": "CMSC 424", "credits": 3, "capacity": 20, "rooms": ["NOPE100"]})
+    result = box.call(
+        "add_course",
+        {
+            "course_id": "CMSC 424",
+            "credits": 3,
+            "capacity": 20,
+            "rooms": ["NOPE100"],
+            "faculty": ["Hogg"],
+        },
+    )
     assert not result.ok and "NOPE100" in result.message
     assert snapshot(request_) == before
 
@@ -336,10 +402,14 @@ def test_story_9_add_a_time_slot_on_friday(box, request_):
     session = session_store.get_session(request_)
 
     def short_friday(draft):
-        draft.time_slot_config.times["FRI"] = [TimeBlock(start="08:00", end="09:00", spacing=60)]
+        draft.time_slot_config.times["FRI"] = [
+            TimeBlock(start="08:00", end="09:00", spacing=60)
+        ]
 
     apply_edit(session.config, "timeslot", short_friday)
-    result = box.call("add_time_slot", {"day": "Friday", "start": "09:00", "end": "17:00"})
+    result = box.call(
+        "add_time_slot", {"day": "Friday", "start": "09:00", "end": "17:00"}
+    )
     assert result.ok, result.message
     blocks = [(b.start, b.end) for b in config(request_).time_slot_config.times["FRI"]]
     assert ("09:00", "17:00") in blocks
@@ -355,20 +425,31 @@ def test_overlapping_time_slot_is_rejected(box, request_):
 
 def test_story_9_add_a_class_pattern(box, request_):
     count = len(config(request_).time_slot_config.classes)
-    result = box.call("add_class_pattern", {"credits": 3, "meetings": [{"day": "MON", "duration": 150}]})
+    result = box.call(
+        "add_class_pattern",
+        {"credits": 3, "meetings": [{"day": "MON", "duration": 150}]},
+    )
     assert result.ok, result.message
     patterns = config(request_).time_slot_config.classes
     assert len(patterns) == count + 1
     added = patterns[-1]
     assert added.credits == 3
-    assert [(str(getattr(m.day, "value", m.day)), m.duration) for m in added.meetings] == [("MON", 150)]
+    assert [
+        (str(getattr(m.day, "value", m.day)), m.duration) for m in added.meetings
+    ] == [("MON", 150)]
 
 
 def test_add_class_pattern_with_several_meetings_is_one_edit(box, request_):
     count = len(config(request_).time_slot_config.classes)
     result = box.call(
         "add_class_pattern",
-        {"credits": 3, "meetings": [{"day": "TUE", "duration": 75}, {"day": "THU", "duration": 75}]},
+        {
+            "credits": 3,
+            "meetings": [
+                {"day": "TUE", "duration": 75},
+                {"day": "THU", "duration": 75},
+            ],
+        },
     )
     assert result.ok, result.message
     assert len(config(request_).time_slot_config.classes[-1].meetings) == 2
@@ -379,7 +460,13 @@ def test_add_class_pattern_with_one_bad_meeting_adds_nothing(box, request_):
     before = snapshot(request_)
     result = box.call(
         "add_class_pattern",
-        {"credits": 3, "meetings": [{"day": "TUE", "duration": 75}, {"day": "THU", "duration": -5}]},
+        {
+            "credits": 3,
+            "meetings": [
+                {"day": "TUE", "duration": 75},
+                {"day": "THU", "duration": -5},
+            ],
+        },
     )
     assert not result.ok and "Meeting 2" in result.message
     assert snapshot(request_) == before
@@ -404,7 +491,10 @@ def test_adding_with_no_configuration(no_config, box):
     [
         ("add_lab", {"name": "BIO147L", "capacity": 20}),
         ("add_faculty", {"name": "Dr. Smith", "maximum_credits": 12}),
-        ("add_class_pattern", {"credits": 3, "meetings": [{"day": "MON", "duration": 150}]}),
+        (
+            "add_class_pattern",
+            {"credits": 3, "meetings": [{"day": "MON", "duration": 150}]},
+        ),
     ],
 )
 def test_story_9_each_reply_says_applied_but_not_saved(box, tool, args):
@@ -424,7 +514,7 @@ def test_a_failed_add_says_nothing_was_changed(roddy, box):
 
 
 # ---------------------------------------------------------------------- #
-#  #121: update items
+#  #128: several changes, all or nothing (apply_changes)
 # ---------------------------------------------------------------------- #
 def session(request_):
     return session_store.get_session(request_)
@@ -435,247 +525,27 @@ def data(request_):
     return config(request_).model_dump()
 
 
-@pytest.fixture
-def cmsc421(roddy, box):
-    """Dr. Hogg teaches CMSC 421 in RODDY140, so RODDY140 is in use."""
-    assert box.call("add_faculty", {"name": "Dr. Hogg"}).ok
-    result = box.call(
-        "add_course", {"course_id": "CMSC 421", "credits": 3, "faculty": ["Dr. Hogg"], "rooms": ["RODDY140"]}
-    )
-    assert result.ok, result.message
-    session(roddy).dirty = False
-    return roddy
+def batch(*steps):
+    return {
+        "operations": [
+            {"tool": tool, "arguments": arguments} for tool, arguments in steps
+        ]
+    }
 
 
-def course(request_, course_id):
-    return next(c for c in config(request_).config.courses if c.course_id == course_id)
+def test_apply_changes_is_a_registered_write():
+    tool = TOOLS_BY_NAME["apply_changes"]
+    assert tool.write
+    assert tool.args.model_json_schema()["required"] == ["operations"]
 
 
-def test_update_tools_are_registered_as_writes():
-    for name in (
-        "update_room",
-        "update_lab",
-        "update_course",
-        "update_faculty",
-        "update_time_slot",
-        "update_timing_options",
-        "update_class_pattern",
-        "update_meeting",
-        "update_global_settings",
-        "apply_changes",
-    ):
-        assert TOOLS_BY_NAME[name].write
-    assert not TOOLS_BY_NAME["validate_configuration"].write
-
-
-def test_update_schemas_only_require_what_identifies_the_item():
-    assert TOOLS_BY_NAME["update_room"].args.model_json_schema()["required"] == ["name"]
-    assert TOOLS_BY_NAME["update_course"].args.model_json_schema()["required"] == ["course_id"]
-
-
-def test_update_a_room_changes_only_what_was_asked_and_marks_unsaved(roddy, box):
-    result = box.call("update_room", {"name": "RODDY140", "capacity": 40})
-    assert result.ok and result.changed, result.message
-    assert "capacity from 30 to 40" in result.message
-    assert room(roddy, "RODDY140").capacity == 40
-    assert room(roddy, "RODDY140").name == "RODDY140"
-    assert session(roddy).dirty
-    reply = service.compose(box.results)
-    assert "applied but not yet saved" in reply.message
-    rows = rooms.describe_rooms(roddy)["rooms"]  # what the Rooms page shows
-    assert {r["name"]: r["capacity"] for r in rows}["RODDY140"] == 40
-
-
-def test_update_with_a_negative_capacity_is_rejected_and_the_old_value_stays(roddy, box):
-    before = snapshot(roddy)
-    result = box.call("update_room", {"name": "RODDY140", "capacity": -10})
-    assert not result.ok and result.write and not result.changed
-    assert "positive whole number" in result.message
-    assert room(roddy, "RODDY140").capacity == 30
-    assert snapshot(roddy) == before
-    assert not session(roddy).dirty
-    assert "The configuration was not changed." in service.compose(box.results).message
-
-
-def test_update_a_missing_item(roddy, box):
-    before = snapshot(roddy)
-    result = box.call("update_room", {"name": "NOPE100", "capacity": 10})
-    assert not result.ok and not result.changed
-    assert result.message == "Could not update room: No room named 'NOPE100' exists."
-    assert snapshot(roddy) == before
-
-
-def test_an_unknown_setting_is_refused_with_the_real_ones(roddy, box):
-    before = snapshot(roddy)
-    result = box.call("update_room", {"name": "RODDY140", "color": "blue"})
-    assert not result.ok and not result.changed
-    assert "'color' is not a setting that can be changed" in result.message
-    for setting in ("new_name", "capacity", "features", "availability"):
-        assert setting in result.message
-    assert snapshot(roddy) == before
-
-
-def test_a_change_with_no_matching_setting_is_refused_by_the_tool(roddy, box):
-    # "Make RODDY140 blue": the model puts what has no setting in `other`.
-    before = snapshot(roddy)
-    result = box.call("update_room", {"name": "RODDY140", "other": {"color": "blue"}})
-    assert not result.ok and result.write and not result.changed
-    assert "'color' is not a setting that can be changed" in result.message
-    assert "You can change: new_name, capacity, features, availability." in result.message
-    assert "other" not in result.message.split("You can change:")[1]
-    assert snapshot(roddy) == before
-
-
-def test_the_model_is_told_to_let_the_tools_check_values():
-    from gui.ai.prompt import BASE_PROMPT
-
-    assert "Never check, reject or correct a value yourself" in BASE_PROMPT
-    assert "`other`" in BASE_PROMPT
-
-
-def test_an_update_that_names_no_setting_asks_what_to_change(roddy, box):
-    result = box.call("update_room", {"name": "RODDY140"})
-    assert not result.ok and "Say what to change" in result.message
-
-
-def test_an_update_to_the_same_value_changes_nothing(roddy, box):
-    result = box.call("update_room", {"name": "RODDY140", "capacity": 30})
-    assert result.ok and not result.changed
-    assert "Nothing was changed" in result.message
-    assert not session(roddy).dirty
-    assert "applied" not in service.compose(box.results).message
-
-
-def test_rename_an_unused_room(roddy, box):
-    result = box.call("update_room", {"name": "RODDY141", "new_name": "RODDY151"})
-    assert result.ok, result.message
-    assert room(roddy, "RODDY141") is None
-    assert room(roddy, "RODDY151").capacity == 25
-
-
-def test_renaming_a_room_that_is_in_use_is_refused(cmsc421, box):
-    before = snapshot(cmsc421)
-    result = box.call("update_room", {"name": "RODDY140", "new_name": "RODDY150"})
-    assert not result.ok and not result.changed
-    assert "RODDY140 is used by course 'CMSC 421'; rename it on the Rooms page." in result.message
-    assert snapshot(cmsc421) == before
-
-
-def test_an_item_in_use_can_still_change_other_settings(cmsc421, box):
-    result = box.call("update_room", {"name": "RODDY140", "capacity": 45})
-    assert result.ok, result.message
-    assert room(cmsc421, "RODDY140").capacity == 45
-
-
-def test_update_a_lab(box, request_):
-    result = box.call("update_lab", {"name": "Linux", "capacity": 30})
-    assert result.ok, result.message
-    assert next(lab for lab in config(request_).config.labs if lab.name == "Linux").capacity == 30
-
-
-def test_update_a_course(cmsc421, box):
-    result = box.call("update_course", {"course_id": "cmsc 421", "capacity": 25})
-    assert result.ok, result.message
-    assert course(cmsc421, "CMSC 421").capacity == 25
-    assert course(cmsc421, "CMSC 421").room == ["RODDY140"]  # untouched
-    assert course(cmsc421, "CMSC 421").faculty == ["Dr. Hogg"]
-
-
-def test_update_a_course_with_several_sections_asks_which(box, request_):
-    before = snapshot(request_)
-    result = box.call("update_course", {"course_id": "CMSC 140", "capacity": 20})
-    assert not result.ok and "Say which section" in result.message
-    assert snapshot(request_) == before
-
-
-def test_update_a_faculty_member(cmsc421, box):
-    result = box.call("update_faculty", {"name": "Dr. Hogg", "maximum_credits": 9})
-    assert result.ok, result.message
-    person = next(p for p in config(cmsc421).config.faculty if p.name == "Dr. Hogg")
-    assert person.maximum_credits == 9
-    assert person.minimum_credits == 0  # untouched
-
-
-def test_update_a_time_slot(box, request_):
-    def one_friday_block(draft):
-        draft.time_slot_config.times["FRI"] = [TimeBlock(start="08:00", end="17:00", spacing=60)]
-
-    apply_edit(config(request_), "timeslot", one_friday_block)
-    result = box.call("update_time_slot", {"day": "Friday", "new_end": "16:00"})
-    assert result.ok, result.message
-    assert [(b.start, b.end) for b in config(request_).time_slot_config.times["FRI"]] == [("08:00", "16:00")]
-
-
-def test_update_a_class_pattern_and_its_meeting(box, request_):
-    assert box.call("add_class_pattern", {"credits": 3, "meetings": [{"day": "MON", "duration": 150}]}).ok
-    number = len(config(request_).time_slot_config.classes) - 1
-
-    result = box.call("update_meeting", {"pattern": number, "day": "MON", "duration": 120})
-    assert result.ok, result.message
-    assert config(request_).time_slot_config.classes[number].meetings[0].duration == 120
-
-    result = box.call("update_class_pattern", {"pattern": number, "enabled": False})
-    assert result.ok, result.message
-    assert config(request_).time_slot_config.classes[number].disabled
-
-
-def test_update_global_settings(box, request_):
-    result = box.call("update_global_settings", {"limit": 5})
-    assert result.ok, result.message
-    assert config(request_).limit == 5
-
-
-def test_an_unknown_optimizer_flag_lists_the_real_ones(box, request_):
-    before = snapshot(request_)
-    result = box.call("update_global_settings", {"enable_flags": ["make it fast"]})
-    assert not result.ok
-    assert "'make it fast' is not an optimizer flag" in result.message and "pack_rooms" in result.message
-    assert snapshot(request_) == before
-
-
-def test_updating_with_no_configuration(no_config, box):
-    result = box.call("update_room", {"name": "RODDY140", "capacity": 40})
-    assert not result.ok and result.message == NO_CONFIG_MESSAGE
-
-
-# ---------------------------------------------------------------------- #
-#  #123: validate
-# ---------------------------------------------------------------------- #
-def test_validate_a_valid_configuration(box, request_):
-    before = snapshot(request_)
-    result = box.call("validate_configuration")
-    assert result.ok and not result.changed
-    assert result.message == "The configuration is valid."
-    assert snapshot(request_) == before
-
-
-def test_validate_an_invalid_configuration_lists_the_problems(box, request_):
-    config(request_).config.rooms.clear()  # bypasses edit mode on purpose
-    result = box.call("validate_configuration")
-    assert result.ok and not result.changed
-    lines = result.message.splitlines()
-    assert lines[0] == "The configuration is not valid:"
-    assert len(lines) >= 2 and all(line.startswith("- ") for line in lines[1:])
-    assert config(request_).config.rooms == []  # reported, not repaired
-
-
-def test_validate_with_no_configuration(no_config, box):
-    result = box.call("validate_configuration")
-    assert not result.ok and result.message == NOTHING_TO_VALIDATE
-
-
-# ---------------------------------------------------------------------- #
-#  #128: several changes, all or nothing
-# ---------------------------------------------------------------------- #
 def test_apply_changes_applies_every_step(roddy, box):
     result = box.call(
         "apply_changes",
-        {
-            "operations": [
-                {"tool": "add_room", "arguments": {"name": "RODDY150", "capacity": 35}},
-                {"tool": "update_room", "arguments": {"name": "RODDY140", "capacity": 45}},
-            ]
-        },
+        batch(
+            ("add_room", {"name": "RODDY150", "capacity": 35}),
+            ("update_room", {"name": "RODDY140", "capacity": 45}),
+        ),
     )
     assert result.ok and result.changed, result.message
     assert "All 2 changes were applied together" in result.message
@@ -686,16 +556,14 @@ def test_apply_changes_applies_every_step(roddy, box):
 
 def test_one_bad_step_rolls_back_the_good_ones(roddy, box):
     before = data(roddy)
-    undo_before = session(roddy).history.state()
+    history_before = session(roddy).history.state()
     result = box.call(
         "apply_changes",
-        {
-            "operations": [
-                {"tool": "add_room", "arguments": {"name": "RODDY150", "capacity": 35}},
-                {"tool": "update_room", "arguments": {"name": "RODDY141", "capacity": 40}},
-                {"tool": "update_room", "arguments": {"name": "RODDY140", "capacity": -10}},
-            ]
-        },
+        batch(
+            ("add_room", {"name": "RODDY150", "capacity": 35}),
+            ("update_room", {"name": "RODDY141", "capacity": 40}),
+            ("update_room", {"name": "RODDY140", "capacity": -10}),
+        ),
     )
     assert not result.ok and not result.changed
     assert "step 3 (update_room) failed" in result.message
@@ -705,8 +573,8 @@ def test_one_bad_step_rolls_back_the_good_ones(roddy, box):
     assert data(roddy) == before
     assert not session(roddy).dirty
     history = session(roddy).history.state()
-    assert history["undo_count"] == undo_before["undo_count"]
-    assert history["token"] == undo_before["token"]
+    assert history["undo_count"] == history_before["undo_count"]
+    assert history["token"] == history_before["token"]
     assert not history["can_redo"]  # a rolled-back step can't be redone by mistake
     assert "The configuration was not changed." in service.compose(box.results).message
 
@@ -714,12 +582,10 @@ def test_one_bad_step_rolls_back_the_good_ones(roddy, box):
 def test_undo_still_works_after_a_combined_change(roddy, box):
     box.call(
         "apply_changes",
-        {
-            "operations": [
-                {"tool": "add_room", "arguments": {"name": "RODDY150", "capacity": 35}},
-                {"tool": "update_room", "arguments": {"name": "RODDY140", "capacity": 45}},
-            ]
-        },
+        batch(
+            ("add_room", {"name": "RODDY150", "capacity": 35}),
+            ("update_room", {"name": "RODDY140", "capacity": 45}),
+        ),
     )
     current = session(roddy)
     current.history.undo(current)
@@ -728,16 +594,26 @@ def test_undo_still_works_after_a_combined_change(roddy, box):
     assert room(roddy, "RODDY150") is None
 
 
-def test_apply_changes_refuses_tools_that_are_not_changes(roddy, box):
+def test_a_combined_change_that_changes_nothing_says_so(roddy, box):
+    result = box.call(
+        "apply_changes", batch(("update_room", {"name": "RODDY140", "capacity": 30}))
+    )
+    assert result.ok and not result.changed
+    assert not session(roddy).dirty
+
+
+def test_apply_changes_refuses_deletes_and_lookups(roddy, box):
     before = snapshot(roddy)
     result = box.call(
         "apply_changes",
-        {
-            "operations": [
-                {"tool": "add_room", "arguments": {"name": "RODDY150", "capacity": 35}},
-                {"tool": "list_rooms", "arguments": {}},
-            ]
-        },
+        batch(
+            ("add_room", {"name": "RODDY150", "capacity": 35}),
+            ("delete_room", {"name": "RODDY141"}),
+            ("list_rooms", {}),
+        ),
     )
-    assert not result.ok and "list_rooms can't be part of a combined change" in result.message
+    assert not result.ok
+    assert (
+        "delete_room, list_rooms can't be part of a combined change" in result.message
+    )
     assert snapshot(roddy) == before

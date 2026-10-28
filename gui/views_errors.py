@@ -40,7 +40,9 @@ _FALLBACK_HTML = """<!DOCTYPE html>
 """
 
 
-def friendly_error_response(request, reference: str | None = None, exception: Exception | None = None) -> HttpResponse:
+def friendly_error_response(
+    request, reference: str | None = None, exception: Exception | None = None
+) -> HttpResponse:
     """A 500 page in plain language. `reference` matches the log entry;
     the exception's type and message are only shown when DEBUG is on, in a
     collapsed "Technical details" section (never a traceback)."""
@@ -54,16 +56,24 @@ def friendly_error_response(request, reference: str | None = None, exception: Ex
             {"reference": reference, "details": details},
             status=500,
         )
-    except Exception:  # the error page must not fail too
-        ref = f"<p>Reference: <code>{html.escape(reference)}</code></p>" if reference else ""
-        return HttpResponse(_FALLBACK_HTML.format(reference=ref), status=500, content_type="text/html; charset=utf-8")
+    except Exception:  # noqa: BLE001  # the error page must not fail too
+        ref = (
+            f"<p>Reference: <code>{html.escape(reference)}</code></p>"
+            if reference
+            else ""
+        )
+        return HttpResponse(
+            _FALLBACK_HTML.format(reference=ref),
+            status=500,
+            content_type="text/html; charset=utf-8",
+        )
 
 
 def page_not_found(request, exception=None):
     """handler404: an unknown address or a missing item (Http404)."""
     try:
         return render(request, NOT_FOUND_TEMPLATE, {"path": request.path}, status=404)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return HttpResponse(
             "<!DOCTYPE html><title>Page not found</title><h1>Page not found</h1>"
             '<p>That page doesn\'t exist. Go to the <a href="/">home page</a>.</p>',

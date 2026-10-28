@@ -1,0 +1,285 @@
+diff --git a/gui/ai/prompt.py b/gui/ai/prompt.py
+index adf142f..84e1f57 100644
+--- a/gui/ai/prompt.py
++++ b/gui/ai/prompt.py
+@@ -31,6 +31,7 @@ CAPABILITIES = (
+     "show you the generation limit and optimizer flags for the run (you can change them), and only start "
+     "after you say go ahead. The schedules then appear in the Schedule Viewer. If no configuration is open, "
+     "I can create a new one or load one that is available in this session.\n"
++    "- Make several adds and changes as one: either all of them are applied, or none are.\n"
+     "- Undo and redo changes, including bringing back something that was deleted (with everything that was "
+     "removed with it), and show what changed recently.\n"
+     "- Check the configuration for the usual reasons schedule generation finds nothing, and explain a failed run.\n"
+@@ -86,8 +87,9 @@ Rules:
+ - If the request has nothing to do with course scheduling, say so briefly.
+ - The scheduler library decides whether a configuration is valid. When a tool reports a
+   problem, pass its explanation on plainly; do not argue with it or try to work around it.
+-- Changes: call the matching update_* tool and send only the values that change. Report that
+-  something was changed only after its tool confirms it.
++- Changes: call the matching update_* tool and send only the values that change. Send them
++  exactly as the user gave them, even one that looks wrong (a negative capacity): the tool checks
++  it the same way the forms do. Report that something was changed only after its tool confirms it.
+ - Deleting is two steps. The delete_* tools only DESCRIBE what a delete would change; nothing is
+   deleted. The APPLICATION remembers which delete is waiting, so you never need to know which
+   item it was. When the user's message only agrees to go ahead ("confirm", "yes", "do it", "go
+@@ -105,7 +107,9 @@ Rules:
+   undone change back, call redo_changes. Deleted items come back with everything removed along with them.
+ - Several requests in one message: do all of them. Call every tool the message needs in the same turn,
+   in the order the user gave, for example "put the room back, then generate a schedule" is
+-  undo_changes and then prepare_schedule_generation. Never drop part of a request. The two-step rules
++  undo_changes and then prepare_schedule_generation. Never drop part of a request. When the message
++  asks for two or more adds or updates, put all of them in ONE apply_changes call instead, so they are
++  applied together or not at all (do this even if one of them looks invalid). The two-step rules
+   still hold: a delete is only described and generation only shows its settings; the user confirms in a
+   new message.
+ - Why a run failed, or "check the configuration" / "what is wrong with it": call
+diff --git a/gui/ai/tools.py b/gui/ai/tools.py
+index 24bd8a7..eaa7e17 100644
+--- a/gui/ai/tools.py
++++ b/gui/ai/tools.py
+@@ -29,9 +29,11 @@ import logging
+ import threading
+ from collections.abc import Iterable
+ from dataclasses import replace
++from typing import Any
+ 
+-from pydantic import BaseModel, Field, ValidationError, field_validator
++from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+ 
++from app.memento import ConfigOriginator, MementoError
+ from gui.ai.base import (
+     NO_CONFIG_MESSAGE,
+     UNDO_CHIP,
+@@ -539,6 +541,103 @@ def add_class_pattern(request, args: AddPatternArgs) -> str:
+     )
+ 
+ 
++# ---------------------------------------------------------------------- #
++#  Several changes as one (#128) -- all of them, or none of them
++# ---------------------------------------------------------------------- #
++BATCH_PREFIXES = (
++    "add_",
++    "update_",
++)  # deletes need their own confirmation, so they stay out
++MAX_BATCH = 20  # most steps one apply_changes call may hold
++
++
++class OperationArgs(BaseModel):
++    model_config = ConfigDict(extra="forbid")
++    tool: str = Field(description='The add_ or update_ tool to run, e.g. "update_room"')
++    arguments: dict[str, Any] = Field(
++        default_factory=dict, description="That tool's arguments"
++    )
++
++
++class ApplyChangesArgs(BaseModel):
++    operations: list[OperationArgs] = Field(
++        min_length=1,
++        max_length=MAX_BATCH,
++        description="The changes, in order. They are applied all together, or not at all",
++    )
++
++
++def _batch_tools() -> dict[str, AiTool]:
++    return {
++        tool.name: tool
++        for tool in TOOLS
++        if tool.write and tool.name.startswith(BATCH_PREFIXES)
++    }
++
++
++def _roll_back(session, memento, checkpoint, dirty_before: bool) -> None:
++    """Put the configuration, the undo history and the unsaved flag back to how
++    they were before the first step (the memento was taken at that moment)."""
++    try:
++        ConfigOriginator(session.config).restore(memento)
++    except MementoError as error:
++        logger.error("apply_changes could not roll back: %s", error)
++        raise ControllerError(
++            "A step failed and the earlier steps could not be taken back automatically. "
++            "Check the History page and undo them there."
++        ) from error
++    if checkpoint is not None:
++        session.history.rewind_to(checkpoint)
++    session.dirty = dirty_before
++
++
++def apply_changes(request, args: ApplyChangesArgs) -> str:
++    """Run several add/update tools as ONE change (#128).
++
++    A memento of the whole configuration (app/memento.py) is taken before the
++    first step. If any step fails, the memento is restored and the history is
++    rewound (app/history.py checkpoint / rewind_to), so nothing is half-applied
++    and Undo still matches what the user sees. The steps run through a second
++    ToolBox, so each one gets exactly the checks it gets on its own.
++    """
++    allowed = _batch_tools()
++    refused = [
++        operation.tool for operation in args.operations if operation.tool not in allowed
++    ]
++    if refused:
++        raise ControllerError(
++            f"{_join(dict.fromkeys(refused))} can't be part of a combined change. "
++            "Only add_ and update_ actions can; deletes are confirmed one at a time."
++        )
++    session = get_session(request)
++    config = require_config(session, "making changes")
++    memento = ConfigOriginator(
++        config
++    ).create_memento()  # every part, before anything changes
++    history = getattr(session, "history", None)
++    checkpoint = history.checkpoint() if history is not None else None
++    dirty_before = session.dirty
++
++    steps = ToolBox(request, allowed.values())
++    done: list[str] = []
++    edited = False
++    for number, operation in enumerate(args.operations, start=1):
++        result = steps.call(operation.tool, operation.arguments)
++        if not result.ok:
++            _roll_back(session, memento, checkpoint, dirty_before)
++            # The step's own message already starts with "Could not ...".
++            raise ControllerError(
++                f"step {number} ({operation.tool}) failed. {result.message} "
++                f"None of the {_plural(len(args.operations), 'change')} were applied."
++            )
++        edited = edited or result.changed
++        done.append(f"{number}. {result.message}")
++    text = "\n".join(
++        [f"All {_plural(len(done), 'change')} were applied together:"] + done
++    )
++    return text if edited else Unchanged(text)
++
++
+ # ---------------------------------------------------------------------- #
+ #  The registry: every tool the model is offered, in one place
+ # ---------------------------------------------------------------------- #
+@@ -649,6 +748,14 @@ TOOLS: tuple[AiTool, ...] = (
+         write=True,
+     ),
+     *CHANGE_TOOLS,
++    AiTool(
++        "apply_changes",
++        "Make several add_ or update_ changes as ONE change: either all of them are applied, or none are. "
++        "Use it whenever one message asks for more than one add or update.",
++        ApplyChangesArgs,
++        apply_changes,
++        write=True,
++    ),
+     *GENERATION_TOOLS,
+     *UNDO_TOOLS,
+     *DIAGNOSE_TOOLS,
+diff --git a/tests/test_ai_tools.py b/tests/test_ai_tools.py
+index 0967492..2d41217 100644
+--- a/tests/test_ai_tools.py
++++ b/tests/test_ai_tools.py
+@@ -511,3 +511,109 @@ def test_a_failed_add_says_nothing_was_changed(roddy, box):
+     assert not reply.ok and not reply.changed
+     assert "The configuration was not changed." in reply.message
+     assert "applied" not in reply.message
++
++
++# ---------------------------------------------------------------------- #
++#  #128: several changes, all or nothing (apply_changes)
++# ---------------------------------------------------------------------- #
++def session(request_):
++    return session_store.get_session(request_)
++
++
++def data(request_):
++    """Plain data (sets compare as sets), for checks after a rollback."""
++    return config(request_).model_dump()
++
++
++def batch(*steps):
++    return {
++        "operations": [
++            {"tool": tool, "arguments": arguments} for tool, arguments in steps
++        ]
++    }
++
++
++def test_apply_changes_is_a_registered_write():
++    tool = TOOLS_BY_NAME["apply_changes"]
++    assert tool.write
++    assert tool.args.model_json_schema()["required"] == ["operations"]
++
++
++def test_apply_changes_applies_every_step(roddy, box):
++    result = box.call(
++        "apply_changes",
++        batch(
++            ("add_room", {"name": "RODDY150", "capacity": 35}),
++            ("update_room", {"name": "RODDY140", "capacity": 45}),
++        ),
++    )
++    assert result.ok and result.changed, result.message
++    assert "All 2 changes were applied together" in result.message
++    assert room(roddy, "RODDY150").capacity == 35
++    assert room(roddy, "RODDY140").capacity == 45
++    assert session(roddy).dirty
++
++
++def test_one_bad_step_rolls_back_the_good_ones(roddy, box):
++    before = data(roddy)
++    history_before = session(roddy).history.state()
++    result = box.call(
++        "apply_changes",
++        batch(
++            ("add_room", {"name": "RODDY150", "capacity": 35}),
++            ("update_room", {"name": "RODDY141", "capacity": 40}),
++            ("update_room", {"name": "RODDY140", "capacity": -10}),
++        ),
++    )
++    assert not result.ok and not result.changed
++    assert "step 3 (update_room) failed" in result.message
++    assert "None of the 3 changes were applied." in result.message
++    assert room(roddy, "RODDY150") is None
++    assert room(roddy, "RODDY141").capacity == 25
++    assert data(roddy) == before
++    assert not session(roddy).dirty
++    history = session(roddy).history.state()
++    assert history["undo_count"] == history_before["undo_count"]
++    assert history["token"] == history_before["token"]
++    assert not history["can_redo"]  # a rolled-back step can't be redone by mistake
++    assert "The configuration was not changed." in service.compose(box.results).message
++
++
++def test_undo_still_works_after_a_combined_change(roddy, box):
++    box.call(
++        "apply_changes",
++        batch(
++            ("add_room", {"name": "RODDY150", "capacity": 35}),
++            ("update_room", {"name": "RODDY140", "capacity": 45}),
++        ),
++    )
++    current = session(roddy)
++    current.history.undo(current)
++    assert room(roddy, "RODDY140").capacity == 30
++    current.history.undo(current)
++    assert room(roddy, "RODDY150") is None
++
++
++def test_a_combined_change_that_changes_nothing_says_so(roddy, box):
++    result = box.call(
++        "apply_changes", batch(("update_room", {"name": "RODDY140", "capacity": 30}))
++    )
++    assert result.ok and not result.changed
++    assert not session(roddy).dirty
++
++
++def test_apply_changes_refuses_deletes_and_lookups(roddy, box):
++    before = snapshot(roddy)
++    result = box.call(
++        "apply_changes",
++        batch(
++            ("add_room", {"name": "RODDY150", "capacity": 35}),
++            ("delete_room", {"name": "RODDY141"}),
++            ("list_rooms", {}),
++        ),
++    )
++    assert not result.ok
++    assert (
++        "delete_room, list_rooms can't be part of a combined change" in result.message
++    )
++    assert snapshot(roddy) == before

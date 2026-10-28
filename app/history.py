@@ -77,13 +77,15 @@ class HistoryError(Exception):
 class Snapshot:
     """One entry on the undo or redo stack: a memento plus what the page shows."""
 
-    label: str      # what the change was, e.g. "Delete room 'Roddy 136'"
-    memento: CompositeMemento   # the saved parts of the configuration (app/memento.py)
-    dirty: bool     # whether the configuration had unsaved changes in that state
-    version: int = 0            # the configuration version of that state
-    summary: str = ""           # what changed, e.g. "Removed room Roddy 136; Changed 3 courses"
-    at: float = field(default_factory=time.time)   # when the change was made
-    id: int = field(default_factory=lambda: next(_entry_ids))  # stable address for "go back to here"
+    label: str  # what the change was, e.g. "Delete room 'Roddy 136'"
+    memento: CompositeMemento  # the saved parts of the configuration (app/memento.py)
+    dirty: bool  # whether the configuration had unsaved changes in that state
+    version: int = 0  # the configuration version of that state
+    summary: str = ""  # what changed, e.g. "Removed room Roddy 136; Changed 3 courses"
+    at: float = field(default_factory=time.time)  # when the change was made
+    id: int = field(
+        default_factory=lambda: next(_entry_ids)
+    )  # stable address for "go back to here"
 
 
 def _fallback_label(summary: str, area) -> str:
@@ -183,7 +185,9 @@ class ConfigHistory:
         return {
             "id": entry.id,
             "label": entry.label,
-            "summary": entry.summary if entry.summary and entry.summary != entry.label else "",
+            "summary": entry.summary
+            if entry.summary and entry.summary != entry.label
+            else "",
             "when": time.strftime("%H:%M", time.localtime(entry.at)),
             "steps": steps,
         }
@@ -233,7 +237,15 @@ class ConfigHistory:
         except MementoError as error:
             raise HistoryError(str(error)) from error
         target.append(
-            Snapshot(entry.label, replaced, session.dirty, self.version, entry.summary, entry.at, entry.id)
+            Snapshot(
+                entry.label,
+                replaced,
+                session.dirty,
+                self.version,
+                entry.summary,
+                entry.at,
+                entry.id,
+            )
         )
         session.dirty = entry.dirty
         self.version = entry.version
@@ -275,7 +287,7 @@ class ConfigHistory:
             raise HistoryError("No configuration is loaded.")
         try:
             wanted = int(entry_id)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             raise HistoryError("That history entry does not exist any more.") from None
         for index, entry in enumerate(self._undo):
             if entry.id == wanted:

@@ -23,7 +23,9 @@ def session(monkeypatch):
 
 def rename_first_room(session, name):
     def mutate(draft):
-        draft.config.rooms[0].capacity = sum(map(ord, name))   # a different value for each name
+        draft.config.rooms[0].capacity = sum(
+            map(ord, name)
+        )  # a different value for each name
 
     apply_session_edit(session, session.config, "room", mutate, label=name)
 
@@ -39,7 +41,7 @@ def test_the_token_the_page_was_drawn_from_is_checked(session):
     state = ctrl.describe_history(None)
     with pytest.raises(ControllerError, match="changed since"):
         ctrl.undo(None, token="0")
-    assert session.history.can_undo                         # nothing happened
+    assert session.history.can_undo  # nothing happened
     assert ctrl.undo(None, token=state["token"]) == "one"
 
 
@@ -69,7 +71,9 @@ def test_go_to_returns_the_labels_it_moved_over(session):
 def test_restore_previous_names_what_came_back(session):
     first_name = session.config_name
     session.new_config()
-    assert ctrl.describe_previous(None)["name"] == first_name
+    previous = ctrl.describe_previous(None)
+    assert previous is not None
+    assert previous["name"] == first_name
     assert ctrl.restore_previous(None) == first_name
 
 
@@ -84,4 +88,4 @@ def test_restore_previous_waits_for_a_running_generation(session):
     session.generating = True
     with pytest.raises(ControllerError, match="being generated"):
         ctrl.restore_previous(None)
-    assert session.previous is not None                      # still there for later
+    assert session.previous is not None  # still there for later

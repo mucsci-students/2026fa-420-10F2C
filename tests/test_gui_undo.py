@@ -50,7 +50,11 @@ def delete_big_room(client):
 
 def add_room(client, name="Annex 1"):
     client.get(ROOMS)
-    return client.post(ROOMS + "add/", {"name": name, "capacity": "20", "features": "", "times": ""}, follow=True)
+    return client.post(
+        ROOMS + "add/",
+        {"name": name, "capacity": "20", "features": "", "times": ""},
+        follow=True,
+    )
 
 
 def test_the_undo_bar_stays_out_of_the_way_until_there_is_something_to_undo(client):
@@ -70,7 +74,9 @@ def test_a_cascading_delete_can_be_undone_exactly(client):
 
     response = client.post(UNDO, follow=True)
     assert "Undid: Delete room" in page(response)
-    assert config_json() == before          # rooms, course lists and faculty preferences all back
+    assert (
+        config_json() == before
+    )  # rooms, course lists and faculty preferences all back
     assert browser_session().dirty is False  # back to the loaded state
 
 
@@ -107,7 +113,10 @@ def test_undo_covers_other_kinds_of_edits_too(client):
 
 def test_a_rejected_edit_leaves_nothing_to_undo(client):
     client.get(ROOMS)
-    client.post(ROOMS + "add/", {"name": "Roddy 136", "capacity": "20", "features": "", "times": ""})
+    client.post(
+        ROOMS + "add/",
+        {"name": "Roddy 136", "capacity": "20", "features": "", "times": ""},
+    )
     assert not browser_session().history.can_undo
 
 

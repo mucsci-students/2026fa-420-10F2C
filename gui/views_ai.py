@@ -1,53 +1,107 @@
 """
-AI Assistant page (Sprint 3). Thin like every other view: it reads the
-request text, hands it to gui.ai.service, and shows the reply.
+Behind the AI chat button (Sprint 3). Thin like every other view: it reads the request text,
+hands it to gui.ai.service, and returns the reply as JSON.
 
-    GET  /assistant/       the chat page
-    POST /assistant/ask/   one request. The page's script posts here and gets
-                           JSON back; without JavaScript the form posts here
-                           and the page is shown again with the reply.
+    POST /assistant/ask/      one request from the chat panel (components/chat_widget.html,
+                              js/chat.js). 409 when the browser's previous request is still running.
+    GET  /assistant/chat/     the saved chats of this browser and the open chat's lines, so the panel can
+                              draw them again after a page change or reload (js/chat.js).
+    POST /assistant/chat/new/ | switch/ | delete/   start a new chat, open an older one, remove one.
+                              409 while a request is still running, so a reply never lands in another chat.
+    GET  /assistant/status/   how far a schedule generation is, for the chat's progress line while
+                              the request that started it is still running. Read-only: unlike
+                              /generate/status/ it never collects the result or queues a message.
 
 The API key stays on the server: the browser only ever sees the reply text.
 """
 
 from __future__ import annotations
 
+from django.contrib import messages
 from django.http import JsonResponse
-from django.shortcuts import render
 from django.views.decorators.http import require_GET, require_POST
 
-from gui.ai import service
+from gui.ai import chats, service
+from gui.controllers import schedule_controller
 from gui.session_store import get_session
-
-
-def _wants_json(request) -> bool:
-    return request.headers.get("X-Requested-With") == "XMLHttpRequest"
-
-
-@require_GET
-def assistant(request):
-    return render(request, "gui/assistant.html", {"active": "assistant"})
 
 
 @require_POST
 def assistant_ask(request):
-    text = request.POST.get("message", "")
-    reply = service.handle_request(request, text)
-
-    if _wants_json(request):
-        status = 409 if reply.busy else 200
-        return JsonResponse(
-            {
-                "ok": reply.ok,
-                "reply": reply.message,
-                "changed": reply.changed,
-                "busy": reply.busy,
-                "dirty": bool(get_session(request).dirty),
-            },
-            status=status,
-        )
-    return render(
-        request,
-        "gui/assistant.html",
-        {"active": "assistant", "sent": text.strip(), "reply": reply},
+    reply = service.handle_request(request, request.POST.get("message", ""))
+    count = schedule_controller.schedule_count(request)
+    generated = bool(reply.ok and reply.schedules_changed and count)
+    if generated:
+        # Shown on the next full page, so the confirmation survives the Schedule Viewer reloading.
+        noun = "schedule" if count == 1 else "schedules"
+        messages.success(request, f"The AI assistant generated {count} {noun}.")
+    return JsonResponse(
+        {
+            "ok": reply.ok,
+            "reply": reply.message,
+            "changed": reply.changed,
+            "busy": reply.busy,
+            "dirty": bool(get_session(request).dirty),
+            "generated": generated,
+            "schedule_count": count,
+            "refresh": reply.refresh,
+            "suggestions": list(reply.suggestions),
+        },
+        status=409 if reply.busy else 200,
     )
+
+
+@require_GET
+def assistant_status(request):
+    status = schedule_controller.generation_status(request)
+    keys = ("state", "found", "limit", "percent", "elapsed", "cancel_requested")
+    return JsonResponse({key: status[key] for key in keys if key in status})
+
+
+def _chat_state(request, status: int = 200, error: str = ""):
+    payload = chats.state(get_session(request), busy=service.is_busy(request))
+    if error:
+        payload["error"] = error
+    return JsonResponse(payload, status=status)
+
+
+@require_GET
+def assistant_chat(request):
+    return _chat_state(request)
+
+
+def _refuse_while_busy(request):
+    if service.is_busy(request):
+        return _chat_state(
+            request, 409, "A request is still running. Wait for it to finish."
+        )
+    return None
+
+
+@require_POST
+def assistant_chat_new(request):
+    refused = _refuse_while_busy(request)
+    if refused:
+        return refused
+    chats.new_chat(get_session(request))
+    return _chat_state(request)
+
+
+@require_POST
+def assistant_chat_switch(request):
+    refused = _refuse_while_busy(request)
+    if refused:
+        return refused
+    if not chats.switch_chat(get_session(request), request.POST.get("id", "")):
+        return _chat_state(request, 404, "That chat no longer exists.")
+    return _chat_state(request)
+
+
+@require_POST
+def assistant_chat_delete(request):
+    refused = _refuse_while_busy(request)
+    if refused:
+        return refused
+    if not chats.delete_chat(get_session(request), request.POST.get("id", "")):
+        return _chat_state(request, 404, "That chat no longer exists.")
+    return _chat_state(request)

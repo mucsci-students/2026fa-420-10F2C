@@ -48,7 +48,15 @@ def form_tag(html: str, action: str) -> str:
 
 def load_schedules(client, *faculty):
     schedules = [
-        [Assignment("CMSC 140.01", name, "Roddy 136", None, (MeetingTime("MON", "09:00", "09:50", 50),))]
+        [
+            Assignment(
+                "CMSC 140.01",
+                name,
+                "Roddy 136",
+                None,
+                (MeetingTime("MON", "09:00", "09:50", 50),),
+            )
+        ]
         for name in faculty
     ]
     raw = schedule_io.schedules_to_json(schedules).encode("utf-8")
@@ -98,9 +106,14 @@ def test_schedule_import_shows_loading(client):
 
 def test_both_schedule_export_forms_wait_for_the_download(client):
     load_schedules(client, "A", "B")
-    tags = re.findall(r'<form[^>]*action="/schedules/export/"[^>]*>', page(client.get(VIEWER_URL)))
+    tags = re.findall(
+        r'<form[^>]*action="/schedules/export/"[^>]*>', page(client.get(VIEWER_URL))
+    )
     assert len(tags) == 2
-    assert all('data-loading="Loading…"' in tag and "data-loading-download" in tag for tag in tags)
+    assert all(
+        'data-loading="Loading…"' in tag and "data-loading-download" in tag
+        for tag in tags
+    )
 
 
 # ---------------------------------------------------------------------- #
@@ -112,7 +125,9 @@ def test_well_formed_tokens_are_accepted(token):
     assert views.download_token(request) == token
 
 
-@pytest.mark.parametrize("token", ["", "x" * 65, "has space", "semi;colon", "<script>", "a=b"])
+@pytest.mark.parametrize(
+    "token", ["", "x" * 65, "has space", "semi;colon", "<script>", "a=b"]
+)
 def test_odd_tokens_are_ignored(token):
     request = RequestFactory().get("/", {"download_token": token})
     assert views.download_token(request) is None
@@ -124,7 +139,9 @@ def test_token_can_come_from_a_post_form():
 
 
 def test_download_response_echoes_the_token_in_a_short_lived_cookie():
-    response = views.download_response("x.json", "{}", "application/json; charset=utf-8", "abc123")
+    response = views.download_response(
+        "x.json", "{}", "application/json; charset=utf-8", "abc123"
+    )
     cookie = response.cookies["download_token"]
     assert cookie.value == "abc123"
     assert cookie["max-age"] == 120
@@ -134,7 +151,9 @@ def test_download_response_echoes_the_token_in_a_short_lived_cookie():
 
 @pytest.mark.parametrize("token", [None, "", "bad token"])
 def test_download_response_without_a_good_token_sets_no_cookie(token):
-    response = views.download_response("x.json", "{}", "application/json; charset=utf-8", token)
+    response = views.download_response(
+        "x.json", "{}", "application/json; charset=utf-8", token
+    )
     assert "download_token" not in response.cookies
 
 
@@ -150,8 +169,12 @@ def test_configuration_save_with_a_token_sets_the_cookie(client):
 
 def test_schedule_export_with_a_token_sets_the_cookie(client):
     load_schedules(client, "A", "B")
-    response = client.get(EXPORT_URL, {"schedule": "all", "file_format": "csv", "download_token": "exp-1"})
-    assert response["Content-Disposition"] == 'attachment; filename="schedules-all-2.csv"'
+    response = client.get(
+        EXPORT_URL, {"schedule": "all", "file_format": "csv", "download_token": "exp-1"}
+    )
+    assert (
+        response["Content-Disposition"] == 'attachment; filename="schedules-all-2.csv"'
+    )
     assert response.cookies["download_token"].value == "exp-1"
 
 
@@ -163,7 +186,9 @@ def test_export_without_a_token_still_works_and_sets_no_cookie(client):
 
 
 def test_failed_export_answers_with_a_page_and_message_not_a_cookie(client):
-    response = client.get(EXPORT_URL, {"schedule": "1", "download_token": "exp-2"}, follow=True)
+    response = client.get(
+        EXPORT_URL, {"schedule": "1", "download_token": "exp-2"}, follow=True
+    )
     assert response.redirect_chain[-1][0].endswith(VIEWER_URL)
     assert "There are no schedules yet." in page(response)
     assert "download_token" not in response.cookies

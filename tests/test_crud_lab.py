@@ -1,9 +1,10 @@
 """Unit tests for lab create, update, delete, and prompt behavior."""
 
+from scheduler.config import LabConfig, Meeting
+
 from app import commands
 from app.crud import apply_edit
 from app.session import Session
-from scheduler.config import LabConfig, Meeting
 
 
 def make_session():

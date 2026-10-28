@@ -38,7 +38,9 @@ def render_rename_confirmation(
             "old_name": old_name,
             "new_name": new_name,
             "references": references,
-            "confirmation_token": create_rename_confirmation(resource_key, identifier, form_data),
+            "confirmation_token": create_rename_confirmation(
+                resource_key, identifier, form_data
+            ),
             "confirm_url_name": confirm_url_name,
             "cancel_url_name": cancel_url_name,
         },
