@@ -352,7 +352,7 @@ def empty_session(monkeypatch):
 class TestRequestNewConfiguration:
     def test_with_nothing_loaded_it_starts_at_once(self, empty_session):
         outcome = controller.request_new_configuration(None)
-        assert outcome.started and outcome.token is None
+        assert outcome.started and not outcome.token
         assert empty_session.config is not None
 
     def test_with_nothing_to_lose_it_starts_at_once(self, session):

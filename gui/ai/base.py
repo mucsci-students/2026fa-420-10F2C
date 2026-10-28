@@ -33,8 +33,10 @@ LOOKUP_PREFIXES = ("list_", "get_", "show_")
 
 @dataclass(frozen=True)
 class BrowserAction:
+    """A tool's reply plus what the browser should draw (a JSON object: strings, numbers, ...)."""
+
     message: str
-    action: dict[str, str]
+    action: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -47,7 +49,7 @@ class ToolResult:
     changed: bool = False  # True only when the configuration was edited
     write: bool = False  # True for tools that try to edit the configuration
     final: bool = True  # False for plain lookups: the AI sees them and goes on; they are not the answer
-    action: dict[str, str] | None = None
+    action: dict[str, Any] | None = None
 
 
 class Unchanged(str):

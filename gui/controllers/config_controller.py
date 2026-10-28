@@ -273,7 +273,8 @@ class PendingReplacement:
 @dataclass(frozen=True)
 class NewConfigurationOutcome:
     started: bool  # True: the new configuration already exists, because nothing would be lost
-    token: str | None = None
+    # The single-use confirmation token; empty when nothing needs confirming.
+    token: str = ""
     dirty: bool = False
     schedule_count: int = 0
     name: str | None = None
@@ -286,13 +287,14 @@ def request_new_configuration(request) -> NewConfigurationOutcome:
     """Start a new configuration now when nothing would be lost; otherwise remember what would be
     lost and return a single-use token. The caller must ask the user before confirming."""
     state = describe_configuration(request)
-    if not state["discard_note"]:
+    session = get_session(request)
+    config = session.config
+    if config is None or not state["discard_note"]:
         new_configuration(request)
         return NewConfigurationOutcome(started=True)
-    session = get_session(request)
     pending = PendingReplacement(
         token=secrets.token_urlsafe(32),
-        config=session.config,
+        config=config,
         version=session.history.version,
         schedule_count=state["schedule_count"],
         created=monotonic(),
