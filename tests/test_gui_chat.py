@@ -68,10 +68,16 @@ def test_the_button_is_pinned_to_the_screen_corner_and_can_slide_away():
 
 
 # -- the script's side of a reply ----------------------------------------------- #
-def test_the_script_updates_the_top_bar_and_offers_a_refresh_after_a_change():
+def test_the_script_updates_the_top_bar_and_the_page_after_a_change():
     script = (ROOT / "gui/static/gui/js/chat.js").read_text(encoding="utf-8")
     assert "if (body.dirty)" in script and "Unsaved changes" in script
-    assert "if (body.changed)" in script and "window.location.reload()" in script
+    assert (
+        "body.changed || body.refresh || body.generated" in script
+        and "liveUpdate(item)" in script
+    )
+    assert (
+        "window.location.reload()" in script
+    )  # the "Refresh page" button, for when the page cannot be updated in place
     assert (
         "body.busy" in script
     )  # a refused duplicate is shown as a note, not as a failure
