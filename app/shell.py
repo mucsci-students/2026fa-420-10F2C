@@ -1,6 +1,9 @@
 import argparse
-from app.session import Session, ConfigError
+
 from app import commands, schedule_ops
+from app.session import ConfigError, Session
+
+
 # Handles the interactive shell. Owns one Session for the whole run and
 # passes it into every command function.
 # run() is a guided numbered-menu flow (welcome -> pick area -> pick
@@ -8,21 +11,17 @@ from app import commands, schedule_ops
 # used before -- no CRUD logic is duplicated here. The old argparse
 # command-string path (handle_command/_dispatch) is left in below too.
 class SchedulerShell:
-
     def __init__(self):
         self.parser = self.create_parser()
         self.session = Session()
 
-# Builds the argparse parser for raw command-string input (unchanged).
+    # Builds the argparse parser for raw command-string input (unchanged).
     def create_parser(self):
         parser = argparse.ArgumentParser(
-                description="Course scheduling configuration tool"
-            )
+            description="Course scheduling configuration tool"
+        )
 
-        subparsers = parser.add_subparsers(
-                dest="command",
-                required=True
-            )
+        subparsers = parser.add_subparsers(dest="command", required=True)
 
         faculty_parser = subparsers.add_parser("faculty")
         faculty_subparsers = faculty_parser.add_subparsers(dest="action", required=True)
@@ -50,7 +49,9 @@ class SchedulerShell:
         room_subparsers.add_parser("delete")
 
         timeslot_parser = subparsers.add_parser("timeslot")
-        timeslot_subparsers = timeslot_parser.add_subparsers(dest="action", required=True)
+        timeslot_subparsers = timeslot_parser.add_subparsers(
+            dest="action", required=True
+        )
         timeslot_subparsers.add_parser("add")
         timeslot_subparsers.add_parser("modify")
         timeslot_subparsers.add_parser("delete")
@@ -79,7 +80,9 @@ class SchedulerShell:
         config_subparsers.add_parser("validate")
 
         settings_parser = subparsers.add_parser("settings")
-        settings_subparsers = settings_parser.add_subparsers(dest="action", required=True)
+        settings_subparsers = settings_parser.add_subparsers(
+            dest="action", required=True
+        )
         p_limit = settings_subparsers.add_parser("limit")
         p_limit.add_argument("value", nargs="?", type=int, default=None)
         p_limit.add_argument("--reset", action="store_true")
@@ -88,10 +91,12 @@ class SchedulerShell:
         p_flag_off = settings_subparsers.add_parser("disable-flag")
         p_flag_off.add_argument("flag")
 
-        help_parser = subparsers.add_parser("help", help="Display available commands")
+        subparsers.add_parser("help", help="Display available commands")
 
         schedule_parser = subparsers.add_parser("schedule")
-        schedule_subparsers = schedule_parser.add_subparsers(dest="action", required=True)
+        schedule_subparsers = schedule_parser.add_subparsers(
+            dest="action", required=True
+        )
         p_gen = schedule_subparsers.add_parser("generate")
         p_gen.add_argument("--limit", type=int, default=None)
         schedule_subparsers.add_parser("summary")
@@ -101,14 +106,17 @@ class SchedulerShell:
         p_export = schedule_subparsers.add_parser("export")
         p_export.add_argument("format", choices=["json", "csv"])
         p_export.add_argument("path")
-        p_export.add_argument("--index", type=int, default=None,
-                               help="Export one schedule by index instead of the whole set")
+        p_export.add_argument(
+            "--index",
+            type=int,
+            default=None,
+            help="Export one schedule by index instead of the whole set",
+        )
         p_export.add_argument("--overwrite", action="store_true")
 
         return parser
 
-
-# Parses a raw command string and dispatches it (unchanged).
+    # Parses a raw command string and dispatches it (unchanged).
     def handle_command(self, command):
         try:
             args = self.parser.parse_args(command.split())
@@ -181,7 +189,7 @@ class SchedulerShell:
                 }[args.action](session)
 
             case "schedule":
-                match args.action: 
+                match args.action:
                     case "generate":
                         commands.generate_schedule(session, limit_override=args.limit)
                     case "summary":
@@ -191,14 +199,19 @@ class SchedulerShell:
                     case "clear":
                         commands.clear_schedules(session)
                     case "export":
-                        commands.export_schedule(session, args.format, args.path,
-                                                index=args.index, overwrite=args.overwrite)
+                        commands.export_schedule(
+                            session,
+                            args.format,
+                            args.path,
+                            index=args.index,
+                            overwrite=args.overwrite,
+                        )
 
             case "config":
-                match args.action: 
+                match args.action:
                     case "new":
                         commands.new_config(session)
-                    case  "print":
+                    case "print":
                         commands.print_config(session)
                     case "save":
                         commands.save_config(session, args.path)
@@ -215,7 +228,9 @@ class SchedulerShell:
                         elif args.value is not None:
                             commands.set_generation_limit(session, args.value)
                         else:
-                            print("Usage: settings limit <value> | settings limit --reset")
+                            print(
+                                "Usage: settings limit <value> | settings limit --reset"
+                            )
                     case "enable-flag":
                         commands.enable_optimizer_flag(session, args.flag)
                     case "disable-flag":
@@ -223,7 +238,6 @@ class SchedulerShell:
 
             case "help":
                 self.show_help()
-
 
     def _confirm_discard_if_dirty(self, action_label):
         """Called before anything that would throw away unsaved changes
@@ -235,7 +249,11 @@ class SchedulerShell:
             return True
 
         print(f"You have unsaved changes. {action_label} will lose them.")
-        choice = input("Save first? (y = save, n = discard and continue, c = cancel): ").strip().lower()
+        choice = (
+            input("Save first? (y = save, n = discard and continue, c = cancel): ")
+            .strip()
+            .lower()
+        )
 
         if choice in ("c", "cancel"):
             return False
@@ -245,7 +263,9 @@ class SchedulerShell:
                 commands.save_config(self.session, path or None)
             except ConfigError as e:
                 print(f"Error: {e}")
-                print("Not proceeding, since the save failed -- your changes are still unsaved.")
+                print(
+                    "Not proceeding, since the save failed -- your changes are still unsaved."
+                )
                 return False
             return True
         # "n"/anything else: proceed without saving
@@ -264,7 +284,7 @@ class SchedulerShell:
             print("0. Exit\n")
             choice = input("Select: ").strip()
 
-            match choice: 
+            match choice:
                 case "0":
                     if not self._confirm_discard_if_dirty("Exiting"):
                         continue
@@ -276,7 +296,7 @@ class SchedulerShell:
                     self._run_scheduler_menu()
                 case "3":
                     self._schedules_menu()
-                case  "4":
+                case "4":
                     self._config_file_menu()
                 case "help":
                     self._help_main()
@@ -306,7 +326,8 @@ class SchedulerShell:
         print(body)
 
     def _help_main(self):
-        self._print_help("Main Menu",
+        self._print_help(
+            "Main Menu",
             "This tool builds a scheduler configuration (faculty,\n"
             "courses, rooms, labs, time slots, and class meeting\n"
             "patterns), generates conflict-free schedules from it, and\n"
@@ -324,7 +345,8 @@ class SchedulerShell:
             "  0. Exit                       Quit (you'll be warned first\n"
             "                                if you have unsaved changes).\n\n"
             "Type 'help' at any screen for details on that screen's own\n"
-            "options.")
+            "options.",
+        )
 
     def _auto_load_example_config(self):
         """Every session starts with the example dataset (17 courses, 9
@@ -360,35 +382,68 @@ class SchedulerShell:
                     case "0":
                         return
                     case "1":
-                        self._entity_menu("Faculty", commands.add_faculty, commands.modify_faculty,
-                                        commands.delete_faculty, view=commands.view_faculty,
-                                        help_text=self._ENTITY_HELP["Faculty"])
+                        self._entity_menu(
+                            "Faculty",
+                            commands.add_faculty,
+                            commands.modify_faculty,
+                            commands.delete_faculty,
+                            view=commands.view_faculty,
+                            help_text=self._ENTITY_HELP["Faculty"],
+                        )
                     case "2":
-                        self._entity_menu("Course", commands.add_course, commands.modify_course,
-                                        commands.delete_course, view=commands.view_course,
-                                        help_text=self._ENTITY_HELP["Course"])
+                        self._entity_menu(
+                            "Course",
+                            commands.add_course,
+                            commands.modify_course,
+                            commands.delete_course,
+                            view=commands.view_course,
+                            help_text=self._ENTITY_HELP["Course"],
+                        )
                     case "3":
-                        self._entity_menu("Room", commands.add_room, commands.modify_room,
-                                        commands.delete_room, view=commands.view_room,
-                                        help_text=self._ENTITY_HELP["Room"])
+                        self._entity_menu(
+                            "Room",
+                            commands.add_room,
+                            commands.modify_room,
+                            commands.delete_room,
+                            view=commands.view_room,
+                            help_text=self._ENTITY_HELP["Room"],
+                        )
                     case "4":
-                        self._entity_menu("Lab", commands.add_lab, commands.modify_lab,
-                                        commands.delete_lab, view=commands.view_lab,
-                                        help_text=self._ENTITY_HELP["Lab"])
+                        self._entity_menu(
+                            "Lab",
+                            commands.add_lab,
+                            commands.modify_lab,
+                            commands.delete_lab,
+                            view=commands.view_lab,
+                            help_text=self._ENTITY_HELP["Lab"],
+                        )
                     case "5":
-                        self._entity_menu("Time Slot", commands.add_timeslot, commands.modify_timeslot,
-                                        commands.delete_timeslot,
-                                        extra_actions={"Modify global timing options (gap/overlap)":
-                                                        commands.modify_timing_options},
-                                        help_text=self._ENTITY_HELP["Time Slot"])
+                        self._entity_menu(
+                            "Time Slot",
+                            commands.add_timeslot,
+                            commands.modify_timeslot,
+                            commands.delete_timeslot,
+                            extra_actions={
+                                "Modify global timing options (gap/overlap)": commands.modify_timing_options
+                            },
+                            help_text=self._ENTITY_HELP["Time Slot"],
+                        )
                     case "6":
-                        self._entity_menu("Class Pattern", commands.add_pattern, commands.modify_pattern,
-                                        commands.delete_pattern,
-                                        help_text=self._ENTITY_HELP["Class Pattern"])
+                        self._entity_menu(
+                            "Class Pattern",
+                            commands.add_pattern,
+                            commands.modify_pattern,
+                            commands.delete_pattern,
+                            help_text=self._ENTITY_HELP["Class Pattern"],
+                        )
                     case "7":
-                        self._entity_menu("Meeting", commands.add_meeting, commands.modify_meeting,
-                                        commands.delete_meeting,
-                                        help_text=self._ENTITY_HELP["Meeting"])
+                        self._entity_menu(
+                            "Meeting",
+                            commands.add_meeting,
+                            commands.modify_meeting,
+                            commands.delete_meeting,
+                            help_text=self._ENTITY_HELP["Meeting"],
+                        )
                     case "8":
                         self._settings_menu()
                     case "help":
@@ -399,7 +454,8 @@ class SchedulerShell:
                 print(f"Error: {e}")
 
     def _help_configuration(self):
-        self._print_help("Configuration",
+        self._print_help(
+            "Configuration",
             "These are the pieces a schedule is generated from. They\n"
             "reference each other, so it's easiest to set them up in\n"
             "roughly this order:\n\n"
@@ -407,7 +463,7 @@ class SchedulerShell:
             "                       be scheduled into, plus the global\n"
             "                       gap/overlap rules.\n"
             "  6. Class Meeting Patterns\n"
-            "                       Templates (e.g. \"MWF, 50 min\") for\n"
+            '                       Templates (e.g. "MWF, 50 min") for\n'
             "                       how a course's credits break into\n"
             "                       meetings. A course needs a matching\n"
             "                       pattern to exist before it can be\n"
@@ -430,7 +486,8 @@ class SchedulerShell:
             "still references them -- remove the reference from the\n"
             "course first.\n\n"
             "Type 'help' inside any of these screens for details specific\n"
-            "to that entity.")
+            "to that entity.",
+        )
 
     def _ensure_config(self):
         """Entity/settings menus no longer require an explicit 'start a
@@ -450,8 +507,16 @@ class SchedulerShell:
     # vs day-based lookup, different delete-time reference checks) that
     # a single generated template would either be vague or wrong for
     # some of them, so each one is written out in full instead.
-    def _entity_menu(self, label, add_fn, modify_fn, delete_fn, view=None, extra_actions=None,
-                      help_text=None):
+    def _entity_menu(
+        self,
+        label,
+        add_fn,
+        modify_fn,
+        delete_fn,
+        view=None,
+        extra_actions=None,
+        help_text=None,
+    ):
         self._ensure_config()
         extra_actions = extra_actions or {}
         while True:
@@ -483,12 +548,20 @@ class SchedulerShell:
                         modify_fn(self.session)
                     case "3":
                         delete_fn(self.session)
-                    case selected if view_num is not None and selected == str(view_num):
+                    case selected if (
+                        view is not None
+                        and view_num is not None
+                        and selected == str(view_num)
+                    ):
                         view(self.session)
                     case selected if selected in extra_nums:
                         extra_nums[selected](self.session)
                     case "help":
-                        self._print_help(label, help_text or f"No detailed help is written for {label} yet.")
+                        self._print_help(
+                            label,
+                            help_text
+                            or f"No detailed help is written for {label} yet.",
+                        )
                     case _:
                         print("Please enter a number from the menu.")
             except ConfigError as e:
@@ -500,156 +573,143 @@ class SchedulerShell:
     # what "modify" re-prompts for, and delete-time reference checks
     # all differ per entity -- see commands.py for each one's real
     # behavior.
-    _ENTITY_HELP = {
-        "Faculty":
-            "An instructor available to teach course sections.\n\n"
-            "Records: credit load range (min/max), unique-course limit\n"
-            "(a value of 1 or less shows as \"Adjunct\", otherwise\n"
-            "\"Full-Time\"), mandatory teaching days, weekly availability\n"
-            "windows, and weighted preferences for which courses/rooms/\n"
-            "labs they'd like to be assigned.\n\n"
-            "  1. Add Faculty      Prompts for all fields above.\n"
-            "  2. Modify Faculty   Looked up by name. Every field is\n"
-            "                      shown with its current value --\n"
-            "                      blank keeps it, so you only need to\n"
-            "                      type the ones you're changing.\n"
-            "  3. Delete Faculty    Looked up by name. Blocked if any\n"
-            "                      course still lists this person as a\n"
-            "                      candidate faculty member -- remove\n"
-            "                      them from those courses first.\n"
-            "  4. View all Faculty records   Prints every record with\n"
-            "                      full availability and preference\n"
-            "                      detail.\n"
-            "  0. Back",
-
-        "Course":
-            "One section of a course to be scheduled (e.g. \"CS 101\").\n\n"
-            "A course's credit count must match an existing, enabled\n"
-            "Class Meeting Pattern (Configuration -> Class Meeting\n"
-            "Patterns) or it will be rejected -- set patterns up first\n"
-            "if you haven't.\n\n"
-            "Records: course ID, section ID (blank = auto-numbered),\n"
-            "credits, expected enrollment, modality (in_person/online/\n"
-            "hybrid -- online courses skip rooms/labs entirely),\n"
-            "candidate rooms/labs with required features, other courses\n"
-            "this one conflicts with (can never overlap), and candidate\n"
-            "faculty (blank = derive from faculty course preferences).\n\n"
-            "  1. Add Course        Prompts for all fields above.\n"
-            "  2. Modify Course     Shows a numbered list of existing\n"
-            "                       sections; pick an index, then edit\n"
-            "                       any field -- each is shown with its\n"
-            "                       current value and blank keeps it.\n"
-            "  3. Delete Course     Pick an index. If it's the last\n"
-            "                       section of that course ID, blocked\n"
-            "                       while another course's conflict list\n"
-            "                       or a faculty member's course\n"
-            "                       preferences still name it.\n"
-            "  4. View all Course records   Prints every section.\n"
-            "  0. Back",
-
-        "Room":
-            "A physical classroom courses can meet in.\n\n"
-            "Records: capacity, features this room supplies (comma-\n"
-            "separated tags, e.g. \"projector\", matched against a\n"
-            "course's required room features), and an optional\n"
-            "restricted weekday availability (default: available any\n"
-            "time).\n\n"
-            "  1. Add Room          Prompts for all fields above.\n"
-            "  2. Modify Room       Looked up by name. Each field is\n"
-            "                       shown with its current value --\n"
-            "                       blank keeps it.\n"
-            "  3. Delete Room       Looked up by name. Blocked if any\n"
-            "                       course's candidate room list still\n"
-            "                       names it.\n"
-            "  4. View all Room records   Prints every room with its\n"
-            "                       features and availability.\n"
-            "  0. Back",
-
-        "Lab":
-            "A lab space, used the same way as a Room but for a course's\n"
-            "lab meetings.\n\n"
-            "Records: capacity, supplied features, and optional\n"
-            "restricted weekday availability.\n\n"
-            "  1. Add Lab           Prompts for all fields above.\n"
-            "  2. Modify Lab        Looked up by name. Each field is\n"
-            "                       shown with its current value --\n"
-            "                       blank keeps it.\n"
-            "  3. Delete Lab        Looked up by name. Blocked if any\n"
-            "                       course's candidate lab list still\n"
-            "                       names it.\n"
-            "  4. View all Lab records   Prints every lab with its\n"
-            "                       features and availability.\n"
-            "  0. Back",
-
-        "Time Slot":
-            "The Monday-Friday time blocks (start-end + spacing) that\n"
-            "class meetings can be scheduled into -- separate from Class\n"
-            "Meeting Patterns, which decide how many meetings a course\n"
-            "needs and how long each one runs.\n\n"
-            "  1. Add Time Slot      Pick a day, then enter a start/end/\n"
-            "                        spacing. Rejected if it overlaps a\n"
-            "                        block already on that day.\n"
-            "  2. Modify Time Slot   Pick a day, see its blocks listed by\n"
-            "                        index, pick one -- start/end/\n"
-            "                        spacing are shown with their\n"
-            "                        current values, blank keeps them.\n"
-            "  3. Delete Time Slot   Pick a day and index. Blocked if\n"
-            "                        it's the only block on that day --\n"
-            "                        every weekday needs at least one.\n"
-            "  4. Modify global timing options (gap/overlap)\n"
-            "                        Sets the max gap and min overlap (in\n"
-            "                        minutes) allowed between two\n"
-            "                        meetings placed back-to-back --\n"
-            "                        applies across every day.\n"
-            "  0. Back",
-
-        "Class Pattern":
-            "A weekly meeting template -- e.g. \"3 credits: MWF, 50 min\"\n"
-            "-- that says how a course's credit hours break into\n"
-            "meetings across the week. A course can only be added, or\n"
-            "kept, if a pattern exists matching its credit count.\n\n"
-            "There's no name/ID here: patterns are listed and picked by\n"
-            "position (index), shown automatically before you modify or\n"
-            "delete one.\n\n"
-            "Records: credits, one or more meetings (each with a day,\n"
-            "duration, lab flag, delivery mode, and optional fixed start\n"
-            "time), an optional pattern-level fixed start time, and\n"
-            "whether the pattern starts disabled.\n\n"
-            "  1. Add Class Pattern     Prompts for credits, then one or\n"
-            "                          more meetings.\n"
-            "  2. Modify Class Pattern  Pick an index. Credits/start\n"
-            "                          time/disabled are shown with\n"
-            "                          their current values (blank\n"
-            "                          keeps them) -- meetings are left\n"
-            "                          untouched here; edit those via\n"
-            "                          the Meeting menu instead.\n"
-            "  3. Delete Class Pattern  Pick an index. Not reference-\n"
-            "                          checked -- if a course still\n"
-            "                          needs this credit count, it will\n"
-            "                          simply start failing validation\n"
-            "                          next time it's added or modified.\n"
-            "  0. Back",
-
-        "Meeting":
-            "One meeting slot -- day, duration, lab flag, delivery mode,\n"
-            "and an optional fixed start time -- that lives inside a\n"
-            "Class Meeting Pattern. Use this to tweak a single meeting\n"
-            "without re-entering the whole pattern.\n\n"
-            "There's no standalone list here either: Add/Modify/Delete\n"
-            "all start by showing you the patterns, then that pattern's\n"
-            "meetings, both by index.\n\n"
-            "  1. Add Meeting        Pick a pattern, then enter one new\n"
-            "                        meeting for it.\n"
-            "  2. Modify Meeting     Pick a pattern, then a meeting on\n"
-            "                        it. Each field (day/duration/lab/\n"
-            "                        delivery/start time) is shown with\n"
-            "                        its current value; blank keeps it.\n"
-            "  3. Delete Meeting     Pick a pattern, then a meeting on\n"
-            "                        it. Blocked if it's the pattern's\n"
-            "                        only meeting -- delete the whole\n"
-            "                        pattern instead if you don't need\n"
-            "                        it.\n"
-            "  0. Back",
+    _ENTITY_HELP = {  # noqa: RUF012
+        "Faculty": "An instructor available to teach course sections.\n\n"
+        "Records: credit load range (min/max), unique-course limit\n"
+        '(a value of 1 or less shows as "Adjunct", otherwise\n'
+        '"Full-Time"), mandatory teaching days, weekly availability\n'
+        "windows, and weighted preferences for which courses/rooms/\n"
+        "labs they'd like to be assigned.\n\n"
+        "  1. Add Faculty      Prompts for all fields above.\n"
+        "  2. Modify Faculty   Looked up by name. Every field is\n"
+        "                      shown with its current value --\n"
+        "                      blank keeps it, so you only need to\n"
+        "                      type the ones you're changing.\n"
+        "  3. Delete Faculty    Looked up by name. Blocked if any\n"
+        "                      course still lists this person as a\n"
+        "                      candidate faculty member -- remove\n"
+        "                      them from those courses first.\n"
+        "  4. View all Faculty records   Prints every record with\n"
+        "                      full availability and preference\n"
+        "                      detail.\n"
+        "  0. Back",
+        "Course": 'One section of a course to be scheduled (e.g. "CS 101").\n\n'
+        "A course's credit count must match an existing, enabled\n"
+        "Class Meeting Pattern (Configuration -> Class Meeting\n"
+        "Patterns) or it will be rejected -- set patterns up first\n"
+        "if you haven't.\n\n"
+        "Records: course ID, section ID (blank = auto-numbered),\n"
+        "credits, expected enrollment, modality (in_person/online/\n"
+        "hybrid -- online courses skip rooms/labs entirely),\n"
+        "candidate rooms/labs with required features, other courses\n"
+        "this one conflicts with (can never overlap), and candidate\n"
+        "faculty (blank = derive from faculty course preferences).\n\n"
+        "  1. Add Course        Prompts for all fields above.\n"
+        "  2. Modify Course     Shows a numbered list of existing\n"
+        "                       sections; pick an index, then edit\n"
+        "                       any field -- each is shown with its\n"
+        "                       current value and blank keeps it.\n"
+        "  3. Delete Course     Pick an index. If it's the last\n"
+        "                       section of that course ID, blocked\n"
+        "                       while another course's conflict list\n"
+        "                       or a faculty member's course\n"
+        "                       preferences still name it.\n"
+        "  4. View all Course records   Prints every section.\n"
+        "  0. Back",
+        "Room": "A physical classroom courses can meet in.\n\n"
+        "Records: capacity, features this room supplies (comma-\n"
+        'separated tags, e.g. "projector", matched against a\n'
+        "course's required room features), and an optional\n"
+        "restricted weekday availability (default: available any\n"
+        "time).\n\n"
+        "  1. Add Room          Prompts for all fields above.\n"
+        "  2. Modify Room       Looked up by name. Each field is\n"
+        "                       shown with its current value --\n"
+        "                       blank keeps it.\n"
+        "  3. Delete Room       Looked up by name. Blocked if any\n"
+        "                       course's candidate room list still\n"
+        "                       names it.\n"
+        "  4. View all Room records   Prints every room with its\n"
+        "                       features and availability.\n"
+        "  0. Back",
+        "Lab": "A lab space, used the same way as a Room but for a course's\n"
+        "lab meetings.\n\n"
+        "Records: capacity, supplied features, and optional\n"
+        "restricted weekday availability.\n\n"
+        "  1. Add Lab           Prompts for all fields above.\n"
+        "  2. Modify Lab        Looked up by name. Each field is\n"
+        "                       shown with its current value --\n"
+        "                       blank keeps it.\n"
+        "  3. Delete Lab        Looked up by name. Blocked if any\n"
+        "                       course's candidate lab list still\n"
+        "                       names it.\n"
+        "  4. View all Lab records   Prints every lab with its\n"
+        "                       features and availability.\n"
+        "  0. Back",
+        "Time Slot": "The Monday-Friday time blocks (start-end + spacing) that\n"
+        "class meetings can be scheduled into -- separate from Class\n"
+        "Meeting Patterns, which decide how many meetings a course\n"
+        "needs and how long each one runs.\n\n"
+        "  1. Add Time Slot      Pick a day, then enter a start/end/\n"
+        "                        spacing. Rejected if it overlaps a\n"
+        "                        block already on that day.\n"
+        "  2. Modify Time Slot   Pick a day, see its blocks listed by\n"
+        "                        index, pick one -- start/end/\n"
+        "                        spacing are shown with their\n"
+        "                        current values, blank keeps them.\n"
+        "  3. Delete Time Slot   Pick a day and index. Blocked if\n"
+        "                        it's the only block on that day --\n"
+        "                        every weekday needs at least one.\n"
+        "  4. Modify global timing options (gap/overlap)\n"
+        "                        Sets the max gap and min overlap (in\n"
+        "                        minutes) allowed between two\n"
+        "                        meetings placed back-to-back --\n"
+        "                        applies across every day.\n"
+        "  0. Back",
+        "Class Pattern": 'A weekly meeting template -- e.g. "3 credits: MWF, 50 min"\n'
+        "-- that says how a course's credit hours break into\n"
+        "meetings across the week. A course can only be added, or\n"
+        "kept, if a pattern exists matching its credit count.\n\n"
+        "There's no name/ID here: patterns are listed and picked by\n"
+        "position (index), shown automatically before you modify or\n"
+        "delete one.\n\n"
+        "Records: credits, one or more meetings (each with a day,\n"
+        "duration, lab flag, delivery mode, and optional fixed start\n"
+        "time), an optional pattern-level fixed start time, and\n"
+        "whether the pattern starts disabled.\n\n"
+        "  1. Add Class Pattern     Prompts for credits, then one or\n"
+        "                          more meetings.\n"
+        "  2. Modify Class Pattern  Pick an index. Credits/start\n"
+        "                          time/disabled are shown with\n"
+        "                          their current values (blank\n"
+        "                          keeps them) -- meetings are left\n"
+        "                          untouched here; edit those via\n"
+        "                          the Meeting menu instead.\n"
+        "  3. Delete Class Pattern  Pick an index. Not reference-\n"
+        "                          checked -- if a course still\n"
+        "                          needs this credit count, it will\n"
+        "                          simply start failing validation\n"
+        "                          next time it's added or modified.\n"
+        "  0. Back",
+        "Meeting": "One meeting slot -- day, duration, lab flag, delivery mode,\n"
+        "and an optional fixed start time -- that lives inside a\n"
+        "Class Meeting Pattern. Use this to tweak a single meeting\n"
+        "without re-entering the whole pattern.\n\n"
+        "There's no standalone list here either: Add/Modify/Delete\n"
+        "all start by showing you the patterns, then that pattern's\n"
+        "meetings, both by index.\n\n"
+        "  1. Add Meeting        Pick a pattern, then enter one new\n"
+        "                        meeting for it.\n"
+        "  2. Modify Meeting     Pick a pattern, then a meeting on\n"
+        "                        it. Each field (day/duration/lab/\n"
+        "                        delivery/start time) is shown with\n"
+        "                        its current value; blank keeps it.\n"
+        "  3. Delete Meeting     Pick a pattern, then a meeting on\n"
+        "                        it. Blocked if it's the pattern's\n"
+        "                        only meeting -- delete the whole\n"
+        "                        pattern instead if you don't need\n"
+        "                        it.\n"
+        "  0. Back",
     }
 
     def _config_file_menu(self):
@@ -664,22 +724,28 @@ class SchedulerShell:
             choice = input("Select: ").strip()
 
             try:
-                match choice: 
+                match choice:
                     case "0":
                         return
                     case "1":
-                        if not self._confirm_discard_if_dirty("Starting a new configuration"):
+                        if not self._confirm_discard_if_dirty(
+                            "Starting a new configuration"
+                        ):
                             continue
                         commands.new_config(self.session)
                         return
                     case "2":
-                        if not self._confirm_discard_if_dirty("Loading a different configuration"):
+                        if not self._confirm_discard_if_dirty(
+                            "Loading a different configuration"
+                        ):
                             continue
                         path = input("Path to load (blank = example config): ").strip()
                         path = path or "app/examples/config_example.json"
                         commands.load_config(self.session, path)
                     case "3":
-                        path = input("Path to save to (blank = reuse last path): ").strip()
+                        path = input(
+                            "Path to save to (blank = reuse last path): "
+                        ).strip()
                         commands.save_config(self.session, path or None)
                     case "4":
                         commands.print_config(self.session)
@@ -693,7 +759,8 @@ class SchedulerShell:
                 print(f"Error: {e}")
 
     def _help_config_file(self):
-        self._print_help("Config File",
+        self._print_help(
+            "Config File",
             "Operations on the configuration as a whole, as opposed to\n"
             "editing one entity inside it (that's the Configuration\n"
             "menu).\n\n"
@@ -715,7 +782,8 @@ class SchedulerShell:
             "                                  library's validation\n"
             "                                  without saving or\n"
             "                                  changing anything.\n"
-            "  0. Back")
+            "  0. Back",
+        )
 
     def _settings_menu(self):
         self._ensure_config()
@@ -729,7 +797,7 @@ class SchedulerShell:
             choice = input("Select: ").strip()
 
             try:
-                match choice: 
+                match choice:
                     case "0":
                         return
                     case "1":
@@ -741,7 +809,9 @@ class SchedulerShell:
                     case "2":
                         commands.reset_generation_limit(self.session)
                     case "3":
-                        flag = input("Flag to enable (e.g. faculty_course, same_room, pack_labs): ").strip()
+                        flag = input(
+                            "Flag to enable (e.g. faculty_course, same_room, pack_labs): "
+                        ).strip()
                         commands.enable_optimizer_flag(self.session, flag)
                     case "4":
                         flag = input("Flag to disable: ").strip()
@@ -754,7 +824,8 @@ class SchedulerShell:
                 print(f"Error: {e}")
 
     def _help_settings(self):
-        self._print_help("Global Settings",
+        self._print_help(
+            "Global Settings",
             "Settings that apply to the whole configuration rather than\n"
             "one entity.\n\n"
             "  1. Set generation limit        The max number of\n"
@@ -770,7 +841,8 @@ class SchedulerShell:
             "                                 same_room, same_lab,\n"
             "                                 pack_rooms, pack_labs.\n"
             "  4. Disable an optimizer flag   Turns one back off.\n"
-            "  0. Back")
+            "  0. Back",
+        )
 
     # Main menu option 2.
     def _run_scheduler_menu(self):
@@ -792,13 +864,15 @@ class SchedulerShell:
             print(f"Error: {e}")
 
     def _help_run_scheduler(self):
-        self._print_help("Run Scheduler",
+        self._print_help(
+            "Run Scheduler",
             "Generates schedules from the current configuration.\n\n"
             "You'll be asked for a generation limit -- the max number of\n"
             "candidate schedules to produce. Leave it blank to use the\n"
             "limit from Global Settings (Configuration -> Global\n"
             "Settings), or enter a number to override it just for this\n"
-            "run.")
+            "run.",
+        )
 
     # Main menu option 3.
     def _schedules_menu(self):
@@ -831,11 +905,20 @@ class SchedulerShell:
                         path = input(
                             f"Output file path (blank = {schedule_ops.DEFAULT_EXPORT_DIR / ('schedule.' + fmt)}): "
                         ).strip()
-                        idx_input = input("Export a single index, or blank for all: ").strip()
+                        idx_input = input(
+                            "Export a single index, or blank for all: "
+                        ).strip()
                         index = int(idx_input) if idx_input.isdigit() else None
-                        overwrite_input = input("Overwrite if it exists? (y/n): ").strip().lower()
-                        commands.export_schedule(self.session, fmt, path, index=index,
-                                                overwrite=overwrite_input in ("y", "yes"))
+                        overwrite_input = (
+                            input("Overwrite if it exists? (y/n): ").strip().lower()
+                        )
+                        commands.export_schedule(
+                            self.session,
+                            fmt,
+                            path,
+                            index=index,
+                            overwrite=overwrite_input in ("y", "yes"),
+                        )
                     case "4":
                         commands.clear_schedules(self.session)
                     case "help":
@@ -846,7 +929,8 @@ class SchedulerShell:
                 print(f"Error: {e}")
 
     def _help_schedules(self):
-        self._print_help("Schedules",
+        self._print_help(
+            "Schedules",
             "Inspect or export schedules already generated by Run\n"
             "Scheduler -- this screen doesn't generate anything itself.\n\n"
             "  1. Summary of generated schedules   A quick overview of\n"
@@ -860,24 +944,27 @@ class SchedulerShell:
             "                                      them.\n"
             "  4. Clear generated schedules        Drops every schedule\n"
             "                                      generated so far.\n"
-            "  0. Back")
+            "  0. Back",
+        )
 
     def show_help(self):
         """Raw command-string syntax reference for handle_command()/
         _dispatch() (the argparse path). Not shown by the guided menus
         any more -- those each have their own contextual help above,
         reached by typing 'help' at that menu's prompt."""
-        print("\n"
-              "Available commands:\n\n"
-              "faculty     <add,modify,delete,view>\n"
-              "course      <add,modify,delete>\n"
-              "lab         <add,modify,delete>\n"
-              "room        <add,modify,delete>\n"
-              "timeslot    <add,modify,delete,timing>\n"
-              "settings    <limit N,limit --reset,enable-flag F,disable-flag F>\n"
-              "pattern     <add,modify,delete>\n"
-              "meeting     <add,modify,delete>\n"
-              "config      <new,print,load <path>,save [path],validate>\n"
-              "schedule    <generate [--limit N],summary,view <index>,clear,export <json|csv> <path>>\n"
-              "help        Display available commands\n"
-              "exit        Exit the scheduler shell")
+        print(
+            "\n"
+            "Available commands:\n\n"
+            "faculty     <add,modify,delete,view>\n"
+            "course      <add,modify,delete>\n"
+            "lab         <add,modify,delete>\n"
+            "room        <add,modify,delete>\n"
+            "timeslot    <add,modify,delete,timing>\n"
+            "settings    <limit N,limit --reset,enable-flag F,disable-flag F>\n"
+            "pattern     <add,modify,delete>\n"
+            "meeting     <add,modify,delete>\n"
+            "config      <new,print,load <path>,save [path],validate>\n"
+            "schedule    <generate [--limit N],summary,view <index>,clear,export <json|csv> <path>>\n"
+            "help        Display available commands\n"
+            "exit        Exit the scheduler shell"
+        )

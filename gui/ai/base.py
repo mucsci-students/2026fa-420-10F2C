@@ -88,7 +88,12 @@ def _key(name: str) -> str:
 
 
 def _without_title(name: str) -> str:
-    return re.sub(r"^(dr|prof|professor|mr|mrs|ms)\.?\s+", "", str(name).strip(), flags=re.IGNORECASE)
+    return re.sub(
+        r"^(dr|prof|professor|mr|mrs|ms)\.?\s+",
+        "",
+        str(name).strip(),
+        flags=re.IGNORECASE,
+    )
 
 
 def find_name(wanted: str, names: Iterable[str]) -> str | None:
@@ -108,7 +113,9 @@ def find_name(wanted: str, names: Iterable[str]) -> str | None:
             return fits[0]
         if len(fits) > 1:
             # Never guess between two real items (e.g. "RODDY140" and "Roddy 140").
-            raise ControllerError(f"'{wanted}' could mean {_join(fits)}. Say which one you mean.")
+            raise ControllerError(
+                f"'{wanted}' could mean {_join(fits)}. Say which one you mean."
+            )
     return None
 
 
@@ -155,7 +162,10 @@ def _place(item: dict) -> str:
     if item.get("features"):
         parts.append(f"features: {_join(item['features'])}")
     if item.get("availability"):
-        parts.append("available " + "; ".join(f"{row['day']} {row['ranges']}" for row in item["availability"]))
+        parts.append(
+            "available "
+            + "; ".join(f"{row['day']} {row['ranges']}" for row in item["availability"])
+        )
     return ", ".join(parts)
 
 

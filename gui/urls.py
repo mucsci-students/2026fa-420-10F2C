@@ -28,33 +28,87 @@ urlpatterns = [
     path("configuration/history/undo/", views_history.undo, name="history_undo"),
     path("configuration/history/redo/", views_history.redo, name="history_redo"),
     path("configuration/history/", views_history.history_page, name="history"),
-    path("configuration/history/goto/", views_history.history_goto, name="history_goto"),
-    path("configuration/restore-previous/", views_history.restore_previous, name="restore_previous"),
+    path(
+        "configuration/history/goto/", views_history.history_goto, name="history_goto"
+    ),
+    path(
+        "configuration/restore-previous/",
+        views_history.restore_previous,
+        name="restore_previous",
+    ),
     path("configuration/timeslots/", views.timeslots, name="timeslots"),
     path("configuration/timeslots/add/", views.timeslot_add, name="timeslot_add"),
-    path("configuration/timeslots/options/", views.timing_options, name="timing_options"),
-    path("configuration/timeslots/<str:day>/<int:index>/edit/", views.timeslot_edit, name="timeslot_edit"),
-    path("configuration/timeslots/<str:day>/<int:index>/delete/", views.timeslot_delete, name="timeslot_delete"),
+    path(
+        "configuration/timeslots/options/", views.timing_options, name="timing_options"
+    ),
+    path(
+        "configuration/timeslots/<str:day>/<int:index>/edit/",
+        views.timeslot_edit,
+        name="timeslot_edit",
+    ),
+    path(
+        "configuration/timeslots/<str:day>/<int:index>/delete/",
+        views.timeslot_delete,
+        name="timeslot_delete",
+    ),
     path("configuration/rooms/", views_rooms.rooms, name="rooms"),
     path("configuration/rooms/add/", views_rooms.room_add, name="room_add"),
-    path("configuration/rooms/<path:room_name>/edit/", views_rooms.room_edit, name="room_edit"),
-    path("configuration/rooms/<path:room_name>/delete/", views_rooms.room_delete, name="room_delete"),
+    path(
+        "configuration/rooms/<path:room_name>/edit/",
+        views_rooms.room_edit,
+        name="room_edit",
+    ),
+    path(
+        "configuration/rooms/<path:room_name>/delete/",
+        views_rooms.room_delete,
+        name="room_delete",
+    ),
     path("configuration/courses/", views_courses.courses, name="courses"),
     path("configuration/courses/add/", views_courses.course_add, name="course_add"),
-    path("configuration/courses/<int:course_index>/edit/", views_courses.course_edit, name="course_edit"),
-    path("configuration/courses/<int:course_index>/delete/", views_courses.course_delete, name="course_delete"),
+    path(
+        "configuration/courses/<int:course_index>/edit/",
+        views_courses.course_edit,
+        name="course_edit",
+    ),
+    path(
+        "configuration/courses/<int:course_index>/delete/",
+        views_courses.course_delete,
+        name="course_delete",
+    ),
     path("configuration/labs/", views_labs.labs, name="labs"),
     path("configuration/labs/add/", views_labs.lab_add, name="lab_add"),
-    path("configuration/labs/<path:lab_name>/edit/", views_labs.lab_edit, name="lab_edit"),
-    path("configuration/labs/<path:lab_name>/delete/", views_labs.lab_delete, name="lab_delete"),
+    path(
+        "configuration/labs/<path:lab_name>/edit/", views_labs.lab_edit, name="lab_edit"
+    ),
+    path(
+        "configuration/labs/<path:lab_name>/delete/",
+        views_labs.lab_delete,
+        name="lab_delete",
+    ),
     path("configuration/faculty/", views_faculty.faculty, name="faculty"),
     path("configuration/faculty/add/", views_faculty.faculty_add, name="faculty_add"),
-    path("configuration/faculty/<path:faculty_name>/edit/", views_faculty.faculty_edit, name="faculty_edit"),
-    path("configuration/faculty/<path:faculty_name>/delete/", views_faculty.faculty_delete, name="faculty_delete"),
+    path(
+        "configuration/faculty/<path:faculty_name>/edit/",
+        views_faculty.faculty_edit,
+        name="faculty_edit",
+    ),
+    path(
+        "configuration/faculty/<path:faculty_name>/delete/",
+        views_faculty.faculty_delete,
+        name="faculty_delete",
+    ),
     path("configuration/patterns/", views_patterns.patterns, name="patterns"),
     path("configuration/patterns/add/", views_patterns.pattern_add, name="pattern_add"),
-    path("configuration/patterns/<int:pattern_index>/edit/", views_patterns.pattern_edit, name="pattern_edit"),
-    path("configuration/patterns/<int:pattern_index>/delete/", views_patterns.pattern_delete, name="pattern_delete"),
+    path(
+        "configuration/patterns/<int:pattern_index>/edit/",
+        views_patterns.pattern_edit,
+        name="pattern_edit",
+    ),
+    path(
+        "configuration/patterns/<int:pattern_index>/delete/",
+        views_patterns.pattern_delete,
+        name="pattern_delete",
+    ),
     path("configuration/meetings/", views_meetings.meetings, name="meetings"),
     path("configuration/meetings/add/", views_meetings.meeting_add, name="meeting_add"),
     path(
@@ -68,13 +122,29 @@ urlpatterns = [
         name="meeting_delete",
     ),
     path("configuration/settings/", views_settings.global_settings, name="settings"),
-    path("configuration/settings/save/", views_settings.settings_update, name="settings_update"),
-    path("configuration/settings/reset-limit/", views_settings.settings_reset_limit, name="settings_reset_limit"),
+    path(
+        "configuration/settings/save/",
+        views_settings.settings_update,
+        name="settings_update",
+    ),
+    path(
+        "configuration/settings/reset-limit/",
+        views_settings.settings_reset_limit,
+        name="settings_reset_limit",
+    ),
     path("generate/", views.schedule_generator, name="schedule_generator"),
-    path("generate/select-config/", views.schedule_select_config, name="schedule_select_config"),
+    path(
+        "generate/select-config/",
+        views.schedule_select_config,
+        name="schedule_select_config",
+    ),
     path("generate/start/", views_generation.generation_start, name="generation_start"),
-    path("generate/status/", views_generation.generation_status, name="generation_status"),
-    path("generate/cancel/", views_generation.generation_cancel, name="generation_cancel"),
+    path(
+        "generate/status/", views_generation.generation_status, name="generation_status"
+    ),
+    path(
+        "generate/cancel/", views_generation.generation_cancel, name="generation_cancel"
+    ),
     path("schedules/", views.schedule_viewer, name="schedule_viewer"),
     path("schedules/import/", views.schedule_import, name="schedule_import"),
     path("schedules/clear/", views.schedule_clear, name="schedule_clear"),

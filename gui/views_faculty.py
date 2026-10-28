@@ -27,7 +27,11 @@ def _render_faculty(request):
 
 def _render_faculty_add(request, form=None):
     """Render the dedicated creation page, retaining a rejected bound form."""
-    return render(request, "gui/faculty_add.html", {"active": "config", "form": form or _faculty_form(request)})
+    return render(
+        request,
+        "gui/faculty_add.html",
+        {"active": "config", "form": form or _faculty_form(request)},
+    )
 
 
 def faculty(request):
@@ -53,7 +57,9 @@ def faculty_add(request):
         except ControllerError as error:
             _attach_errors(form, error)
         else:
-            messages.success(request, f"Faculty member '{form.cleaned_data['name']}' added.")
+            messages.success(
+                request, f"Faculty member '{form.cleaned_data['name']}' added."
+            )
             return redirect("gui:faculty")
     return _render_faculty_add(request, form=form)
 
@@ -70,11 +76,15 @@ def faculty_edit(request, faculty_name):
         form = _faculty_form(request, request.POST)
         if form.is_valid():
             try:
-                notices = faculty_controller.update_faculty(request, faculty_name, form.cleaned_data)
+                notices = faculty_controller.update_faculty(
+                    request, faculty_name, form.cleaned_data
+                )
             except ControllerError as error:
                 _attach_errors(form, error)
             else:
-                messages.success(request, f"Faculty member '{form.cleaned_data['name']}' updated.")
+                messages.success(
+                    request, f"Faculty member '{form.cleaned_data['name']}' updated."
+                )
                 _flash_warnings(request, notices)
                 return redirect("gui:faculty")
     else:
@@ -93,7 +103,11 @@ def faculty_edit(request, faculty_name):
                 "lab_preferences": person["lab_preferences"],
             },
         )
-    return render(request, "gui/faculty_edit.html", {"active": "config", "form": form, "faculty": person})
+    return render(
+        request,
+        "gui/faculty_edit.html",
+        {"active": "config", "form": form, "faculty": person},
+    )
 
 
 def faculty_delete(request, faculty_name):

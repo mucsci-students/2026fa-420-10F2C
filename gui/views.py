@@ -17,11 +17,10 @@ import re
 
 from django.contrib import messages
 from django.http import Http404, HttpResponse
-
-from app import schedule_ops
 from django.shortcuts import redirect, render
 from django.urls import reverse
 
+from app import schedule_ops
 from gui.constants import (
     DAY_NAMES,
     NO_FACULTY_LABEL,
@@ -31,21 +30,26 @@ from gui.constants import (
     VIEW_OPTIONS,
     VIEW_ROOMS,
 )
-from gui.controllers import config_controller, schedule_controller, settings as settings_controller
+from gui.controllers import (
+    config_controller,
+    schedule_controller,
+)
+from gui.controllers import (
+    settings as settings_controller,
+)
 from gui.controllers import timeslots as timeslot_controller
 from gui.controllers.errors import ControllerError
 from gui.forms import (
     AddTimeBlockForm,
-    ScheduleExportForm,
-    GenerationOverrideForm,
     ConfigLoadForm,
     ConfigNewForm,
+    GenerationOverrideForm,
     SavedConfigSelectionForm,
+    ScheduleExportForm,
     ScheduleImportForm,
     TimeBlockFieldsForm,
     TimingOptionsForm,
 )
-
 
 MINUTES_PER_HOUR = 60
 
@@ -128,7 +132,9 @@ def config_new(request):
 def config_load(request):
     if request.method != "POST":
         return redirect("gui:config_editor")
-    form = ConfigLoadForm(request.POST, request.FILES, discard_note=_discard_note(request))
+    form = ConfigLoadForm(
+        request.POST, request.FILES, discard_note=_discard_note(request)
+    )
     if form.is_valid():
         uploaded = form.cleaned_data["config_file"]
         try:
@@ -151,9 +157,14 @@ def config_save(request):
     try:
         filename, content = config_controller.save_configuration(request, request.POST.get("filename") or None)
     except ControllerError as error:
-        report = {"heading": "The configuration was not saved.", "items": [item.message for item in error.errors]}
+        report = {
+            "heading": "The configuration was not saved.",
+            "items": [item.message for item in error.errors],
+        }
         return _render_config_editor(request, report=report)
-    return download_response(filename, content, "application/json; charset=utf-8", download_token(request))
+    return download_response(
+        filename, content, "application/json; charset=utf-8", download_token(request)
+    )
 
 
 def config_validate(request):
@@ -166,10 +177,14 @@ def config_validate(request):
         messages.error(request, error.message)
         return redirect("gui:config_editor")
     if not problems:
-        messages.success(request, "Configuration is valid. Every rule was checked and none are broken.")
+        messages.success(
+            request,
+            "Configuration is valid. Every rule was checked and none are broken.",
+        )
         return redirect("gui:config_editor")
     return _render_config_editor(
-        request, report={"heading": "The configuration has problems.", "items": problems}
+        request,
+        report={"heading": "The configuration has problems.", "items": problems},
     )
 
 
@@ -185,10 +200,18 @@ def _render_schedule_generator(request, form=None, result=None, config_form=None
         "config_choices": config_choices,
     }
     if config_form is None:
-        config_form = SavedConfigSelectionForm(
-            config_choices=config_choices,
-            initial={"config_name": getattr(config_controller.get_session(request), "config_name", "")},
-        ) if config_choices else None
+        config_form = (
+            SavedConfigSelectionForm(
+                config_choices=config_choices,
+                initial={
+                    "config_name": getattr(
+                        config_controller.get_session(request), "config_name", ""
+                    )
+                },
+            )
+            if config_choices
+            else None
+        )
     context["config_form"] = config_form
     if data["has_config"]:
         if form is None:
@@ -209,7 +232,9 @@ def schedule_select_config(request):
     )
     if form.is_valid():
         try:
-            name = config_controller.select_saved_configuration(request, form.cleaned_data["config_name"])
+            name = config_controller.select_saved_configuration(
+                request, form.cleaned_data["config_name"]
+            )
         except ControllerError as error:
             _attach_errors(form, error)
         else:
@@ -224,7 +249,9 @@ def schedule_generator(request):
         return _render_schedule_generator(request)
 
     data = settings_controller.describe_settings(request)
-    form = GenerationOverrideForm(request.POST, flag_choices=data.get("flag_choices", ()))
+    form = GenerationOverrideForm(
+        request.POST, flag_choices=data.get("flag_choices", ())
+    )
     if not form.is_valid():
         return _render_schedule_generator(request, form=form)
 
@@ -242,11 +269,16 @@ def schedule_generator(request):
         messages.success(request, result.message)
         return redirect("gui:schedule_viewer")
     if result.outcome == schedule_ops.GenerationOutcome.NO_FEASIBLE_SCHEDULE:
-        messages.warning(request, "No feasible schedule was found. Check the configuration and try again.")
+        messages.warning(
+            request,
+            "No feasible schedule was found. Check the configuration and try again.",
+        )
     elif result.outcome == schedule_ops.GenerationOutcome.INVALID_CONFIG:
         messages.error(request, f"The configuration is invalid: {result.message}")
     else:
-        messages.error(request, f"Schedule generation failed unexpectedly: {result.message}")
+        messages.error(
+            request, f"Schedule generation failed unexpectedly: {result.message}"
+        )
     return _render_schedule_generator(request, form=form, result=result)
 
 
@@ -263,11 +295,17 @@ def schedule_viewer(request, import_form=None):
     current = _current_schedule_number(request, count)
     view_mode = _current_view_mode(request)
     schedule_grid = (
-        _schedule_grid(schedule_controller.get_schedule(request, current - 1), view_mode) if count else None
+        _schedule_grid(
+            schedule_controller.get_schedule(request, current - 1), view_mode
+        )
+        if count
+        else None
     )
     if import_form is None:
         import_form = ScheduleImportForm(schedule_count=count)
-    export_form = ScheduleExportForm(schedule_count=count, initial={"schedule": current})
+    export_form = ScheduleExportForm(
+        schedule_count=count, initial={"schedule": current}
+    )
     pager = _schedule_pager_context(current, count, view_mode)
     return render(
         request,
@@ -313,7 +351,11 @@ def schedule_clear(request):
             messages.success(request, f"Cleared {cleared} {noun}.")
         return redirect("gui:schedule_viewer")
 
-    return render(request, "gui/schedules_clear.html", {"active": "viewer", "schedule_count": count})
+    return render(
+        request,
+        "gui/schedules_clear.html",
+        {"active": "viewer", "schedule_count": count},
+    )
 
 
 def _current_schedule_number(request, count):
@@ -375,10 +417,18 @@ def _schedule_rows(assignments, view_mode=VIEW_COURSES):
                     "faculty": assignment.faculty,
                     "meeting_type": "Lab" if is_lab else "Class",
                     "location": location,
-                    "label": _block_label(view_mode, assignment.course, location, assignment.faculty),
-                    "sort_key": (day_order.get(meeting.day, len(day_order)), meeting.start, assignment.course),
+                    "label": _block_label(
+                        view_mode, assignment.course, location, assignment.faculty
+                    ),
+                    "sort_key": (
+                        day_order.get(meeting.day, len(day_order)),
+                        meeting.start,
+                        assignment.course,
+                    ),
                     "duration": meeting.duration,
-                    "detail": _block_detail(view_mode, assignment.course, location, assignment.faculty),
+                    "detail": _block_detail(
+                        view_mode, assignment.course, location, assignment.faculty
+                    ),
                 }
             )
     return sorted(rows, key=lambda row: row["sort_key"])
@@ -386,12 +436,19 @@ def _schedule_rows(assignments, view_mode=VIEW_COURSES):
 
 def _schedule_grid(assignments, view_mode=VIEW_COURSES):
     rows = _schedule_rows(assignments, view_mode)
-    minutes = [v for row in rows for v in (_clock_minutes(row["start"]), _clock_minutes(row["end"]))]
+    minutes = [
+        v
+        for row in rows
+        for v in (_clock_minutes(row["start"]), _clock_minutes(row["end"]))
+    ]
     axis_start, axis_end = _schedule_axis_bounds(minutes)
     span = axis_end - axis_start
 
     # One color per distinct label, so overlapping blocks always differ.
-    color_of = {key: i % PALETTE_SIZE for i, key in enumerate(sorted({r["label"] for r in rows}))}
+    color_of = {
+        key: i % PALETTE_SIZE
+        for i, key in enumerate(sorted({r["label"] for r in rows}))
+    }
 
     meetings_by_day = {day: [] for day in DAY_NAMES}
     for row in rows:
@@ -403,7 +460,7 @@ def _schedule_grid(assignments, view_mode=VIEW_COURSES):
                 "color": color_of[row["label"]],
                 "top": f"{(start - axis_start) / span * 100:.2f}",
                 "height": f"{(end - start) / span * 100:.2f}",
-                "compact": height_pct / 100 * GRID_HEIGHT_REM < COMPACT_BELOW_REM, 
+                "compact": height_pct / 100 * GRID_HEIGHT_REM < COMPACT_BELOW_REM,
             }
         )
 
@@ -418,12 +475,19 @@ def _schedule_grid(assignments, view_mode=VIEW_COURSES):
     columns = f"{TIME_AXIS_REM:g}rem " + " ".join(
         f"minmax({LANE_MIN_REM * n:g}rem, {n}fr)" for n in day_lanes
     )
-    min_width = TIME_AXIS_REM + sum(LANE_MIN_REM * n for n in day_lanes) + COLUMN_GAP_REM * len(day_lanes)
+    min_width = (
+        TIME_AXIS_REM
+        + sum(LANE_MIN_REM * n for n in day_lanes)
+        + COLUMN_GAP_REM * len(day_lanes)
+    )
 
     return {
         "days": days,
         "hours": [
-            {"label": f"{m // MINUTES_PER_HOUR:02d}:00", "top": f"{(m - axis_start) / span * 100:.2f}"}
+            {
+                "label": f"{m // MINUTES_PER_HOUR:02d}:00",
+                "top": f"{(m - axis_start) / span * 100:.2f}",
+            }
             for m in range(axis_start, axis_end + 1, MINUTES_PER_HOUR)
         ],
         "hour_pct": f"{MINUTES_PER_HOUR / span * 100:.3f}",
@@ -432,12 +496,12 @@ def _schedule_grid(assignments, view_mode=VIEW_COURSES):
     }
 
 
-LANE_MIN_REM = 6.5      # minimum width of one lane
+LANE_MIN_REM = 6.5  # minimum width of one lane
 TIME_AXIS_REM = 3.5
 COLUMN_GAP_REM = 0.4
-PALETTE_SIZE = 12       # matches .schedule-color-0..11 in style.css
-GRID_HEIGHT_REM = 40        # matches --grid-height in .week-grid.schedule-grid
-COMPACT_BELOW_REM = 3.4     # blocks shorter than this hide the detail line
+PALETTE_SIZE = 12  # matches .schedule-color-0..11 in style.css
+GRID_HEIGHT_REM = 40  # matches --grid-height in .week-grid.schedule-grid
+COMPACT_BELOW_REM = 3.4  # blocks shorter than this hide the detail line
 
 
 def _block_detail(view_mode, course, location, faculty):
@@ -455,7 +519,9 @@ def _assign_meeting_lanes(meetings):
     A connected overlap group shares its widest lane count so adjacent blocks
     never jump between widths while one course remains in progress.
     """
-    meetings.sort(key=lambda meeting: (meeting["start"], meeting["end"], meeting["course"]))
+    meetings.sort(
+        key=lambda meeting: (meeting["start"], meeting["end"], meeting["course"])
+    )
     group = []
     latest_end = None
     cluster_id = 0
@@ -463,7 +529,7 @@ def _assign_meeting_lanes(meetings):
     for meeting in meetings:
         start = _clock_minutes(meeting["start"])
         end = _clock_minutes(meeting["end"])
-        if group and start >= latest_end:
+        if group and latest_end is not None and start >= latest_end:
             _layout_overlap_group(group, cluster_id)
             cluster_id += 1
             group = []
@@ -482,7 +548,11 @@ def _layout_overlap_group(meetings, cluster_id):
         start = _clock_minutes(meeting["start"])
         end = _clock_minutes(meeting["end"])
         lane = next(
-            (index for index, lane_end in enumerate(lane_end_times) if lane_end <= start),
+            (
+                index
+                for index, lane_end in enumerate(lane_end_times)
+                if lane_end <= start
+            ),
             len(lane_end_times),
         )
         if lane == len(lane_end_times):
@@ -524,7 +594,9 @@ def schedule_import(request):
     if request.method != "POST":
         return redirect("gui:schedule_viewer")
     form = ScheduleImportForm(
-        request.POST, request.FILES, schedule_count=schedule_controller.schedule_count(request)
+        request.POST,
+        request.FILES,
+        schedule_count=schedule_controller.schedule_count(request),
     )
     if form.is_valid():
         uploaded = form.cleaned_data["schedule_file"]
@@ -567,7 +639,9 @@ def schedule_export(request):
     except ControllerError as error:
         messages.error(request, error.message)
         return redirect("gui:schedule_viewer")
-    return download_response(export.filename, export.content, export.content_type, download_token(request))
+    return download_response(
+        export.filename, export.content, export.content_type, download_token(request)
+    )
 
 
 # ---------------------------------------------------------------------- #
@@ -597,7 +671,11 @@ def download_token(request) -> str | None:
     Only short letter/digit/-/_ strings are accepted, so nothing odd is
     ever echoed back in a cookie.
     """
-    raw = request.POST.get(DOWNLOAD_TOKEN_FIELD) or request.GET.get(DOWNLOAD_TOKEN_FIELD) or ""
+    raw = (
+        request.POST.get(DOWNLOAD_TOKEN_FIELD)
+        or request.GET.get(DOWNLOAD_TOKEN_FIELD)
+        or ""
+    )
     return raw if _DOWNLOAD_TOKEN_RE.match(raw) else None
 
 
@@ -662,7 +740,9 @@ def timeslot_add(request):
     form = AddTimeBlockForm(request.POST)
     if form.is_valid():
         try:
-            warnings = timeslot_controller.add_timeslot(request, form.cleaned_data["day"], form.cleaned_data)
+            warnings = timeslot_controller.add_timeslot(
+                request, form.cleaned_data["day"], form.cleaned_data
+            )
         except ControllerError as error:
             _attach_errors(form, error)
         else:
@@ -684,7 +764,9 @@ def timeslot_edit(request, day, index):
         form = TimeBlockFieldsForm(request.POST)
         if form.is_valid():
             try:
-                warnings = timeslot_controller.update_timeslot(request, day, index, form.cleaned_data)
+                warnings = timeslot_controller.update_timeslot(
+                    request, day, index, form.cleaned_data
+                )
             except ControllerError as error:
                 _attach_errors(form, error)
             else:
@@ -693,7 +775,11 @@ def timeslot_edit(request, day, index):
                 return redirect("gui:timeslots")
     else:
         form = TimeBlockFieldsForm(
-            initial={"start": block["start"], "end": block["end"], "spacing": block["spacing"]}
+            initial={
+                "start": block["start"],
+                "end": block["end"],
+                "spacing": block["spacing"],
+            }
         )
     return render(
         request,

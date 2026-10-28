@@ -49,7 +49,11 @@ from scheduler.config import CourseConfig, CourseModality, ValidationError
 from app.commands.courses import course_display_name, enabled_pattern_credits
 from gui.controllers import dependencies as deps
 from gui.controllers.common import apply_config_edit, require_config
-from gui.controllers.errors import ControllerError, FieldError, translate_validation_error
+from gui.controllers.errors import (
+    ControllerError,
+    FieldError,
+    translate_validation_error,
+)
 from gui.session_store import get_session
 
 COURSE_FIELDS = (
@@ -100,7 +104,9 @@ def describe_courses(request) -> dict:
                 "conflicts": list(course.conflicts),
                 "faculty": list(course.faculty) if course.faculty is not None else None,
                 # When faculty is null the library picks from these people:
-                "derived_faculty": _preferring(config, course.course_id) if course.faculty is None else [],
+                "derived_faculty": _preferring(config, course.course_id)
+                if course.faculty is None
+                else [],
                 "required_room_features": sorted(course.required_room_features),
                 "required_lab_features": sorted(course.required_lab_features),
                 "reserve_room_during_lab": course.reserve_room_during_lab,
@@ -160,7 +166,11 @@ def form_choices(request, course_index: int | None = None) -> dict:
         "lab_names": sorted(lab.name for lab in entities.labs),
         "faculty_names": sorted(person.name for person in entities.faculty),
         "course_ids": sorted(
-            {course.course_id for position, course in enumerate(entities.courses) if position != course_index}
+            {
+                course.course_id
+                for position, course in enumerate(entities.courses)
+                if position != course_index
+            }
         ),
     }
 
@@ -181,7 +191,9 @@ def add_course(request, form_data) -> list[str]:
     return notices
 
 
-def update_course(request, course_index: int, form_data, expected_course_id: str | None = None) -> list[str]:
+def update_course(
+    request, course_index: int, form_data, expected_course_id: str | None = None
+) -> list[str]:
     """Replace the section at `course_index`, keeping its place in the list."""
     session = get_session(request)
     config = require_config(session, "editing courses")
@@ -191,7 +203,9 @@ def update_course(request, course_index: int, form_data, expected_course_id: str
     new_id = updated.course_id
     cascade = new_id != old_id and _is_last_section(config, course_index)
     if cascade:
-        notices += _rename_notices(config, course_index, old_id, new_id)  # counted before the edit
+        notices += _rename_notices(
+            config, course_index, old_id, new_id
+        )  # counted before the edit
 
     def mutate(draft):
         draft.config.courses[course_index] = updated
@@ -202,7 +216,9 @@ def update_course(request, course_index: int, form_data, expected_course_id: str
     return notices
 
 
-def delete_course(request, course_index: int, expected_course_id: str | None = None) -> list[str]:
+def delete_course(
+    request, course_index: int, expected_course_id: str | None = None
+) -> list[str]:
     """Delete one section (Section 12).
 
     When it is the last section of its course id, the id is also removed from
@@ -215,7 +231,11 @@ def delete_course(request, course_index: int, expected_course_id: str | None = N
     deps.resolve(the_plan)
     mutate, notices = deps.build(config, "course", course_index, the_plan)
     apply_config_edit(
-        session, config, "course", mutate, form_fields=COURSE_FIELDS,
+        session,
+        config,
+        "course",
+        mutate,
+        form_fields=COURSE_FIELDS,
         label=f"Delete course '{course.course_id}'",
     )
     return notices
@@ -230,13 +250,17 @@ def _build(fields: dict) -> CourseConfig:
     try:
         return CourseConfig(**fields)
     except ValidationError as error:
-        raise ControllerError(translate_validation_error(error, COURSE_FIELDS)) from error
+        raise ControllerError(
+            translate_validation_error(error, COURSE_FIELDS)
+        ) from error
 
 
 def _course_at(config, index: int, expected_course_id: str | None = None):
     courses = config.config.courses
     if not isinstance(index, int) or not 0 <= index < len(courses):
-        raise ControllerError("That course no longer exists. Refresh the page and try again.")
+        raise ControllerError(
+            "That course no longer exists. Refresh the page and try again."
+        )
     course = courses[index]
     if expected_course_id is not None and course.course_id != expected_course_id:
         raise ControllerError(
@@ -250,7 +274,11 @@ def _modality(course) -> str:
 
 
 def _preferring(config, course_id: str) -> list[str]:
-    return [person.name for person in config.config.faculty if course_id in person.course_preferences]
+    return [
+        person.name
+        for person in config.config.faculty
+        if course_id in person.course_preferences
+    ]
 
 
 def _is_last_section(config, index: int) -> bool:
@@ -288,7 +316,9 @@ def _rename_references(draft, index: int, old_id: str, new_id: str) -> None:
             continue
         renamed = [new_id if item == old_id else item for item in other.conflicts]
         # Drop a would-be self-conflict and any duplicate the rename created.
-        other.conflicts = [item for item in dict.fromkeys(renamed) if item != other.course_id]
+        other.conflicts = [
+            item for item in dict.fromkeys(renamed) if item != other.course_id
+        ]
     for person in draft.config.faculty:
         prefs = person.course_preferences
         if old_id in prefs:
@@ -302,7 +332,9 @@ def _rename_notices(config, index: int, old_id: str, new_id: str) -> list[str]:
         for position, course in enumerate(config.config.courses)
         if position != index and old_id in course.conflicts
     )
-    prefs = sum(1 for person in config.config.faculty if old_id in person.course_preferences)
+    prefs = sum(
+        1 for person in config.config.faculty if old_id in person.course_preferences
+    )
     parts = []
     if conflicts:
         parts.append(f"{conflicts} course conflict list{'s' if conflicts != 1 else ''}")
@@ -317,7 +349,9 @@ def _split(value) -> list[str]:
     """'a, b; c' / ['a', ' b '] -> ['a', 'b', 'c'] (blanks dropped)."""
     if value is None:
         return []
-    parts = _SPLIT.split(value) if isinstance(value, str) else [str(item) for item in value]
+    parts = (
+        _SPLIT.split(value) if isinstance(value, str) else [str(item) for item in value]
+    )
     return [part.strip() for part in parts if part and part.strip()]
 
 
@@ -328,17 +362,27 @@ def _names(value, field: str, known, label: str, errors: list[FieldError]) -> li
     unknown = [name for name in names if name not in known]
     if unknown:
         choices = ", ".join(sorted(known)) or f"none defined yet -- add a {label} first"
-        errors.append(FieldError(field, f"Unknown {label}: {', '.join(unknown)}. Choose from: {choices}."))
+        errors.append(
+            FieldError(
+                field, f"Unknown {label}: {', '.join(unknown)}. Choose from: {choices}."
+            )
+        )
         return []
     return names
 
 
-def _whole_number(value, field: str, label: str, errors: list[FieldError]) -> int | None:
+def _whole_number(
+    value, field: str, label: str, errors: list[FieldError]
+) -> int | None:
     if value is None or (isinstance(value, str) and not value.strip()):
         errors.append(FieldError(field, f"{label} is required."))
         return None
     try:
-        number = value if isinstance(value, int) and not isinstance(value, bool) else int(str(value).strip())
+        number = (
+            value
+            if isinstance(value, int) and not isinstance(value, bool)
+            else int(str(value).strip())
+        )
     except ValueError:
         errors.append(FieldError(field, f"{label} must be a whole number."))
         return None
@@ -356,7 +400,9 @@ def _flag(value, default: bool) -> bool:
     return str(value).strip().lower() in ("1", "true", "yes", "y", "on")
 
 
-def _fields_from_form(config, form_data, editing_index: int | None = None) -> tuple[dict, list[str]]:
+def _fields_from_form(
+    config, form_data, editing_index: int | None = None
+) -> tuple[dict, list[str]]:
     """form_data -> (CourseConfig keyword arguments, notices). Collects every
     field's problems before raising, so the user sees them all at once."""
     errors: list[FieldError] = []
@@ -379,20 +425,43 @@ def _fields_from_form(config, form_data, editing_index: int | None = None) -> tu
                 else "There are no enabled class patterns."
             )
             errors.append(
-                FieldError("credits", f"No enabled class pattern has {credits} credits. {offer} Add or enable a pattern first.")
+                FieldError(
+                    "credits",
+                    f"No enabled class pattern has {credits} credits. {offer} Add or enable a pattern first.",
+                )
             )
 
     modality = str(form_data.get("modality") or "in_person").strip().lower()
     if modality not in MODALITIES:
-        errors.append(FieldError("modality", f"Modality must be one of: {', '.join(MODALITIES)}."))
+        errors.append(
+            FieldError("modality", f"Modality must be one of: {', '.join(MODALITIES)}.")
+        )
 
-    rooms = _names(form_data.get("room"), "room", (r.name for r in entities.rooms), "room", errors)
-    labs = _names(form_data.get("lab"), "lab", (l.name for l in entities.labs), "lab", errors)
-    faculty = _names(form_data.get("faculty"), "faculty", (f.name for f in entities.faculty), "faculty member", errors)
+    rooms = _names(
+        form_data.get("room"), "room", (r.name for r in entities.rooms), "room", errors
+    )
+    labs = _names(
+        form_data.get("lab"), "lab", (l.name for l in entities.labs), "lab", errors
+    )
+    faculty = _names(
+        form_data.get("faculty"),
+        "faculty",
+        (f.name for f in entities.faculty),
+        "faculty member",
+        errors,
+    )
     other_ids = {
-        course.course_id for position, course in enumerate(entities.courses) if position != editing_index
+        course.course_id
+        for position, course in enumerate(entities.courses)
+        if position != editing_index
     }
-    conflicts = _names(form_data.get("conflicts"), "conflicts", other_ids | {course_id}, "course", errors)
+    conflicts = _names(
+        form_data.get("conflicts"),
+        "conflicts",
+        other_ids | {course_id},
+        "course",
+        errors,
+    )
     if course_id and course_id in conflicts:
         errors.append(FieldError("conflicts", "A course can't conflict with itself."))
     room_features = set(_split(form_data.get("required_room_features")))
@@ -414,7 +483,9 @@ def _fields_from_form(config, form_data, editing_index: int | None = None) -> tu
             if value
         ]
         if dropped:
-            notices.append(f"Online courses don't use physical space, so {', '.join(dropped)} were cleared.")
+            notices.append(
+                f"Online courses don't use physical space, so {', '.join(dropped)} were cleared."
+            )
         rooms, labs, room_features, lab_features = [], [], set(), set()
 
     return (

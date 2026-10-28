@@ -46,7 +46,11 @@ from scheduler.config import ClassPattern, ValidationError
 
 from gui.controllers import dependencies as deps
 from gui.controllers.common import apply_config_edit, require_config
-from gui.controllers.errors import ControllerError, FieldError, translate_validation_error
+from gui.controllers.errors import (
+    ControllerError,
+    FieldError,
+    translate_validation_error,
+)
 from gui.controllers.meetings import (
     build_meeting,
     copy_meetings,
@@ -75,12 +79,16 @@ def _patterns(config):
 def _check_index(config, index: int):
     patterns = _patterns(config)
     if not 0 <= index < len(patterns):
-        raise ControllerError("That class pattern no longer exists. Refresh the page and try again.")
+        raise ControllerError(
+            "That class pattern no longer exists. Refresh the page and try again."
+        )
     return patterns[index]
 
 
 def _apply(session, config, mutate, label=None) -> None:
-    apply_config_edit(session, config, "pattern", mutate, form_fields=PATTERN_FIELDS, label=label)
+    apply_config_edit(
+        session, config, "pattern", mutate, form_fields=PATTERN_FIELDS, label=label
+    )
 
 
 def _check_credits(form_data) -> int | None:
@@ -136,7 +144,8 @@ def describe_patterns(request) -> dict:
     return {
         "has_config": True,
         "patterns": [
-            _pattern_row(i, p, deps.usage(config, "pattern", i)) for i, p in enumerate(_patterns(config))
+            _pattern_row(i, p, deps.usage(config, "pattern", i))
+            for i, p in enumerate(_patterns(config))
         ],
     }
 
@@ -145,7 +154,9 @@ def get_pattern(request, pattern_index: int) -> dict:
     """One pattern as plain data, for the edit and delete pages."""
     config = _require_config(get_session(request))
     pattern = _check_index(config, pattern_index)
-    row = _pattern_row(pattern_index, pattern, deps.usage(config, "pattern", pattern_index))
+    row = _pattern_row(
+        pattern_index, pattern, deps.usage(config, "pattern", pattern_index)
+    )
     row["plan"] = deps.plan(config, "pattern", pattern_index)
     return row
 
@@ -169,7 +180,10 @@ def add_pattern(request, form_data) -> list[str]:
             try:
                 meetings.append(build_meeting(item))
             except ControllerError as error:
-                problems.extend(FieldError(None, f"Meeting {number}: {e.message}") for e in error.errors)
+                problems.extend(
+                    FieldError(None, f"Meeting {number}: {e.message}")
+                    for e in error.errors
+                )
     else:
         try:
             meetings.append(build_meeting(form_data, prefix="meeting_"))

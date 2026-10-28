@@ -15,7 +15,11 @@ from scheduler.config import FacultyConfig, ValidationError
 from app.commands.common import VALID_DAYS, field_value
 from gui.controllers import dependencies as deps
 from gui.controllers.common import apply_config_edit, require_config
-from gui.controllers.errors import ControllerError, FieldError, translate_validation_error
+from gui.controllers.errors import (
+    ControllerError,
+    FieldError,
+    translate_validation_error,
+)
 from gui.session_store import get_session
 
 MAX_WEEKDAYS = len(VALID_DAYS)
@@ -36,9 +40,13 @@ FACULTY_FIELDS = (
 # ---------------------------------------------------------------------- #
 def _find_faculty(config, name):
     """Return a named faculty member or explain that the browser is stale."""
-    faculty = next((person for person in config.config.faculty if person.name == name), None)
+    faculty = next(
+        (person for person in config.config.faculty if person.name == name), None
+    )
     if faculty is None:
-        raise ControllerError(f"Faculty member '{name}' no longer exists. Refresh the page and try again.")
+        raise ControllerError(
+            f"Faculty member '{name}' no longer exists. Refresh the page and try again."
+        )
     return faculty
 
 
@@ -102,7 +110,11 @@ def _parse_times(raw, errors: list[FieldError]) -> dict:
             errors.append(FieldError("times", f"'{day}' is not a valid weekday."))
             continue
         if not isinstance(blocks, list):
-            errors.append(FieldError("times", f"Availability for {day} must be a list of time ranges."))
+            errors.append(
+                FieldError(
+                    "times", f"Availability for {day} must be a list of time ranges."
+                )
+            )
             continue
         times[day] = blocks
     return times
@@ -113,28 +125,43 @@ def _parse_mandatory_days(raw, times: Mapping, errors: list[FieldError]) -> list
     if raw is None:
         return []
     if not isinstance(raw, (list, tuple, set)):
-        errors.append(FieldError("mandatory_days", "Mandatory days must be a list of weekdays."))
+        errors.append(
+            FieldError("mandatory_days", "Mandatory days must be a list of weekdays.")
+        )
         return []
 
     days = list(raw)
     if len(set(days)) != len(days):
-        errors.append(FieldError("mandatory_days", "Choose each mandatory day only once."))
+        errors.append(
+            FieldError("mandatory_days", "Choose each mandatory day only once.")
+        )
     for day in days:
         if day not in VALID_DAYS:
-            errors.append(FieldError("mandatory_days", f"'{day}' is not a valid weekday."))
+            errors.append(
+                FieldError("mandatory_days", f"'{day}' is not a valid weekday.")
+            )
         elif not times.get(day):
             errors.append(
-                FieldError("mandatory_days", f"{day} must have availability before it can be mandatory.")
+                FieldError(
+                    "mandatory_days",
+                    f"{day} must have availability before it can be mandatory.",
+                )
             )
     return days
 
 
-def _parse_preferences(raw, kind: str, allowed_names: set[str], errors: list[FieldError]) -> dict[str, int]:
+def _parse_preferences(
+    raw, kind: str, allowed_names: set[str], errors: list[FieldError]
+) -> dict[str, int]:
     """Validate one name-to-weight preference map from FacultyForm.clean()."""
     if raw is None:
         return {}
     if not isinstance(raw, Mapping):
-        errors.append(FieldError(None, f"{kind.capitalize()} preferences must map names to weights."))
+        errors.append(
+            FieldError(
+                None, f"{kind.capitalize()} preferences must map names to weights."
+            )
+        )
         return {}
 
     preferences = {}
@@ -142,9 +169,16 @@ def _parse_preferences(raw, kind: str, allowed_names: set[str], errors: list[Fie
         if name not in allowed_names:
             errors.append(FieldError(None, f"'{name}' is not a current {kind}."))
             continue
-        if isinstance(weight, bool) or not isinstance(weight, int) or not 0 <= weight <= MAX_PREFERENCE_WEIGHT:
+        if (
+            isinstance(weight, bool)
+            or not isinstance(weight, int)
+            or not 0 <= weight <= MAX_PREFERENCE_WEIGHT
+        ):
             errors.append(
-                FieldError(None, f"Preference for '{name}' must be a whole number from 0 to {MAX_PREFERENCE_WEIGHT}.")
+                FieldError(
+                    None,
+                    f"Preference for '{name}' must be a whole number from 0 to {MAX_PREFERENCE_WEIGHT}.",
+                )
             )
             continue
         preferences[name] = weight
@@ -177,10 +211,22 @@ def _faculty_fields(form_data, config) -> dict:
     maximum_credits = numeric_fields["maximum_credits"]
     unique_course_limit = numeric_fields["unique_course_limit"]
     maximum_days = numeric_fields["maximum_days"]
-    if isinstance(minimum_credits, int) and not isinstance(minimum_credits, bool) and minimum_credits < 0:
-        errors.append(FieldError("minimum_credits", "Minimum credits cannot be negative."))
-    if isinstance(maximum_credits, int) and not isinstance(maximum_credits, bool) and maximum_credits < 0:
-        errors.append(FieldError("maximum_credits", "Maximum credits cannot be negative."))
+    if (
+        isinstance(minimum_credits, int)
+        and not isinstance(minimum_credits, bool)
+        and minimum_credits < 0
+    ):
+        errors.append(
+            FieldError("minimum_credits", "Minimum credits cannot be negative.")
+        )
+    if (
+        isinstance(maximum_credits, int)
+        and not isinstance(maximum_credits, bool)
+        and maximum_credits < 0
+    ):
+        errors.append(
+            FieldError("maximum_credits", "Maximum credits cannot be negative.")
+        )
     if (
         isinstance(minimum_credits, int)
         and not isinstance(minimum_credits, bool)
@@ -188,27 +234,57 @@ def _faculty_fields(form_data, config) -> dict:
         and not isinstance(maximum_credits, bool)
         and minimum_credits > maximum_credits
     ):
-        errors.append(FieldError("maximum_credits", "Maximum credits must be at least minimum credits."))
-    if isinstance(unique_course_limit, int) and not isinstance(unique_course_limit, bool) and unique_course_limit <= 0:
-        errors.append(FieldError("unique_course_limit", "Unique course limit must be at least 1."))
+        errors.append(
+            FieldError(
+                "maximum_credits", "Maximum credits must be at least minimum credits."
+            )
+        )
+    if (
+        isinstance(unique_course_limit, int)
+        and not isinstance(unique_course_limit, bool)
+        and unique_course_limit <= 0
+    ):
+        errors.append(
+            FieldError("unique_course_limit", "Unique course limit must be at least 1.")
+        )
     if (
         isinstance(maximum_days, int)
         and not isinstance(maximum_days, bool)
         and not 0 <= maximum_days <= MAX_WEEKDAYS
     ):
-        errors.append(FieldError("maximum_days", f"Maximum teaching days must be from 0 to {MAX_WEEKDAYS}."))
+        errors.append(
+            FieldError(
+                "maximum_days",
+                f"Maximum teaching days must be from 0 to {MAX_WEEKDAYS}.",
+            )
+        )
 
     times = _parse_times(form_data.get("times"), errors)
-    mandatory_days = _parse_mandatory_days(form_data.get("mandatory_days"), times, errors)
-    if isinstance(maximum_days, int) and not isinstance(maximum_days, bool) and maximum_days < len(mandatory_days):
+    mandatory_days = _parse_mandatory_days(
+        form_data.get("mandatory_days"), times, errors
+    )
+    if (
+        isinstance(maximum_days, int)
+        and not isinstance(maximum_days, bool)
+        and maximum_days < len(mandatory_days)
+    ):
         errors.append(
-            FieldError("maximum_days", "Maximum teaching days cannot be below the number of mandatory days.")
+            FieldError(
+                "maximum_days",
+                "Maximum teaching days cannot be below the number of mandatory days.",
+            )
         )
 
     allowed = _valid_preferences(config)
-    course_preferences = _parse_preferences(form_data.get("course_preferences"), "course", allowed["course"], errors)
-    room_preferences = _parse_preferences(form_data.get("room_preferences"), "room", allowed["room"], errors)
-    lab_preferences = _parse_preferences(form_data.get("lab_preferences"), "lab", allowed["lab"], errors)
+    course_preferences = _parse_preferences(
+        form_data.get("course_preferences"), "course", allowed["course"], errors
+    )
+    room_preferences = _parse_preferences(
+        form_data.get("room_preferences"), "room", allowed["room"], errors
+    )
+    lab_preferences = _parse_preferences(
+        form_data.get("lab_preferences"), "lab", allowed["lab"], errors
+    )
 
     if errors:
         raise ControllerError(errors)
@@ -232,7 +308,9 @@ def _build_faculty(fields) -> FacultyConfig:
     try:
         return FacultyConfig(**fields)
     except ValidationError as error:
-        raise ControllerError(translate_validation_error(error, form_fields=FACULTY_FIELDS)) from error
+        raise ControllerError(
+            translate_validation_error(error, form_fields=FACULTY_FIELDS)
+        ) from error
 
 
 def _prepared_update(config, faculty_name, form_data) -> tuple[dict, FacultyConfig]:
@@ -244,8 +322,12 @@ def _prepared_update(config, faculty_name, form_data) -> tuple[dict, FacultyConf
     _find_faculty(config, faculty_name)
     fields = _faculty_fields(form_data, config)
     new_name = fields["name"]
-    if new_name != faculty_name and any(person.name == new_name for person in config.config.faculty):
-        raise ControllerError([FieldError("name", f"A faculty member named '{new_name}' already exists.")])
+    if new_name != faculty_name and any(
+        person.name == new_name for person in config.config.faculty
+    ):
+        raise ControllerError(
+            [FieldError("name", f"A faculty member named '{new_name}' already exists.")]
+        )
     return fields, _build_faculty(fields)
 
 
@@ -269,7 +351,10 @@ def _availability(times) -> list[dict]:
         blocks = field_value(times, day)
         if not blocks:
             continue
-        ranges = ", ".join(f"{field_value(block, 'start')}-{field_value(block, 'end')}" for block in blocks)
+        ranges = ", ".join(
+            f"{field_value(block, 'start')}-{field_value(block, 'end')}"
+            for block in blocks
+        )
         rows.append({"day": day, "ranges": ranges})
     return rows
 
@@ -282,7 +367,10 @@ def _preferences(faculty) -> list[dict]:
         ("Room", faculty.room_preferences),
         ("Lab", faculty.lab_preferences),
     ):
-        entries = [{"name": name, "weight": weight} for name, weight in sorted((values or {}).items())]
+        entries = [
+            {"name": name, "weight": weight}
+            for name, weight in sorted((values or {}).items())
+        ]
         groups.append({"label": label, "entries": entries})
     return groups
 
@@ -316,7 +404,10 @@ def describe_faculty(request) -> dict:
     config = get_session(request).config
     if config is None:
         return {"has_config": False}
-    return {"has_config": True, "faculty": [_faculty_data(config, person) for person in config.config.faculty]}
+    return {
+        "has_config": True,
+        "faculty": [_faculty_data(config, person) for person in config.config.faculty],
+    }
 
 
 def get_faculty(request, faculty_name) -> dict:
@@ -337,7 +428,13 @@ def add_faculty(request, form_data) -> None:
     config = require_config(session, "adding faculty")
     fields = _faculty_fields(form_data, config)
     if any(person.name == fields["name"] for person in config.config.faculty):
-        raise ControllerError([FieldError("name", f"A faculty member named '{fields['name']}' already exists.")])
+        raise ControllerError(
+            [
+                FieldError(
+                    "name", f"A faculty member named '{fields['name']}' already exists."
+                )
+            ]
+        )
     new_faculty = _build_faculty(fields)
 
     def mutate(draft):
@@ -361,14 +458,19 @@ def update_faculty(request, faculty_name, form_data) -> list[str]:
 
     def mutate(draft):
         people = draft.config.faculty
-        position = next(index for index, person in enumerate(people) if person.name == faculty_name)
+        position = next(
+            index for index, person in enumerate(people) if person.name == faculty_name
+        )
         people[position] = updated
         if new_name != faculty_name:
             # Explicit course assignments store a faculty name instead of an
             # object reference. Derived staffing (None) remains unchanged.
             for course in draft.config.courses:
                 if faculty_name in (course.faculty or []):
-                    course.faculty = [new_name if name == faculty_name else name for name in course.faculty]
+                    course.faculty = [
+                        new_name if name == faculty_name else name
+                        for name in course.faculty
+                    ]
 
     apply_config_edit(session, config, "faculty", mutate, form_fields=FACULTY_FIELDS)
     return notices
@@ -378,11 +480,15 @@ def _rename_notices(config, old_name: str, new_name: str) -> list[str]:
     """Describe assignments changed by a direct faculty-name update."""
     if old_name == new_name:
         return []
-    assignments = sum(old_name in (course.faculty or []) for course in config.config.courses)
+    assignments = sum(
+        old_name in (course.faculty or []) for course in config.config.courses
+    )
     if not assignments:
         return []
     noun = "assignment" if assignments == 1 else "assignments"
-    return [f"Renamed '{old_name}' to '{new_name}' in {assignments} course faculty {noun}."]
+    return [
+        f"Renamed '{old_name}' to '{new_name}' in {assignments} course faculty {noun}."
+    ]
 
 
 def delete_faculty(request, faculty_name) -> list[str]:
@@ -400,7 +506,11 @@ def delete_faculty(request, faculty_name) -> list[str]:
     deps.resolve(the_plan)
     mutate, notices = deps.build(config, "faculty", faculty_name, the_plan)
     apply_config_edit(
-        session, config, "faculty", mutate, form_fields=FACULTY_FIELDS,
+        session,
+        config,
+        "faculty",
+        mutate,
+        form_fields=FACULTY_FIELDS,
         label=f"Delete faculty '{faculty_name}'",
     )
     return notices
