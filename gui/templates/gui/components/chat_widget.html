@@ -18,6 +18,8 @@
     chat again on every page; the history sidebar starts a new chat, opens an older one or deletes it.
 {% endcomment %}
 <div class="chat-widget" data-chat data-status-url="{% url 'gui:assistant_status' %}" data-viewer-url="{% url 'gui:schedule_viewer' %}"
+     data-save-url="{% url 'gui:config_save' %}" data-new-url="{% url 'gui:assistant_new_configuration' %}"
+     data-editor-url="{% url 'gui:config_editor' %}"
      data-chat-url="{% url 'gui:assistant_chat' %}" data-chat-new-url="{% url 'gui:assistant_chat_new' %}"
      data-chat-switch-url="{% url 'gui:assistant_chat_switch' %}" data-chat-delete-url="{% url 'gui:assistant_chat_delete' %}">
     <section id="chat-panel" class="chat-panel" role="dialog" aria-labelledby="chat-title" hidden>

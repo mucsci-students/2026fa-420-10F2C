@@ -2172,6 +2172,21 @@ html[data-theme="dark"] .list-toolbar input { background: #18181b; color: #f3f4f
 .chat-refresh { display: block; margin-top: 0.5rem; }
 .chat-suggestions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
 .chat-suggestion { white-space: normal; text-align: left; }
+.chat-action { display: block; margin-top: 0.5rem; white-space: normal; }
+.chat-action__form { display: flex; flex-direction: column; align-items: stretch; gap: 0.4rem; margin: 0; }
+.chat-action__form .btn { align-self: flex-start; }
+.chat-action__label { font-weight: 600; }
+.chat-action__input {
+    width: 100%;
+    min-width: 0;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid #9ca3af;
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+}
+.chat-action__choices { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
 
 html[data-theme="dark"] .chat-panel { background: #18181b; color: #f3f4f6; border-color: #52525b; }
 html[data-theme="dark"] .chat-panel__header { background: #000; }

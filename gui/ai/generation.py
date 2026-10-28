@@ -25,9 +25,10 @@ Generator page. The saved configuration is never edited by generating (the job w
 change to the saved settings only happens through update_global_settings when the user asks for it.
 
 When there is no configuration, the tools say one has to be created or loaded and offer both ways:
-create_new_configuration, and load_saved_configuration for a configuration that is available in this
-session. Loading can continue straight into step 1. Neither replaces a configuration that has unsaved
-changes or schedules to lose: that stays with the Configuration Editor, which asks first.
+create_new_configuration (gui/ai/lifecycle.py), and load_saved_configuration for a configuration that is
+available in this session. Loading can continue straight into step 1. load_saved_configuration does not
+replace a configuration that has unsaved changes or schedules to lose: that stays with the Configuration
+Editor, which asks first.
 
 A failed run never shows a partial schedule: the controller only stores results when the run succeeded,
 and the reply explains what happened in the same words the Schedule Generator page uses.
@@ -44,7 +45,16 @@ from pydantic import BaseModel, Field
 
 from app import schedule_ops
 from gui.ai import diagnose
-from gui.ai.base import UNDO_CHIP, AiTool, NoArgs, Outcome, _join, _plural, find_name
+from gui.ai.base import (
+    LOAD_OR_NEW_ACTION,
+    UNDO_CHIP,
+    AiTool,
+    NoArgs,
+    Outcome,
+    _join,
+    _plural,
+    find_name,
+)
 from gui.ai.changes import _PENDING_ATTR as DELETE_SLOT
 from gui.ai.changes import _token
 from gui.ai.undo import recent_changes
@@ -206,6 +216,7 @@ def _forget_waiting(session) -> None:
     """A different configuration is now open: nothing described for the old one may be confirmed."""
     setattr(session, _PLAN_ATTR, None)
     setattr(session, DELETE_SLOT, None)
+    setattr(session, config_controller.PENDING_NEW_ATTR, None)
 
 
 def _no_configuration(request, wanted: str) -> Outcome:
@@ -229,7 +240,7 @@ def _no_configuration(request, wanted: str) -> Outcome:
         "When one is open and valid, I'll show you the generation settings before generating."
     )
     suggestions = [CREATE_NEW] + [f"Load {name}" for name in names[:3]]
-    return Outcome("\n".join(lines), suggestions)
+    return Outcome("\n".join(lines), suggestions, action=LOAD_OR_NEW_ACTION)
 
 
 # ---------------------------------------------------------------------- #
@@ -515,22 +526,6 @@ def load_saved_configuration(request, args: LoadArgs) -> str:
     return Outcome(f"{done}\n{review}", getattr(review, "suggestions", ()))
 
 
-def create_new_configuration(request, args: NoArgs) -> str:
-    session = get_session(request)
-    _refuse_if_it_would_discard(
-        request, "Creating a new configuration", "New Configuration"
-    )
-    config_controller.new_configuration(request)
-    _forget_waiting(session)
-    return Outcome(
-        "Started a new configuration. It holds a placeholder room, course, faculty member, time slots and class "
-        "pattern so that it is valid, but it is not useful yet. Add your own rooms, labs, courses, faculty, time "
-        'slots and class patterns (ask me, or use the Configuration Editor), say "validate the configuration" '
-        "when you are done, then ask me to generate schedules.",
-        ("Validate the configuration", "What can you do?"),
-    )
-
-
 # ---------------------------------------------------------------------- #
 #  The registry for this file
 # ---------------------------------------------------------------------- #
@@ -592,14 +587,6 @@ GENERATION_TOOLS: tuple[AiTool, ...] = (
         "checked before anything changes. Set continue_to_generation when the user wants to generate schedules.",
         LoadArgs,
         load_saved_configuration,
-        needs_config=False,
-    ),
-    AiTool(
-        "create_new_configuration",
-        "Start a new configuration, which begins with placeholder items the user then replaces. Use when the user "
-        "wants to create a new configuration.",
-        NoArgs,
-        create_new_configuration,
         needs_config=False,
     ),
 )

@@ -291,20 +291,26 @@ def test_a_new_configuration_can_be_configured_validated_and_then_generated(
 
 def test_new_and_load_never_throw_away_unsaved_work_or_schedules(request_):
     session(request_).dirty = True
-    for name, args in (
-        ("create_new_configuration", {}),
-        ("load_saved_configuration", {"name": "config_example.json"}),
-    ):
-        result = ToolBox(later(request_)).call(name, args)
-        assert (
-            not result.ok and "would discard your unsaved changes" in result.message
-        ), name
+    result = ToolBox(later(request_)).call(
+        "load_saved_configuration", {"name": "config_example.json"}
+    )
+    assert not result.ok and "would discard your unsaved changes" in result.message
+
+    # New only warns (see tests/test_ai_config_lifecycle.py): nothing is replaced until the user chooses
+    warned = ToolBox(later(request_)).call("create_new_configuration")
+    assert warned.ok and "would discard your unsaved changes" in warned.message
+    assert warned.action is not None and not warned.config_replaced
+    assert warned.action["kind"] == "replace"
     assert session(request_).dirty and session(request_).config is not None
 
     session(request_).dirty = False
     session(request_).set_schedules([[placed(0)]])
-    result = ToolBox(later(request_)).call("create_new_configuration")
+    result = ToolBox(later(request_)).call(
+        "load_saved_configuration", {"name": "config_example.json"}
+    )
     assert not result.ok and "schedule loaded now" in result.message
+    warned = ToolBox(later(request_)).call("create_new_configuration")
+    assert warned.ok and "schedule loaded now" in warned.message
     assert len(session(request_).schedules) == 1
 
 

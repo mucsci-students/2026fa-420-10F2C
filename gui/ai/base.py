@@ -28,6 +28,8 @@ from gui.controllers.errors import ControllerError
 
 NO_CONFIG_MESSAGE = "There is no configuration yet. Load or create one first in the Configuration Editor."
 WEEKDAYS = tuple(DAY_NAMES)
+# Drawn by the chat when there is nothing open: the Configuration Editor's Load Configuration and New forms.
+LOAD_OR_NEW_ACTION = {"kind": "configuration"}
 
 
 LOOKUP_PREFIXES = ("list_", "get_", "show_")
@@ -54,6 +56,9 @@ class ToolResult:
         False  # True when a different configuration was opened (new, load)
     )
     note: bool = True  # False: do not add "not yet saved to a file" (undo and redo say what they did themselves)
+    action: dict | None = (
+        None  # something the chat draws under the message (a Save JSON box, choices); see gui/ai/lifecycle.py
+    )
 
 
 class Outcome(str):
@@ -63,11 +68,16 @@ class Outcome(str):
     shows the suggestions under the message as buttons ("Go ahead and generate", "Cancel"). They
     are only a convenience: clicking one sends that text as an ordinary new message, so every safeguard
     (a delete or a generation needs a message of its own) still applies.
+
+    `action` is plain data for something the chat draws under the message that a button cannot be:
+    a file name box with Save JSON, or the choices of a warning. The chat only ever carries them to
+    endpoints that check everything again.
     """
 
     suggestions: tuple[str, ...]
     edited: bool
     note: bool
+    action: dict | None
 
     def __new__(
         cls,
@@ -75,11 +85,13 @@ class Outcome(str):
         suggestions: Iterable[str] = (),
         edited: bool = False,
         note: bool = True,
+        action: dict | None = None,
     ):
         item = super().__new__(cls, text)
         item.suggestions = tuple(suggestions)
         item.edited = edited  # a tool that is not a write tool but did change the configuration (undo, redo)
         item.note = note
+        item.action = action
         return item
 
 
