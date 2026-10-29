@@ -419,6 +419,7 @@ main {
     --block-bg: #1d4ed8;
     background-color: var(--block-bg);
     background-image: none;
+    color: #fff;
     border-color: rgba(0, 0, 0, 0.35);
     cursor: pointer;
 }
