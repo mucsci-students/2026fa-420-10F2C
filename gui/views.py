@@ -14,6 +14,7 @@ template.
 """
 
 import re
+from urllib.parse import quote
 
 from django.contrib import messages
 from django.http import Http404, HttpResponse
@@ -25,6 +26,9 @@ from gui.constants import (
     DAY_NAMES,
     NO_FACULTY_LABEL,
     NO_LOCATION_LABEL,
+    TIME_FORMAT_12,
+    TIME_FORMAT_24,
+    TIME_FORMAT_OPTIONS,
     VIEW_COURSES,
     VIEW_FACULTY,
     VIEW_OPTIONS,
@@ -306,10 +310,14 @@ def schedule_viewer(request, import_form=None):
     count = schedule_controller.schedule_count(request)
     current = _current_schedule_number(request, count)
     view_mode = _current_view_mode(request)
+    assignments = (
+        schedule_controller.get_schedule(request, current - 1) if count else []
+    )
+    resource_options = _resource_options(assignments, view_mode)
+    resources = _current_resources(request, resource_options)
+    time_format = _current_time_format(request)
     schedule_grid = (
-        _schedule_grid(
-            schedule_controller.get_schedule(request, current - 1), view_mode
-        )
+        _schedule_grid(assignments, view_mode, resources, time_format)
         if count
         else None
     )
@@ -318,7 +326,8 @@ def schedule_viewer(request, import_form=None):
     export_form = ScheduleExportForm(
         schedule_count=count, initial={"schedule": current}
     )
-    pager = _schedule_pager_context(current, count, view_mode)
+    pager = _schedule_pager_context(current, count, view_mode, resources)
+    picker_label, picker_all = RESOURCE_PICKER_TEXT.get(view_mode, ("", ""))
     return render(
         request,
         "gui/schedule_viewer.html",
@@ -328,7 +337,19 @@ def schedule_viewer(request, import_form=None):
             "current_schedule": current,
             "schedule_grid": schedule_grid,
             "view_mode": view_mode,
+            "view_label": VIEW_OPTIONS[view_mode],
             "view_options": VIEW_OPTIONS,
+            "resources": resources,
+            "resource_options": resource_options,
+            "resource_chips": _resource_chips(
+                current, view_mode, resources, resource_options
+            ),
+            "resource_clear": _resource_href(current, view_mode, []),
+            "picker_label": picker_label,
+            "picker_all": picker_all,
+            "legend_noun": LEGEND_NOUN[view_mode],
+            "time_format": time_format,
+            "time_links": _time_links(current, view_mode, resources, time_format),
             **pager,
             "import_form": import_form,
             "export_form": export_form,
@@ -382,14 +403,137 @@ def _current_view_mode(request):
     return requested if requested in VIEW_OPTIONS else VIEW_COURSES
 
 
+def _current_resources(request, options):
+    """The ?resource= values (any number of courses, rooms/labs or faculty members) that
+    are options for the current view, in the order given and without repeats.
+    Unknown values are dropped; none left means "show everything"."""
+    valid = {value for value, _ in options}
+    return [
+        value
+        for value in dict.fromkeys(request.GET.getlist("resource"))
+        if value in valid
+    ]
+
+
+def _as_resources(resources):
+    """One value (as a plain string) or several, as a list; an empty string means none."""
+    if isinstance(resources, str):
+        return [resources] if resources else []
+    return list(resources or [])
+
+
+def _resource_href(current, view_mode, resources):
+    """Link to this schedule and view showing only `resources` (all of it when empty)."""
+    return f"?schedule={current}{_view_query(view_mode, resources)}"
+
+
+def _resource_chips(current, view_mode, resources, options):
+    """One removable chip per picked item: its label and the link that drops just it."""
+    labels = dict(options)
+    return [
+        {
+            "label": labels.get(value, value),
+            "href": _resource_href(
+                current, view_mode, [other for other in resources if other != value]
+            ),
+        }
+        for value in resources
+    ]
+
+
+def _resource_options(assignments, view_mode):
+    """(value, label) choices for the picker above the calendar: the courses (Courses
+    view), rooms and labs (Rooms view) or faculty (Faculty view) in this schedule.
+
+    A course that has several sections also gets an "all sections" choice, e.g.
+    "CMSC 140" next to "CMSC 140.01" and "CMSC 140.02".
+    """
+    if view_mode == VIEW_COURSES:
+        sections = {assignment.course for assignment in assignments}
+        bases: dict[str, int] = {}
+        for course in sections:
+            if "." in course:
+                base = course.rsplit(".", 1)[0]
+                bases[base] = bases.get(base, 0) + 1
+        choices = {course: course for course in sections}
+        for base, how_many in bases.items():
+            if how_many > 1 and base not in choices:
+                choices[base] = f"{base} (all sections)"
+        return sorted(choices.items())
+    names = set()
+    for assignment in assignments:
+        if view_mode == VIEW_FACULTY:
+            if assignment.faculty:
+                names.add(assignment.faculty)
+            continue
+        for meeting in assignment.meetings:
+            place = assignment.lab if meeting.lab else assignment.room
+            if place:
+                names.add(place)
+    return [(name, name) for name in sorted(names)]
+
+
+def _course_matches(course, resource):
+    """A picked course matches that section, or every section when it names the whole course."""
+    return course == resource or course.startswith(f"{resource}.")
+
+
+def _current_time_format(request):
+    """24-hour or 12-hour (AM/PM) clock. ?time= picks one and the session remembers it,
+    so it stays while you page through schedules or switch views."""
+    requested = request.GET.get("time")
+    if requested in TIME_FORMAT_OPTIONS:
+        request.session[TIME_FORMAT_KEY] = requested
+        return requested
+    saved = request.session.get(TIME_FORMAT_KEY)
+    return saved if saved in TIME_FORMAT_OPTIONS else TIME_FORMAT_24
+
+
+def _time_links(current, view_mode, resources, time_format):
+    """The 24-hour / 12-hour toggle: each link keeps the schedule, view and picked items."""
+    base = _resource_href(current, view_mode, resources)
+    return [
+        {
+            "label": label,
+            "href": f"{base}&time={value}",
+            "active": value == time_format,
+        }
+        for value, label in TIME_FORMAT_OPTIONS.items()
+    ]
+
+
+def _clock_text(value, time_format=TIME_FORMAT_24):
+    """A clock time as shown on screen: 13:05 stays 13:05 in 24-hour, becomes 1:05 PM in 12-hour."""
+    if time_format != TIME_FORMAT_12:
+        return value
+    hour, minute = divmod(_clock_minutes(value), MINUTES_PER_HOUR)
+    return f"{hour % 12 or 12}:{minute:02d} {'AM' if hour < 12 else 'PM'}"
+
+
+def _range_text(start, end, time_format=TIME_FORMAT_24):
+    """A start-end range: 09:00-09:50, or in 12-hour 9:00-9:50 AM (AM/PM written once when both share it)."""
+    first, last = _clock_text(start, time_format), _clock_text(end, time_format)
+    if time_format == TIME_FORMAT_12 and first[-2:] == last[-2:]:
+        first = first[:-3]
+    return f"{first}\u2013{last}"
+
+
+def _hour_label(hour, time_format=TIME_FORMAT_24):
+    """Label of one hour mark on the time axis."""
+    if time_format == TIME_FORMAT_12:
+        return f"{hour % 12 or 12} {'AM' if hour < 12 else 'PM'}"
+    return f"{hour:02d}:00"
+
+
 def _schedule_pager_context(
-    current: int, count: int, view_mode: str = VIEW_COURSES
+    current: int, count: int, view_mode: str = VIEW_COURSES, resources=()
 ) -> dict[str, int | bool | str | None]:
     """Build valid one-based pager values from the selected schedule.
 
     Selection remains request-derived, so navigating never mutates session
     state or creates a second source of truth for the export form. view_query
-    carries the chosen view across Previous/Next (empty for the default view).
+    carries the chosen view (and the picked room or faculty member) across
+    Previous/Next (empty for the default view).
     """
     has_previous = current > 1
     has_next = current < count
@@ -398,8 +542,15 @@ def _schedule_pager_context(
         "has_next": has_next,
         "previous_schedule": current - 1 if has_previous else None,
         "next_schedule": current + 1 if has_next else None,
-        "view_query": "" if view_mode == VIEW_COURSES else f"&view={view_mode}",
+        "view_query": _view_query(view_mode, resources),
     }
+
+
+def _view_query(view_mode, resources=()):
+    query = "" if view_mode == VIEW_COURSES else f"&view={view_mode}"
+    for resource in _as_resources(resources):
+        query += f"&resource={quote(resource, safe='')}"
+    return query
 
 
 def _block_label(view_mode, course, location, faculty):
@@ -411,25 +562,57 @@ def _block_label(view_mode, course, location, faculty):
     return course
 
 
-def _schedule_rows(assignments, view_mode=VIEW_COURSES):
-    """Expand a selected schedule into chronological, human-readable meeting rows."""
+def _schedule_rows(
+    assignments, view_mode=VIEW_COURSES, resources="", time_format=TIME_FORMAT_24
+):
+    """Expand a selected schedule into chronological, human-readable meeting rows.
+
+    `resources` (one value or several) keeps only those meetings: the picked courses
+    (or all sections of a course) in the Courses view, the picked rooms/labs in the
+    Rooms view, the picked faculty in the Faculty view. With exactly one room or
+    faculty member picked, each block is labeled with its course, since the picker
+    already names who or what is shown.
+    `time_format` decides how the on-screen times are written (the start, end and
+    sorting stay 24-hour).
+    """
     day_order = {day: index for index, day in enumerate(DAY_NAMES)}
+    chosen = _as_resources(resources)
+    filtering = bool(chosen) and view_mode in (VIEW_ROOMS, VIEW_FACULTY)
+    focused = filtering and len(chosen) == 1
     rows = []
     for assignment in assignments:
+        if (
+            chosen
+            and view_mode == VIEW_COURSES
+            and not any(_course_matches(assignment.course, item) for item in chosen)
+        ):
+            continue
         for meeting in assignment.meetings:
             is_lab = meeting.lab
             location = assignment.lab if is_lab else assignment.room
+            if filtering:
+                owner = location if view_mode == VIEW_ROOMS else assignment.faculty
+                if owner not in chosen:
+                    continue
             rows.append(
                 {
                     "day": meeting.day,
                     "day_name": DAY_NAMES.get(meeting.day, meeting.day),
                     "start": meeting.start,
                     "end": meeting.end,
+                    "start_text": _clock_text(meeting.start, time_format),
+                    "end_text": _clock_text(meeting.end, time_format),
+                    "range_text": _range_text(meeting.start, meeting.end, time_format),
+                    "title_range": _range_text(
+                        meeting.start, meeting.end, time_format
+                    ).replace("\u2013", "-"),
                     "course": assignment.course,
                     "faculty": assignment.faculty,
                     "meeting_type": "Lab" if is_lab else "Class",
                     "location": location,
-                    "label": _block_label(
+                    "label": assignment.course
+                    if focused
+                    else _block_label(
                         view_mode, assignment.course, location, assignment.faculty
                     ),
                     "sort_key": (
@@ -438,7 +621,12 @@ def _schedule_rows(assignments, view_mode=VIEW_COURSES):
                         assignment.course,
                     ),
                     "duration": meeting.duration,
-                    "detail": _block_detail(
+                    "detail": (
+                        (assignment.faculty if view_mode == VIEW_ROOMS else location)
+                        or ""
+                    )
+                    if focused
+                    else _block_detail(
                         view_mode, assignment.course, location, assignment.faculty
                     ),
                 }
@@ -446,11 +634,16 @@ def _schedule_rows(assignments, view_mode=VIEW_COURSES):
     return sorted(rows, key=lambda row: row["sort_key"])
 
 
-def _schedule_grid(assignments, view_mode=VIEW_COURSES):
-    rows = _schedule_rows(assignments, view_mode)
+def _schedule_grid(
+    assignments, view_mode=VIEW_COURSES, resources="", time_format=TIME_FORMAT_24
+):
+    assignments = list(assignments)
+    rows = _schedule_rows(assignments, view_mode, resources, time_format)
+    # The time axis comes from the whole schedule, so it does not shift when
+    # the picker narrows the calendar to one room or faculty member.
     minutes = [
         v
-        for row in rows
+        for row in _schedule_rows(assignments, view_mode)
         for v in (_clock_minutes(row["start"]), _clock_minutes(row["end"]))
     ]
     axis_start, axis_end = _schedule_axis_bounds(minutes)
@@ -497,17 +690,30 @@ def _schedule_grid(assignments, view_mode=VIEW_COURSES):
         "days": days,
         "hours": [
             {
-                "label": f"{m // MINUTES_PER_HOUR:02d}:00",
+                "label": _hour_label(m // MINUTES_PER_HOUR, time_format),
                 "top": f"{(m - axis_start) / span * 100:.2f}",
             }
             for m in range(axis_start, axis_end + 1, MINUTES_PER_HOUR)
         ],
+        "legend": [{"label": key, "color": color} for key, color in color_of.items()],
         "hour_pct": f"{MINUTES_PER_HOUR / span * 100:.3f}",
         "columns": columns,
         "min_width": f"{round(min_width, 1):g}rem",
     }
 
 
+# Picker text per view: (label, "everything" option).
+TIME_FORMAT_KEY = "viewer_time_format"  # where the session remembers the clock choice
+RESOURCE_PICKER_TEXT = {
+    VIEW_COURSES: ("Course", "All courses"),
+    VIEW_ROOMS: ("Room or lab", "All rooms and labs"),
+    VIEW_FACULTY: ("Faculty member", "All faculty"),
+}
+LEGEND_NOUN = {
+    VIEW_COURSES: "course",
+    VIEW_ROOMS: "room or lab",
+    VIEW_FACULTY: "faculty member",
+}
 LANE_MIN_REM = 6.5  # minimum width of one lane
 TIME_AXIS_REM = 3.5
 COLUMN_GAP_REM = 0.4

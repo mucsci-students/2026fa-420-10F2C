@@ -204,6 +204,9 @@ The viewer shows whatever schedules are currently available, whether generated o
   - **Course** — each meeting labelled by course section.
   - **Room** — grouped by room and lab; lab meetings appear under the lab, other meetings under the room.
   - **Faculty** — grouped by faculty member.
+- **Picker.** Next to the view buttons, a searchable drop-down narrows the calendar to the courses (Course view), rooms and labs (Room view) or faculty (Faculty view) you tick. Click it and start typing: the list filters as you type, and spaces and punctuation don't matter (`cmsc140` finds `CMSC 140.01`; `roddy 1` finds `Roddy 136`). Tick as many items as you like, use **Select shown** to tick everything the search currently shows, **Clear** to untick all, then **Apply** (or press Enter). Ticked items appear as chips under the toolbar; click a chip's × to drop just that one, or **Show all**. A course with several sections also has an "all sections" choice (for example `CMSC 140`). With exactly one room or faculty member picked the blocks are labelled by course; with several they keep the room or faculty name. The days are the columns of the weekly grid and the time axis stays the same, so picking items never moves the hours. `?resource=` (repeat it for each item) in the address links straight to a choice, and Previous/Next keep it. Without JavaScript the picker is a plain multi-select list with a **Show** button.
+- **Clock.** **24-hour** or **12-hour (AM/PM)** buttons change every time on the page (axis, blocks, hover details). The choice is remembered for your browser session; `?time=12h` or `?time=24h` in the address sets it. It only changes how times are shown, never the schedule or the exported files.
+- **Color key.** A collapsible **Color key** under the calendar lists what each color stands for in the current view. Names are always written on the blocks too, so color is never the only cue.
 
 ### Loading schedules
 

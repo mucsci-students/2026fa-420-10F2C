@@ -22,6 +22,11 @@ VIEW_FACULTY = "faculty"
 # Filter option values mapped to their menu labels, in display order.
 VIEW_OPTIONS = {VIEW_COURSES: "Courses", VIEW_ROOMS: "Rooms", VIEW_FACULTY: "Faculty"}
 
+# Schedule Viewer clock: ?time=24h (default) or 12h (AM/PM). The choice is kept in the session.
+TIME_FORMAT_24 = "24h"
+TIME_FORMAT_12 = "12h"
+TIME_FORMAT_OPTIONS = {TIME_FORMAT_24: "24-hour", TIME_FORMAT_12: "12-hour (AM/PM)"}
+
 # Block text for a meeting that has no room or lab (e.g. an online section).
 NO_LOCATION_LABEL = "No room assigned"
 
