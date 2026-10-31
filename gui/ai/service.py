@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
 from dataclasses import dataclass, field, replace
 
@@ -49,6 +50,24 @@ SAVED_NOTE = "The change is applied but not yet saved to a file."
 SAVED_NOTE_MANY = "The changes are applied but not yet saved to a file."
 PARTLY_SAVED_NOTE = "The changes that worked are applied but not yet saved to a file."
 UNCHANGED_NOTE = "The configuration was not changed."
+NOT_DONE = (
+    "That wasn't done: no action ran, so nothing was changed. "
+    'Try again with all the details, for example "Add a room named RODDY150 with capacity 35".'
+)
+
+# Words that claim an action already happened ("Room X has been added", "I deleted it"). The AI's
+# own text may answer questions, but it must never be the only proof that something was done.
+_CLAIM = re.compile(
+    r"\b(?:has|have|had|was|were|is now|are now|i've|i have|i|we've|we)\s+(?:been\s+|just\s+|now\s+)?"
+    r"(?:successfully\s+)?(?:added|created|deleted|removed|updated|changed|renamed|saved|generated|"
+    r"applied|modified|replaced|validated|loaded|cleared|enabled|disabled|undone|redone)\b"
+    r"|\bsuccessfully\b|\b(?:done|all set)[.!]",
+    re.IGNORECASE,
+)
+_NEGATION = re.compile(
+    r"\b(?:not|no|nothing|never|cannot|can't|couldn't|wasn't|weren't|didn't|unable|failed)\b|n't\b",
+    re.IGNORECASE,
+)
 
 HISTORY_ENV = "AI_HISTORY_MESSAGES"
 DEFAULT_HISTORY = 6
@@ -112,16 +131,39 @@ def compose(results: list[ToolResult], model_text: str = "") -> Reply:
     )
 
 
+def claims_action(text: str) -> bool:
+    """True when the AI's own words say an action was carried out (questions and negative
+    sentences such as "Nothing was added" do not count)."""
+    for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
+        sentence = sentence.strip()
+        if not sentence or sentence.endswith("?") or _NEGATION.search(sentence):
+            continue
+        if _CLAIM.search(sentence):
+            return True
+    return False
+
+
+def _model_answer(model_text: str, results: list[ToolResult]) -> Reply:
+    """The AI's own words, used only when no action ran. If they claim an action happened anyway,
+    they are replaced: text alone never counts as a completed action (issue #116)."""
+    if claims_action(model_text):
+        logger.warning("AI reply claimed an action that no tool carried out; replaced")
+        return Reply(ok=False, message=NOT_DONE, results=list(results))
+    return Reply(ok=True, message=model_text, results=list(results))
+
+
 def _compose(results: list[ToolResult], model_text: str = "") -> Reply:
     if not results:
-        return Reply(ok=bool(model_text), message=model_text or NO_ANSWER)
+        if not model_text:
+            return Reply(ok=False, message=NO_ANSWER)
+        return _model_answer(model_text, [])
 
     # Actions end the request with the application's own words. Lookups are only for the AI to
     # read, so they are shown only when nothing else happened and the AI said nothing itself.
     shown = [result for result in results if result.final]
     if not shown:
         if model_text:
-            return Reply(ok=True, message=model_text, results=list(results))
+            return _model_answer(model_text, results)
         shown = list(results)
 
     lines = [result.message for result in shown]
