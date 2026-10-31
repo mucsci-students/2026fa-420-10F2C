@@ -925,9 +925,12 @@ class ToolBox:
         raw = dict(arguments or {})
 
         # Treat blank required names as missing information.
-        if tool.name in {"add_room", "add_lab", "add_faculty"}:
-            if isinstance(raw.get("name"), str) and not raw["name"].strip():
-                raw.pop("name")
+        if (
+            tool.name in {"add_room", "add_lab", "add_faculty"}
+            and isinstance(raw.get("name"), str)
+            and not raw["name"].strip()
+        ):
+            raw.pop("name")
 
         try:
             if rejected is not None:
@@ -938,7 +941,6 @@ class ToolBox:
                 return self._invalid_values(tool, None, error)
 
             return self._invalid_values(tool, raw, error)
-
 
         if tool.needs_config and get_session(self.request).config is None:
             return self._record(

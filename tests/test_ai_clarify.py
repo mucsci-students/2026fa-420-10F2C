@@ -677,7 +677,7 @@ def test_the_base_prompt_explains_the_two_ways_to_answer_and_never_to_guess():
         "provide_details" in runner.BASE_PROMPT
         and "cancel_pending_request" in runner.BASE_PROMPT
     )
-    assert "never guess" in runner.BASE_PROMPT.lower()
+    assert "never invent missing values" in runner.BASE_PROMPT.lower()
 
 
 # ---------------------------------------------------------------------- #
