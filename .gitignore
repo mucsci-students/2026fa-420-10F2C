@@ -4,6 +4,7 @@ out.csv
 single.csv
 bad.csv
 test_config.json
+config/openai_api_key.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

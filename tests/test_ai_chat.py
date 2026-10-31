@@ -343,8 +343,11 @@ def test_list_all_rooms_with_no_configuration(client, fake, monkeypatch):
 # ---------------------------------------------------------------------- #
 #  Setup problems
 # ---------------------------------------------------------------------- #
-def test_missing_api_key_explains_how_to_set_it(client, monkeypatch):
+def test_missing_api_key_explains_how_to_set_it(client, monkeypatch, tmp_path):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(
+        runner_module, "API_KEY_FILE", tmp_path / "missing-openai-api-key.txt"
+    )
     _, body = ask(client, "List all rooms")
     assert body["ok"] is False
     assert "OPENAI_API_KEY" in body["reply"] and "Nothing was changed" in body["reply"]
