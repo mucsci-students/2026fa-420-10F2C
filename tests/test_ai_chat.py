@@ -307,6 +307,9 @@ def test_story_6_requests_are_independent(client, fake):
 def test_text_only_reply_is_shown_but_changes_nothing(client, fake):
     _, body = ask(client, "Add a room named RODDY150")
     assert body["changed"] is False
+    assert (
+        body["ok"] is False and body["reply"] == service.NOT_DONE
+    )  # the claim is not shown (#116)
     assert rooms_named("RODDY150") == []
     assert body["dirty"] is False
 

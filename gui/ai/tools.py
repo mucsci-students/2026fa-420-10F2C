@@ -775,6 +775,16 @@ def _argument_problems(error: ValidationError) -> str:
     return "; ".join(parts)
 
 
+NOT_CONFIRMED = "the application could not confirm the change, and the configuration is the same as before."
+UNREPORTED_CHANGE = "The configuration was changed anyway; check the History page, where it can be undone."
+
+
+def _fingerprint(session) -> str | None:
+    """The whole configuration as JSON, to tell whether an action really changed it."""
+    config = session.config
+    return None if config is None else config.model_dump_json()
+
+
 def _failure(tool: AiTool, reason: str) -> str:
     if not tool.write:
         return reason
@@ -808,7 +818,12 @@ class ToolBox:
     def _locked_call(self, name: str, arguments: dict | None) -> ToolResult:
         session = get_session(self.request)
         config_before, schedules_before = session.config, tuple(session.schedules)
+        tool = self.tools.get(name)
+        checking = tool is not None and tool.write
+        state_before = _fingerprint(session) if checking else None
         result = self._call(name, arguments)
+        if checking and tool is not None:
+            result = self._verified(tool, result, state_before, _fingerprint(session))
         replaced = session.config is not config_before
         schedules = tuple(session.schedules)
         schedules_changed = len(schedules) != len(schedules_before) or any(
@@ -819,6 +834,39 @@ class ToolBox:
                 result, config_replaced=replaced, schedules_changed=schedules_changed
             )
             self.results[-1] = result  # _call recorded exactly one result
+        return result
+
+    def _verified(
+        self, tool: AiTool, result: ToolResult, before: str | None, after: str | None
+    ) -> ToolResult:
+        """Check a write tool's report against the configuration itself (issue #116).
+
+        A tool only counts as having changed something when the configuration really is different
+        afterwards, and a change that did happen is always reported, so the reply can never claim
+        more, or less, than what is now in the application."""
+        actually_changed = before != after
+        if result.changed and not actually_changed:
+            logger.error(
+                "AI tool %s reported a change but the configuration is the same",
+                tool.name,
+            )
+            result = replace(
+                result,
+                ok=False,
+                changed=False,
+                suggestions=(),
+                message=_failure(tool, NOT_CONFIRMED),
+            )
+        elif actually_changed and not result.changed:
+            logger.error(
+                "AI tool %s changed the configuration without reporting it", tool.name
+            )
+            result = replace(
+                result, changed=True, message=f"{result.message} {UNREPORTED_CHANGE}"
+            )
+        else:
+            return result
+        self.results[-1] = result  # _call recorded exactly one result
         return result
 
     def _call(self, name: str, arguments: dict | None = None) -> ToolResult:
