@@ -62,6 +62,15 @@ def snapshot(request_):
     return config(request_).model_dump_json()
 
 
+# The values the library requires for a faculty member, chosen explicitly (the tool never fills them in).
+FACULTY_CHOICES = {
+    "maximum_credits": 12,
+    "minimum_credits": 0,
+    "unique_course_limit": 2,
+    "availability": [],
+}
+
+
 @pytest.fixture
 def roddy(request_):
     """The story data: RODDY140 (capacity 30) and RODDY141 (capacity 25)."""
@@ -135,9 +144,12 @@ def test_malformed_arguments_are_rejected_before_anything_runs(box, request_):
     assert snapshot(request_) == before
 
 
-def test_missing_arguments_are_named(box):
+def test_missing_arguments_are_asked_for_by_name(box):
     result = box.call("add_room", {})
-    assert not result.ok
+    assert (
+        result.ok and not result.changed
+    )  # a question, not a failure (gui/ai/clarify.py)
+    assert [question.field for question in result.questions] == ["name", "capacity"]
     assert "name" in result.message and "capacity" in result.message
 
 
@@ -289,7 +301,7 @@ def test_story_9_add_a_room(box, request_):
 
 
 def test_story_9_add_a_course_that_uses_existing_items(roddy, box):
-    assert box.call("add_faculty", {"name": "Dr. Hogg"}).ok
+    assert box.call("add_faculty", {"name": "Dr. Hogg", **FACULTY_CHOICES}).ok
     result = box.call(
         "add_course",
         {
@@ -327,43 +339,63 @@ def test_an_ambiguous_name_asks_which_one(roddy, box):
     # The example already has "Roddy 140", so "roddy 140" could mean either room.
     before = snapshot(roddy)
     result = box.call(
-        "add_course", {"course_id": "CMSC 422", "credits": 3, "rooms": ["roddy 140"]}
+        "add_course",
+        {
+            "course_id": "CMSC 422",
+            "credits": 3,
+            "capacity": 20,
+            "faculty": ["Hogg"],
+            "rooms": ["roddy 140"],
+        },
     )
-    assert not result.ok
+    assert (
+        result.ok and result.questions and not result.changed
+    )  # a question; the request waits
     assert "could mean" in result.message
     assert "RODDY140" in result.message and "Roddy 140" in result.message
     assert snapshot(roddy) == before
     asked = box.call("get_room", {"name": "roddy 140"})
-    assert "could mean" in asked.message
+    assert "could mean" in asked.message  # a lookup is still just a message
 
 
 def test_add_course_with_no_capacity_and_no_room_asks_for_it(box, request_):
     before = snapshot(request_)
     result = box.call("add_course", {"course_id": "CMSC 423", "credits": 3})
-    assert not result.ok and "Capacity is required" in result.message
+    assert result.ok and not result.changed
+    assert "capacity" in [question.field for question in result.questions]
+    assert "How many students does the course hold?" in result.message
     assert snapshot(request_) == before
 
 
 def test_add_course_asks_for_everything_that_is_missing_at_once(box, request_):
     before = snapshot(request_)
     result = box.call("add_course", {"course_id": "CMSC 423", "credits": 3})
-    assert not result.ok
-    assert (
-        "Capacity is required" in result.message
-        and "Faculty is required" in result.message
-    )
+    assert result.ok
+    assert [question.field for question in result.questions] == [
+        "capacity",
+        "faculty",
+        "rooms",
+    ]
+    assert "Faculty is required here" in result.message
     assert snapshot(request_) == before
 
 
-def test_add_course_does_not_ask_for_faculty_when_someone_already_prefers_it(
+def test_add_course_does_not_require_faculty_when_someone_already_prefers_it(
     box, request_
 ):
-    # CMSC 420 is in the example and a faculty member already prefers it.
+    # CMSC 420 is in the example and a faculty member already prefers it, so "none" is a complete answer.
     result = box.call(
         "add_course",
-        {"course_id": "cmsc420", "credits": 3, "capacity": 20, "rooms": ["Roddy 140"]},
+        {
+            "course_id": "CMSC 420",
+            "credits": 3,
+            "capacity": 20,
+            "rooms": ["Roddy 140"],
+            "faculty": [],
+        },
     )
-    assert "Faculty is required" not in result.message
+    assert result.ok and not result.questions, result.message
+    assert "chosen from faculty preferences" in result.message
 
 
 def test_add_course_with_an_unknown_room_is_rejected(box, request_):
@@ -390,7 +422,7 @@ def test_story_9_add_a_lab(box, request_):
 
 
 def test_story_9_add_a_faculty_member(box, request_):
-    result = box.call("add_faculty", {"name": "Dr. Smith", "maximum_credits": 12})
+    result = box.call("add_faculty", {"name": "Dr. Smith", **FACULTY_CHOICES})
     assert result.ok, result.message
     person = next(p for p in config(request_).config.faculty if p.name == "Dr. Smith")
     assert person.maximum_credits == 12
@@ -408,7 +440,8 @@ def test_story_9_add_a_time_slot_on_friday(box, request_):
 
     apply_edit(session.config, "timeslot", short_friday)
     result = box.call(
-        "add_time_slot", {"day": "Friday", "start": "09:00", "end": "17:00"}
+        "add_time_slot",
+        {"day": "Friday", "start": "09:00", "end": "17:00", "spacing": 60},
     )
     assert result.ok, result.message
     blocks = [(b.start, b.end) for b in config(request_).time_slot_config.times["FRI"]]
@@ -418,7 +451,10 @@ def test_story_9_add_a_time_slot_on_friday(box, request_):
 
 def test_overlapping_time_slot_is_rejected(box, request_):
     before = snapshot(request_)
-    result = box.call("add_time_slot", {"day": "FRI", "start": "09:00", "end": "17:00"})
+    result = box.call(
+        "add_time_slot",
+        {"day": "FRI", "start": "09:00", "end": "17:00", "spacing": 60},
+    )
     assert not result.ok and "overlaps" in result.message
     assert snapshot(request_) == before
 
@@ -490,7 +526,7 @@ def test_adding_with_no_configuration(no_config, box):
     ("tool", "args"),
     [
         ("add_lab", {"name": "BIO147L", "capacity": 20}),
-        ("add_faculty", {"name": "Dr. Smith", "maximum_credits": 12}),
+        ("add_faculty", {"name": "Dr. Smith", **FACULTY_CHOICES}),
         (
             "add_class_pattern",
             {"credits": 3, "meetings": [{"day": "MON", "duration": 150}]},

@@ -159,6 +159,7 @@ LIFECYCLE_TOOLS: tuple[AiTool, ...] = (
         SaveConfigurationArgs,
         save_configuration,
         needs_config=False,
+        acts=True,
     ),
     AiTool(
         "create_new_configuration",
@@ -169,6 +170,7 @@ LIFECYCLE_TOOLS: tuple[AiTool, ...] = (
         NoArgs,
         create_new_configuration,
         needs_config=False,
+        acts=True,
     ),
     AiTool(
         "open_load_configuration_form",
