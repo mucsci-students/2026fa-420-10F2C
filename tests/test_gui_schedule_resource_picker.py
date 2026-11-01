@@ -170,6 +170,24 @@ def test_the_time_axis_does_not_change_when_meetings_are_filtered_out():
     assert filtered["height"] == whole["height"]
 
 
+def test_ticking_never_changes_the_width_the_page_is_capped_at():
+    overlapping = [
+        *sample_schedule(),
+        Assignment(
+            "CMSC 150.01",
+            "Hogg",
+            "Roddy 141",
+            None,
+            (MeetingTime("MON", "09:00", "09:50", 50),),
+        ),
+    ]
+    whole = _schedule_grid(overlapping, VIEW_ROOMS)
+    filtered = _schedule_grid(overlapping, VIEW_ROOMS, ["Roddy 140"])
+    assert filtered["full_min_width"] == whole["full_min_width"] == whole["min_width"]
+    # The filtered calendar itself needs less room (no overlapping Monday lane).
+    assert filtered["min_width"] != whole["min_width"]
+
+
 def mwf_day(start_hour, end_hour):
     """A long day of 50-minute MWF classes, like a real department's schedule."""
     return [
@@ -253,10 +271,14 @@ def test_faculty_bar_lists_faculty_as_checkboxes(client):
         assert f'type="checkbox" name="resource" value="{name}">' in html
 
 
-def test_the_viewer_uses_the_full_window_width(client):
+def test_the_viewer_widens_only_as_far_as_the_whole_week_needs(client):
     load(client, sample_schedule())
     html = client.get(VIEWER_URL).content.decode()
-    assert '<main id="main" class="main--wide">' in html
+    grid = _schedule_grid(sample_schedule(), VIEW_COURSES)
+    assert (
+        f'<main id="main" class="main--wide" style="--calendar-width: {grid["full_min_width"]};">'
+        in html
+    )
 
 
 def test_the_calendar_height_is_set_on_the_grid(client):

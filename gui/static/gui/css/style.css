@@ -1071,10 +1071,12 @@ a.area-card:focus-visible {
     text-align: center;
 }
 
-/* The Schedule Viewer uses the whole window width, so a wide monitor shows every day of a
-   busy schedule without scrolling sideways. Other pages keep the 1200px reading width. */
+/* The Schedule Viewer grows with the window until the whole week fits without scrolling
+   sideways, then stops. --calendar-width (set by the page) is the narrowest the calendar can be;
+   6.5rem + 2px is the page's side padding (2 x 2rem) plus the card's (2 x 1.25rem) and border.
+   It never gets narrower than the 1200px the other pages use. */
 main.main--wide {
-    max-width: none;
+    max-width: max(1200px, calc(var(--calendar-width, 0px) + 6.5rem + 2px));
 }
 
 /* The Save / Cancel bar under a form. On the long Course and Faculty forms

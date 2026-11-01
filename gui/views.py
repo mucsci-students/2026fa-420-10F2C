@@ -534,10 +534,11 @@ def _schedule_grid(assignments, view_mode=VIEW_COURSES, selected=()):
     columns = f"{TIME_AXIS_REM:g}rem " + " ".join(
         f"minmax({LANE_MIN_REM * n:g}rem, {n}fr)" for n in day_lanes
     )
-    min_width = (
-        TIME_AXIS_REM
-        + sum(LANE_MIN_REM * n for n in day_lanes)
-        + COLUMN_GAP_REM * len(day_lanes)
+    min_width = _grid_min_width_rem(day_lanes)
+    # The width the whole (unfiltered) schedule needs, for capping the page width: ticking
+    # rooms or faculty in the bar never changes it, so the page doesn't jump.
+    full_min_width = (
+        _grid_min_width_rem(_day_lane_counts(all_rows)) if selected else min_width
     )
 
     return {
@@ -555,6 +556,7 @@ def _schedule_grid(assignments, view_mode=VIEW_COURSES, selected=()):
         "total": len(all_rows),
         "columns": columns,
         "min_width": f"{round(min_width, 1):g}rem",
+        "full_min_width": f"{round(full_min_width, 1):g}rem",
     }
 
 
@@ -567,6 +569,27 @@ GRID_HEIGHT_REM = (
 )
 GRID_MAX_HEIGHT_REM = 72  # never taller than this, however short the shortest meeting
 COMPACT_BELOW_REM = 3.4  # blocks shorter than this hide the detail line
+
+
+def _grid_min_width_rem(day_lanes) -> float:
+    """The narrowest the calendar can be: the time axis, every lane at LANE_MIN_REM, and the gaps."""
+    return (
+        TIME_AXIS_REM
+        + sum(LANE_MIN_REM * n for n in day_lanes)
+        + COLUMN_GAP_REM * len(day_lanes)
+    )
+
+
+def _day_lane_counts(rows) -> list[int]:
+    """How many side-by-side lanes each day needs for these rows (copies; rows are untouched)."""
+    by_day = {day: [] for day in DAY_NAMES}
+    for row in rows:
+        by_day[row["day"]].append(dict(row))
+    counts = []
+    for meetings in by_day.values():
+        _assign_meeting_lanes(meetings)
+        counts.append(max((m["lane_count"] for m in meetings), default=1))
+    return counts
 
 
 def _grid_height_rem(rows, span: int) -> float:

@@ -25,7 +25,7 @@
     </span>
     <button type="button" id="theme-toggle" class="theme-toggle" aria-pressed="false">Dark mode</button>
 </nav>
-<main id="main" class="{% block main_class %}{% endblock %}">
+<main id="main" class="{% block main_class %}{% endblock %}"{% block main_attrs %}{% endblock %}>
 {% if messages %}
 <div class="messages" aria-live="polite">
     {% for message in messages %}

@@ -2,6 +2,8 @@
 {% load static %}
 {% block title %}Scheduler — Schedule Viewer{% endblock %}
 {% block main_class %}main--wide{% endblock %}
+{# Wide enough for the whole week without scrolling, and no wider (see main.main--wide in style.css). #}
+{% block main_attrs %}{% if schedule_grid %} style="--calendar-width: {{ schedule_grid.full_min_width }};"{% endif %}{% endblock %}
 {% block content %}
 <div class="page-header">
     <div>
