@@ -1,0 +1,1 @@
+Replace this text with your OpenAI API key, then save this file as openai_api_key.txt.

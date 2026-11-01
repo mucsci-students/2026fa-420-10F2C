@@ -9,8 +9,8 @@ happened that a tool did not do. Lookup tools (list_*, get_*, show_*) are not
 direct: the model reads them and goes on, so "delete the smallest room" can
 look first and then act. The number of steps is bounded (MAX_STEPS).
 
-Settings come from environment variables only:
-    OPENAI_API_KEY   required; never written to a file, a page, or a log
+Settings come from the environment, with a local key-file fallback:
+    OPENAI_API_KEY   required; config/openai_api_key.txt is used if unset
     OPENAI_MODEL     optional, defaults to gpt-6-luna
 
 Each request carries the base prompt, the newest message and the last few chat
@@ -28,7 +28,8 @@ from __future__ import annotations
 
 import os
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
 
 from gui.ai.prompt import BASE_PROMPT, tool_overview
@@ -41,6 +42,7 @@ MAX_STEPS = 6  # model calls per request: look, look, act, ...
 _SENT = (
     threading.local()
 )  # the argument names the model sent for the tool call running on this thread
+API_KEY_FILE = Path(__file__).resolve().parents[2] / "config" / "openai_api_key.txt"
 
 
 class NotConfigured(Exception):
@@ -75,14 +77,21 @@ def system_prompt(toolbox: ToolBox) -> str:
 class LangChainRunner:
     model: str = DEFAULT_MODEL
     http_client: Any = None  # tests pass an httpx client with a mocked OpenAI
+    api_key: str = field(default="", repr=False)
 
     @classmethod
     def from_environment(cls) -> LangChainRunner:
-        if not os.environ.get("OPENAI_API_KEY", "").strip():
+        api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+        if not api_key:
+            try:
+                api_key = API_KEY_FILE.read_text(encoding="utf-8").strip()
+            except FileNotFoundError:
+                pass
+        if not api_key:
             raise NotConfigured(
-                "The AI assistant isn't set up: set the OPENAI_API_KEY environment variable and restart the server."
+                "The AI assistant isn't set up: set the OPENAI_API_KEY environment variable or add your key to config/openai_api_key.txt, then restart the server."
             )
-        return cls(model=model_name())
+        return cls(model=model_name(), api_key=api_key)
 
     def chat_model(self):
         from langchain_openai import ChatOpenAI
@@ -92,6 +101,7 @@ class LangChainRunner:
         )
         return ChatOpenAI(
             model=self.model,
+            api_key=self.api_key or None,
             use_responses_api=True,
             reasoning={"effort": "medium"},
             timeout=TIMEOUT_SECONDS,

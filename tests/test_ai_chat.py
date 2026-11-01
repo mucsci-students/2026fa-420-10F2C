@@ -307,6 +307,9 @@ def test_story_6_requests_are_independent(client, fake):
 def test_text_only_reply_is_shown_but_changes_nothing(client, fake):
     _, body = ask(client, "Add a room named RODDY150")
     assert body["changed"] is False
+    assert (
+        body["ok"] is False and body["reply"] == service.NOT_DONE
+    )  # the claim is not shown (#116)
     assert rooms_named("RODDY150") == []
     assert body["dirty"] is False
 
@@ -343,8 +346,11 @@ def test_list_all_rooms_with_no_configuration(client, fake, monkeypatch):
 # ---------------------------------------------------------------------- #
 #  Setup problems
 # ---------------------------------------------------------------------- #
-def test_missing_api_key_explains_how_to_set_it(client, monkeypatch):
+def test_missing_api_key_explains_how_to_set_it(client, monkeypatch, tmp_path):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(
+        runner_module, "API_KEY_FILE", tmp_path / "missing-openai-api-key.txt"
+    )
     _, body = ask(client, "List all rooms")
     assert body["ok"] is False
     assert "OPENAI_API_KEY" in body["reply"] and "Nothing was changed" in body["reply"]

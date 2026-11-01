@@ -273,15 +273,14 @@ Click the round chat button in the bottom-right corner of any page and type a re
 - "Change the capacity of Roddy 140 to 40", "Give Hogg a maximum of 9 credits", "Disable class pattern 4", "Turn off the pack_rooms setting"
 - "Delete room Roddy 136" (see **Deleting** below)
 
-**Setup.** The OpenAI key is read from the `OPENAI_API_KEY` environment variable and never written to a file, a page or a log. The model is `gpt-6-luna` unless `OPENAI_MODEL` is set:
+**Setup.** Set `OPENAI_API_KEY` in your environment, or copy [`config/openai_api_key.example.txt`](config/openai_api_key.example.txt) to `config/openai_api_key.txt` and replace its contents with your OpenAI key. The local key file is ignored by Git; do not commit or share it. The environment variable takes precedence if both are set. The key is never shown on a page or written to a log. The model is `gpt-6-luna` unless `OPENAI_MODEL` is set:
 
 ```bash
-export OPENAI_API_KEY="your key here"      # never commit it
 export OPENAI_MODEL="gpt-6-luna"           # optional; this is the default
 uv run python manage.py runserver
 ```
 
-With no key set, the assistant says so and nothing else changes.
+With no key set in either place, the assistant says so and nothing else changes.
 
 **Changing and deleting.** The update tools (`update_room`, `update_lab`, `update_course`, `update_faculty`, `update_time_slot`, `update_timing_options`, `update_class_pattern`, `update_meeting`, `update_global_settings`, plus `add_meeting`) take only the values you want changed and merge them into the current record, then call the same controller the Edit pages use. A change that the scheduler library rejects is rejected as a whole, so nothing is half-applied; a request that changes nothing says so and does not mark the configuration as unsaved. Every real change is on the **History** page and can be undone there.
 
@@ -313,6 +312,7 @@ With no configuration open, the assistant says one must be created or loaded and
 - While a request is running, Send and Enter are ignored, so a double click or a second Enter does nothing. The server also refuses a second request from the same browser until the first one is done, so a change can't be applied twice.
 - **Look first, then act.** The AI can read the configuration (lists, details) and then decide, so "delete the room with the smallest number" or "give the biggest room 10 more seats" work in one message. Lookups are only for the AI; any add, update, delete or confirmation ends the request with the application's own message, so the AI can't re-word what really happened. A request is limited to 6 model steps.
 - **Short memory.** The last 6 chat messages are sent along so "yes, that one" or "make it 40 instead" are understood (set `AI_HISTORY_MESSAGES` from 0 to 20; `0` sends each request on its own). They are only a hint: names and numbers always come from the tools, which read the configuration as it is right now, edits you just made by hand included. Deleting still needs a separate confirmation that the application enforces itself.
+- **Only real actions are reported.** The AI's own text never counts as an action: if it says something was added, changed or deleted but no action tool ran, that text is replaced with "That wasn't done: no action ran, so nothing was changed." Every add, change or delete is also checked against the configuration itself, so a step that reports success but left the configuration unchanged is reported as a failure, and a change that did happen is always reported.
 - The reply comes from what the application actually did. A change says **"applied but not yet saved to a file"**: it's in the open configuration and marked as unsaved changes, but it isn't written to disk until you save it.
 - AI service errors are retried at most twice, with a 60-second timeout. After that you get a "couldn't finish" message, and nothing is changed.
 
