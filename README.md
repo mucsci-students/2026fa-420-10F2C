@@ -407,6 +407,31 @@ MVC (above) is one of the patterns used. The others are described here as they a
   encapsulation is kept; and because each kind of item has its own memento, an edit to one room saves one slice of
   the configuration rather than a copy of everything.
 
+#### Adapter (the AI service)
+
+- **Problem.** The chat needs a language model to pick tools, but the rest of the app should not depend on LangChain or
+  OpenAI. Their tool objects, agent loop and message format are not ours, and routine tests must run with no AI and no
+  API key.
+- **Where.** `gui/ai/runner.py` (`Runner`, `LangChainRunner`), used by `gui/ai/service.py` (`get_runner`, `_run`). The
+  tools it adapts are `AiTool` and `ToolBox` (`gui/ai/base.py`, `gui/ai/tools.py`). Tests: `tests/test_ai_adapter.py`,
+  `tests/test_ai_langchain.py`.
+- **Participants.**
+  - *Target*: `Runner`, the one interface the app wants: `run(text, toolbox)` returns the model's own text, or an empty
+    string when an action's own result is the answer.
+  - *Client*: `service._run` in `gui/ai/service.py`. It asks `get_runner()` for a runner and calls `run`; it knows
+    nothing about LangChain.
+  - *Adaptee*: LangChain's agent and tool classes (`create_agent`, `StructuredTool`), talking to OpenAI.
+  - *Adapter*: `LangChainRunner`. `langchain_tools()` turns each of our tools (name, description, argument schema,
+    handler) into a LangChain tool, and `reply_from()` turns LangChain's answer back into plain text. Reading the API
+    key (`load_api_key`) is kept separate from this translation.
+- **How they interact.** The client calls `run`. The adapter builds the LangChain tools from the request's tool box and
+  starts the agent. Every tool call the model makes is forwarded to `toolbox.call`, which checks the arguments, runs
+  the controller and records what really happened. When the agent stops, `reply_from` returns the single piece of text
+  the client expects.
+- **Why it fits.** The client talks only to the interface it wants, and the incompatible LangChain interface is
+  converted in one class. Replacing the real AI with a fake one (as the tests do) or with another provider only
+  changes what `get_runner` returns.
+
 ## Running the tests
 
 Run the same checks as CI from the repository root:
