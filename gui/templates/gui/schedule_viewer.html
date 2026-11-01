@@ -1,6 +1,7 @@
 {% extends "gui/base.html" %}
 {% load static %}
 {% block title %}Scheduler — Schedule Viewer{% endblock %}
+{% block main_class %}main--wide{% endblock %}
 {% block content %}
 <div class="page-header">
     <div>
@@ -13,7 +14,7 @@
 {% if schedule_count %}
 <div class="status-card schedule-status-card">
     <p class="status-line" role="status"><strong>{{ schedule_count }}</strong> schedule{{ schedule_count|pluralize }} available.</p>
-    <nav class="schedule-pager" aria-label="Schedule navigation">
+    <nav class="schedule-pager" id="schedule-pager" aria-label="Schedule navigation">
         {% if has_previous %}
         <a class="btn schedule-pager__previous" href="?schedule={{ previous_schedule }}{{ view_query }}">Previous</a>
         {% else %}
@@ -43,70 +44,54 @@
 
 {% if schedule_count %}
 <h2 id="schedule-overview-heading" class="section-title">Schedule {{ current_schedule }} weekly overview</h2>
-<div class="viewer-toolbar">
 <div class="view-filter">
     <button type="button" class="btn view-filter__trigger" aria-label="Filter grid view" title="Filter grid view">
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5L3 5z" fill="currentColor"/></svg>
     </button>
     <nav class="view-filter__menu" aria-label="Grid view">
         <div class="view-filter__options">
-            {% for link in view_links %}
-            <a class="btn{% if view_mode == link.value %} btn-primary{% endif %}" href="{{ link.href }}"{% if view_mode == link.value %} aria-current="true"{% endif %}>{{ link.label }}</a>
+            {% for value, label in view_options.items %}
+            <a class="btn{% if view_mode == value %} btn-primary{% endif %}" href="?schedule={{ current_schedule }}&amp;view={{ value }}"{% if view_mode == value %} aria-current="true"{% endif %}>{{ label }}</a>
             {% endfor %}
         </div>
     </nav>
 </div>
-{% if resource_groups %}
-<details class="resource-picker"{% if resource_picker_open %} open{% endif %}>
-    <summary class="btn resource-picker__toggle">
-        Choose {{ resource_noun }}
-        <span class="resource-picker__count">{% if resource_selected %}{{ resource_selected|length }} of {{ resource_total }}{% else %}all {{ resource_total }}{% endif %}</span>
-    </summary>
-    <form method="get" class="resource-picker__panel" aria-label="Choose which {{ resource_noun }} to show">
+<div class="card schedule-details" aria-labelledby="schedule-overview-heading">
+    {% if resource_groups %}
+    <form method="get" class="resource-bar" data-resource-bar aria-label="Show only these {{ resource_noun }}">
         <input type="hidden" name="schedule" value="{{ current_schedule }}">
         <input type="hidden" name="view" value="{{ view_mode }}">
-        <div class="resource-picker__tools" hidden>
-            <input type="search" class="resource-picker__search" placeholder="Search {{ resource_noun }}" aria-label="Search {{ resource_noun }}">
-            <button type="button" class="btn btn-small" data-picker="all">Tick all</button>
-            <button type="button" class="btn btn-small" data-picker="none">Untick all</button>
+        <div class="resource-bar__status" id="resource-bar-status" role="status">
+            {% if resource_selected %}
+            <span>Showing <strong>{{ schedule_grid.shown }}</strong> of {{ schedule_grid.total }} meetings for {{ resource_selected|length }} of {{ resource_total }} {{ resource_noun }}.</span>
+            <a class="btn btn-small resource-bar__clear" href="?schedule={{ current_schedule }}&amp;view={{ view_mode }}">Show all {{ resource_noun }}</a>
+            {% if not schedule_grid.shown %}
+            <span class="resource-bar__empty">None of the selected {{ resource_noun }} have meetings in schedule {{ current_schedule }}.</span>
+            {% endif %}
+            {% else %}
+            <span>Showing all {{ resource_total }} {{ resource_noun }}. Tick any to show only their meetings.</span>
+            {% endif %}
         </div>
-        <div class="resource-picker__groups">
-            {% for group in resource_groups %}
-            <fieldset class="resource-picker__group">
-                <legend>{{ group.title }}</legend>
+        {% for group in resource_groups %}
+        <fieldset class="resource-bar__group">
+            <legend>{{ group.title }}</legend>
+            <div class="resource-bar__chips">
                 {% for option in group.options %}
-                <label class="resource-picker__option">
+                <label class="resource-chip" title="{{ option.meetings }} meeting{{ option.meetings|pluralize }} in schedule {{ current_schedule }}">
                     <input type="checkbox" name="resource" value="{{ option.value }}"{% if option.checked %} checked{% endif %}>
-                    <span class="resource-picker__name">{{ option.label }}</span>
-                    <span class="resource-picker__meetings" title="Meetings in schedule {{ current_schedule }}">{{ option.meetings }}</span>
+                    <span class="resource-chip__name">{{ option.label }}</span>
+                    <span class="resource-chip__count">{{ option.meetings }}</span>
                 </label>
                 {% endfor %}
-            </fieldset>
-            {% endfor %}
-            <p class="resource-picker__nomatch help" hidden>Nothing matches that search.</p>
-        </div>
-        <p class="help">Tick one or more to show only their meetings. Tick none to show everything. The number is how many meetings each has in schedule {{ current_schedule }}.</p>
-        <div class="button-row">
-            <button type="submit" class="btn btn-primary resource-picker__apply">Show selected</button>
-            <a class="btn" href="?schedule={{ current_schedule }}&amp;view={{ view_mode }}">Show all</a>
-        </div>
+            </div>
+        </fieldset>
+        {% endfor %}
+        <noscript><button type="submit" class="btn btn-small">Apply</button></noscript>
     </form>
-</details>
-{% endif %}
-</div>
-{% if resource_selected %}
-<p class="resource-picker__summary" role="status">
-    Showing {{ schedule_grid.shown }} of {{ schedule_grid.total }} meetings for: {{ resource_selected|join:", " }}.
-    <a href="?schedule={{ current_schedule }}&amp;view={{ view_mode }}">Show all {{ resource_noun }}</a>
-</p>
-{% if not schedule_grid.shown %}
-<p class="help resource-picker__empty">None of the selected {{ resource_noun }} have meetings in schedule {{ current_schedule }}. Try another schedule, or choose different {{ resource_noun }}.</p>
-{% endif %}
-{% endif %}
-<div class="card schedule-details" aria-labelledby="schedule-overview-heading">
-    <div class="scroll-x">
+    {% endif %}
+    <div class="scroll-x" id="schedule-grid-wrap">
         <div class="week-grid schedule-grid" role="group" aria-label="Weekly grid for schedule {{ current_schedule }}"
-             style="--hour-pct: {{ schedule_grid.hour_pct }}%; min-width: {{ schedule_grid.min_width }}; grid-template-columns: {{ schedule_grid.columns }};">
+             style="--hour-pct: {{ schedule_grid.hour_pct }}%; --grid-height: {{ schedule_grid.height }}; min-width: {{ schedule_grid.min_width }}; grid-template-columns: {{ schedule_grid.columns }};">
             <div class="week-grid__col">
                 <div class="week-grid__day-name">&nbsp;</div>
                 <div class="week-grid__track week-grid__track--axis">

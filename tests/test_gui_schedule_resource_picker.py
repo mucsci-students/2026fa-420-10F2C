@@ -1,7 +1,7 @@
 """
-Tests for the Schedule Viewer's checkbox popup (Sections 16.1-16.2): in the Rooms & labs view
-and the Faculty view, tick any number of rooms, labs or faculty members to show only their
-meetings. The choice lives in the URL (?resource=...), so nothing here touches the session
+Tests for the Schedule Viewer's checkbox bar (Sections 16.1-16.2): in the Rooms & labs view
+and the Faculty view, a bar at the top of the calendar lets you tick any number of rooms, labs
+or faculty members to show only their meetings. The choice lives in the URL (?resource=...), so nothing here touches the session
 except loading schedules.
 """
 
@@ -11,7 +11,7 @@ from app.schedule_io import Assignment, MeetingTime
 from gui.constants import VIEW_COURSES, VIEW_FACULTY, VIEW_ROOMS
 from gui.controllers import schedule_filters
 from gui.controllers.schedule_filters import NONE_VALUE
-from gui.views import _schedule_grid
+from gui.views import GRID_HEIGHT_REM, GRID_MAX_HEIGHT_REM, _schedule_grid
 from tests.test_gui_schedule_room_view import VIEWER_URL, load, sample_schedule
 
 ROOM_136 = 'title="Monday 09:00-09:50: Roddy 136"'
@@ -167,43 +167,102 @@ def test_the_time_axis_does_not_change_when_meetings_are_filtered_out():
     whole = _schedule_grid(sample_schedule(), VIEW_ROOMS)
     filtered = _schedule_grid(sample_schedule(), VIEW_ROOMS, ["Roddy 136"])
     assert filtered["hours"] == whole["hours"]
+    assert filtered["height"] == whole["height"]
+
+
+def mwf_day(start_hour, end_hour):
+    """A long day of 50-minute MWF classes, like a real department's schedule."""
+    return [
+        Assignment(
+            f"CMSC {100 + hour}.01",
+            "Hogg",
+            "Roddy 136",
+            None,
+            tuple(
+                MeetingTime(day, f"{hour:02d}:00", f"{hour:02d}:50", 50)
+                for day in ("MON", "WED", "FRI")
+            ),
+        )
+        for hour in range(start_hour, end_hour)
+    ]
+
+
+def test_short_meetings_in_a_long_day_keep_their_detail_line():
+    """50-minute classes from 8:00 to 20:00 used to be too short for the third line."""
+    grid = _schedule_grid(mwf_day(8, 20), VIEW_COURSES)
+    blocks = [m for day in grid["days"] for m in day["meetings"]]
+    assert blocks and not any(m["compact"] for m in blocks)
+    assert float(grid["height"].removesuffix("rem")) > GRID_HEIGHT_REM
+
+
+def test_a_short_day_keeps_the_usual_height():
+    grid = _schedule_grid(sample_schedule(), VIEW_COURSES)
+    assert grid["height"] == f"{GRID_HEIGHT_REM:g}rem"
+
+
+def test_the_calendar_never_grows_past_its_limit():
+    tiny = [
+        Assignment(
+            "CMSC 1.01",
+            None,
+            None,
+            None,
+            (
+                MeetingTime("MON", "07:00", "07:05", 5),
+                MeetingTime("MON", "21:00", "21:50", 50),
+            ),
+        )
+    ]
+    grid = _schedule_grid(tiny, VIEW_COURSES)
+    assert grid["height"] == f"{GRID_MAX_HEIGHT_REM:g}rem"
 
 
 # ---------------------------------------------------------------------- #
 #  Viewer page (Django test client)
 # ---------------------------------------------------------------------- #
-def test_courses_view_page_has_no_picker(client):
+def test_courses_view_page_has_no_bar(client):
     load(client, sample_schedule())
     html = client.get(VIEWER_URL).content.decode()
-    assert "resource-picker" not in html
+    assert "data-resource-bar" not in html
 
 
 @pytest.mark.parametrize("view", ["rooms", "faculty"])
-def test_picker_is_closed_until_the_user_switches_into_the_view(client, view):
+def test_the_bar_is_always_on_the_page_in_rooms_and_faculty_views(client, view):
     load(client, sample_schedule())
-    closed = client.get(VIEWER_URL, {"view": view}).content.decode()
-    assert '<details class="resource-picker">' in closed
-    opened = client.get(VIEWER_URL, {"view": view, "pick": "1"}).content.decode()
-    assert '<details class="resource-picker" open>' in opened
+    html = client.get(VIEWER_URL, {"view": view}).content.decode()
+    assert "data-resource-bar" in html
+    # The bar sits in the calendar card, above the calendar.
+    assert html.index("data-resource-bar") < html.index('id="schedule-grid-wrap"')
 
 
-def test_rooms_picker_lists_every_room_and_lab_as_a_checkbox(client):
+def test_rooms_bar_lists_every_room_and_lab_as_a_checkbox(client):
     load(client, sample_schedule())
     html = client.get(VIEWER_URL, {"view": "rooms"}).content.decode()
-    assert "Choose rooms &amp; labs" in html
     assert "<legend>Rooms</legend>" in html and "<legend>Labs</legend>" in html
     for name in ("Roddy 136", "Roddy 140", "Roddy 147"):
         assert f'type="checkbox" name="resource" value="{name}">' in html
     assert '<input type="hidden" name="view" value="rooms">' in html
-    assert "all 3" in html
+    assert "Showing all 3 rooms &amp; labs." in html
 
 
-def test_faculty_picker_lists_faculty_as_checkboxes(client):
+def test_faculty_bar_lists_faculty_as_checkboxes(client):
     load(client, sample_schedule())
     html = client.get(VIEWER_URL, {"view": "faculty"}).content.decode()
-    assert "Choose faculty" in html
+    assert "Showing all 3 faculty." in html
     for name in ("Hogg", "Killen", "Zoppetti"):
         assert f'type="checkbox" name="resource" value="{name}">' in html
+
+
+def test_the_viewer_uses_the_full_window_width(client):
+    load(client, sample_schedule())
+    html = client.get(VIEWER_URL).content.decode()
+    assert '<main id="main" class="main--wide">' in html
+
+
+def test_the_calendar_height_is_set_on_the_grid(client):
+    load(client, sample_schedule())
+    html = client.get(VIEWER_URL).content.decode()
+    assert f"--grid-height: {GRID_HEIGHT_REM:g}rem;" in html
 
 
 def test_ticking_one_room_shows_only_its_meetings(client):
@@ -214,8 +273,9 @@ def test_ticking_one_room_shows_only_its_meetings(client):
     assert ROOM_136 in html
     assert LAB_147 not in html and ROOM_140 not in html
     assert 'value="Roddy 136" checked>' in html
-    assert "Showing 1 of 3 meetings for: Roddy 136." in html
-    assert "1 of 3" in html
+    assert (
+        "Showing <strong>1</strong> of 3 meetings for 1 of 3 rooms &amp; labs." in html
+    )
 
 
 def test_ticking_several_shows_all_of_them(client):
@@ -242,7 +302,7 @@ def test_unknown_choices_are_ignored(client):
         VIEWER_URL, {"view": "rooms", "resource": "Nowhere 1"}
     ).content.decode()
     assert ROOM_136 in html and LAB_147 in html and ROOM_140 in html
-    assert "Showing" not in html
+    assert "Showing all 3 rooms &amp; labs." in html
 
 
 def test_choices_are_ignored_in_the_courses_view(client):
@@ -284,4 +344,6 @@ def test_unassigned_choice_round_trips(client):
         VIEWER_URL, {"view": "rooms", "resource": NONE_VALUE}
     ).content.decode()
     assert f'value="{NONE_VALUE}" checked>' in html
-    assert "Showing 1 of 1 meetings for: No room assigned." in html
+    assert (
+        "Showing <strong>1</strong> of 1 meetings for 1 of 1 rooms &amp; labs." in html
+    )

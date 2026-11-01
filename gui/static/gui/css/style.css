@@ -417,6 +417,7 @@ main {
 
 .week-grid__block.schedule-grid__meeting {
     --block-bg: #1d4ed8;
+    color: #fff; /* the time and detail lines too, in light mode as well as dark */
     background-color: var(--block-bg);
     background-image: none;
     border-color: rgba(0, 0, 0, 0.35);
@@ -965,156 +966,115 @@ a.area-card:focus-visible {
     text-align: left;
 }
 
-/* Schedule Viewer: the view menu and, in the Rooms & labs and Faculty views, the checkbox
-   popup that picks which ones to show (gui/controllers/schedule_filters.py). */
-.viewer-toolbar {
+/* Schedule Viewer, Rooms & labs and Faculty views: the bar of checkboxes at the top of the
+   calendar that picks which ones to show (gui/controllers/schedule_filters.py). Ticking one
+   updates the calendar straight away (schedule_viewer.js). */
+.resource-bar {
     display: flex;
     flex-wrap: wrap;
     align-items: flex-start;
-    gap: 0.5rem;
+    gap: 0.5rem 1.25rem;
+    margin: -0.25rem 0 0.75rem;
+    padding: 0 0 0.75rem;
+    border-bottom: 1px solid var(--border);
 }
 
-.resource-picker {
-    position: relative;
-    display: inline-block;
-    margin: 0.5rem 0 1rem;
-}
-
-.resource-picker__toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    list-style: none;
-    user-select: none;
-}
-
-.resource-picker__toggle::-webkit-details-marker { display: none; }
-
-.resource-picker__toggle::after {
-    content: "";
-    width: 0.45rem;
-    height: 0.45rem;
-    border-right: 2px solid currentColor;
-    border-bottom: 2px solid currentColor;
-    transform: translateY(-0.12rem) rotate(45deg);
-    transition: transform 0.15s ease;
-}
-
-.resource-picker[open] > .resource-picker__toggle::after {
-    transform: translateY(0.1rem) rotate(-135deg);
-}
-
-.resource-picker__count {
-    padding: 0.05rem 0.5rem;
-    border-radius: 999px;
-    background: var(--accent-soft);
-    color: var(--accent-strong);
-    font-size: 0.85em;
-    font-weight: 600;
-}
-
-.resource-picker__panel {
-    position: absolute;
-    top: calc(100% + 0.3rem);
-    left: 0;
-    z-index: 20;
-    width: min(24rem, calc(100vw - 2rem));
-    padding: 0.75rem;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-}
-
-.resource-picker__tools {
+.resource-bar__status {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.4rem;
-    margin-bottom: 0.6rem;
+    align-items: center;
+    gap: 0.4rem 0.75rem;
+    flex: 1 1 100%;
+    min-height: 1.9rem;
+    color: var(--muted);
+    font-size: 0.9rem;
 }
 
-.resource-picker__tools[hidden] { display: none; }
+.resource-bar__status strong { color: var(--text); }
+.resource-bar__empty { color: var(--warn-text, var(--text)); font-weight: 600; }
 
-.resource-picker__search {
-    flex: 1 1 10rem;
+.resource-bar[aria-busy="true"] .resource-bar__status { opacity: 0.6; }
+
+.resource-bar__group {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
     min-width: 0;
-    padding: 0.3rem 0.5rem;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
-    color: var(--text);
-    font: inherit;
-}
-
-.resource-picker__groups {
-    max-height: min(22rem, 55vh);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-}
-
-.resource-picker__group {
-    margin: 0 0 0.6rem;
+    margin: 0;
     padding: 0;
     border: 0;
 }
 
-.resource-picker__group[hidden],
-.resource-picker__option[hidden],
-.resource-picker__nomatch[hidden] { display: none; }
-
-.resource-picker__group legend {
-    margin-bottom: 0.2rem;
+.resource-bar__group legend {
+    float: left; /* lets the legend sit beside the chips instead of above them */
+    margin-right: 0.5rem;
+    padding: 0;
     color: var(--muted);
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     font-weight: 600;
     letter-spacing: 0.04em;
+    line-height: 1.9rem;
     text-transform: uppercase;
 }
 
-.resource-picker__option {
+.resource-bar__chips {
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.3rem 0.4rem;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
+    flex-wrap: wrap;
+    gap: 0.35rem;
 }
 
-.resource-picker__option:hover { background: var(--surface-alt); }
+.resource-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.6rem 0.25rem 0.45rem;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    background: var(--surface);
+    font-size: 0.875rem;
+    line-height: 1.3;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+}
 
-.resource-picker__option input {
-    width: 1rem;
-    height: 1rem;
+.resource-chip:hover { border-color: var(--accent); }
+
+.resource-chip input {
+    width: 0.95rem;
+    height: 0.95rem;
     margin: 0;
     accent-color: var(--accent);
 }
 
-.resource-picker__name {
-    flex: 1;
-    overflow-wrap: anywhere;
+.resource-chip:has(input:checked) {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+    font-weight: 600;
 }
 
-.resource-picker__meetings {
-    min-width: 1.6rem;
+.resource-chip:has(input:focus-visible) {
+    outline: 3px solid var(--focus);
+    outline-offset: 1px;
+}
+
+.resource-chip__count {
+    min-width: 1.1rem;
+    padding: 0 0.3rem;
+    border-radius: 999px;
+    background: var(--surface-alt);
     color: var(--muted);
-    font-size: 0.85em;
+    font-size: 0.75rem;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
-    text-align: right;
+    text-align: center;
 }
 
-.resource-picker__panel .button-row {
-    margin-top: 0.5rem;
-}
-
-.resource-picker__summary {
-    margin: -0.25rem 0 0.75rem;
-}
-
-/* On a narrow screen the popup hangs from the toolbar's left edge, so it never runs off-screen. */
-@media (max-width: 560px) {
-    .viewer-toolbar { position: relative; }
-    .resource-picker { position: static; }
-    .resource-picker__panel { width: 100%; }
+/* The Schedule Viewer uses the whole window width, so a wide monitor shows every day of a
+   busy schedule without scrolling sideways. Other pages keep the 1200px reading width. */
+main.main--wide {
+    max-width: none;
 }
 
 /* The Save / Cancel bar under a form. On the long Course and Faculty forms

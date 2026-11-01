@@ -13,6 +13,7 @@ view functions will start calling them instead of just rendering a static
 template.
 """
 
+import math
 import re
 from urllib.parse import urlencode
 
@@ -340,9 +341,8 @@ def schedule_viewer(request, import_form=None):
             "schedule_grid": schedule_grid,
             "view_mode": view_mode,
             "view_options": VIEW_OPTIONS,
-            "view_links": _view_links(current),
             **pager,
-            **_resource_picker_context(request, view_mode, groups, selected),
+            **_resource_picker_context(view_mode, groups, selected),
             "import_form": import_form,
             "export_form": export_form,
         },
@@ -404,21 +404,8 @@ def _view_query(view_mode: str = VIEW_COURSES, selected=()) -> str:
     return f"&{urlencode(params)}" if params else ""
 
 
-def _view_links(current: int) -> list[dict[str, str]]:
-    """The filter menu's links. Switching into Rooms & labs or Faculty opens its picker (&pick=1)."""
-    return [
-        {
-            "value": value,
-            "label": label,
-            "href": f"?schedule={current}&view={value}"
-            + ("&pick=1" if schedule_filters.filters_view(value) else ""),
-        }
-        for value, label in VIEW_OPTIONS.items()
-    ]
-
-
-def _resource_picker_context(request, view_mode, groups, selected) -> dict:
-    """What the template needs for the checkbox popup; empty values in the Courses view."""
+def _resource_picker_context(view_mode, groups, selected) -> dict:
+    """What the template needs for the checkbox bar; empty values in the Courses view."""
     if not groups:
         return {"resource_groups": [], "resource_selected": []}
     total = len(schedule_filters.all_options(groups))
@@ -429,8 +416,6 @@ def _resource_picker_context(request, view_mode, groups, selected) -> dict:
         "resource_selected": [
             schedule_filters.label_for(value, groups) for value in selected
         ],
-        # Open when the user just switched into this view from the menu.
-        "resource_picker_open": request.GET.get("pick") == "1",
     }
 
 
@@ -516,6 +501,7 @@ def _schedule_grid(assignments, view_mode=VIEW_COURSES, selected=()):
     ]
     axis_start, axis_end = _schedule_axis_bounds(minutes)
     span = axis_end - axis_start
+    grid_height = _grid_height_rem(all_rows, span)
 
     # One color per distinct label, so overlapping blocks always differ.
     color_of = {
@@ -533,7 +519,7 @@ def _schedule_grid(assignments, view_mode=VIEW_COURSES, selected=()):
                 "color": color_of[row["label"]],
                 "top": f"{(start - axis_start) / span * 100:.2f}",
                 "height": f"{(end - start) / span * 100:.2f}",
-                "compact": height_pct / 100 * GRID_HEIGHT_REM < COMPACT_BELOW_REM,
+                "compact": height_pct / 100 * grid_height < COMPACT_BELOW_REM,
             }
         )
 
@@ -564,6 +550,7 @@ def _schedule_grid(assignments, view_mode=VIEW_COURSES, selected=()):
             for m in range(axis_start, axis_end + 1, MINUTES_PER_HOUR)
         ],
         "hour_pct": f"{MINUTES_PER_HOUR / span * 100:.3f}",
+        "height": f"{grid_height:g}rem",
         "shown": len(rows),
         "total": len(all_rows),
         "columns": columns,
@@ -575,8 +562,30 @@ LANE_MIN_REM = 6.5  # minimum width of one lane
 TIME_AXIS_REM = 3.5
 COLUMN_GAP_REM = 0.4
 PALETTE_SIZE = 12  # matches .schedule-color-0..11 in style.css
-GRID_HEIGHT_REM = 40  # matches --grid-height in .week-grid.schedule-grid
+GRID_HEIGHT_REM = (
+    40  # the calendar's usual height (also the CSS default for --grid-height)
+)
+GRID_MAX_HEIGHT_REM = 72  # never taller than this, however short the shortest meeting
 COMPACT_BELOW_REM = 3.4  # blocks shorter than this hide the detail line
+
+
+def _grid_height_rem(rows, span: int) -> float:
+    """How tall to draw the calendar so even the shortest meeting fits all three lines
+    (name, time, details).
+
+    A fixed 40rem made 50-minute MWF classes too short in a long day, so they lost their
+    detail line. The calendar grows (up to GRID_MAX_HEIGHT_REM) until the shortest meeting
+    is COMPACT_BELOW_REM tall; it uses the whole schedule, so filtering doesn't resize it.
+    """
+    durations = [
+        _clock_minutes(row["end"]) - _clock_minutes(row["start"]) for row in rows
+    ]
+    shortest = min((d for d in durations if d > 0), default=0)
+    if not shortest or not span:
+        return GRID_HEIGHT_REM
+    # Rounded up to 0.1rem, so rounding never leaves the shortest meeting just too short.
+    needed = math.ceil(COMPACT_BELOW_REM * span / shortest * 10) / 10
+    return min(GRID_MAX_HEIGHT_REM, max(GRID_HEIGHT_REM, needed))
 
 
 def _block_detail(view_mode, course, location, faculty):
