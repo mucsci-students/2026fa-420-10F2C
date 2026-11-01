@@ -420,7 +420,7 @@ uv run ty check
 uv run pytest --cov --cov-report=xml
 ```
 
-Coverage measures the Model package in `app/` and fails below 80%. The Codecov upload is performed by CI; no OpenAI secret is needed for routine tests. The tests live in `tests/`: `test_crud_*` and `test_schedule_*` cover the model and CLI layer, `test_gui_*` cover the controllers and pages through Django's test client.
+Coverage measures team-written code in `app/`: `app.commands.common`, `app.crud`, `app.generation_job`, `app.history`, `app.memento`, `app.schedule_io`, `app.schedule_ops`, and `app.session`. `app.commands.common` is included because its shared edit helper is used by both the CLI and GUI; its prompt helpers are included as part of that module. Third-party scheduler-library code is outside the target. Coverage is line coverage and fails below 80%; reproduce it locally with `uv run pytest --cov --cov-report=xml`. CI uploads the XML report to Codecov. No OpenAI secret is needed for routine tests. The tests live in `tests/`: `test_crud_*` and `test_schedule_*` cover the model and CLI layer, `test_gui_*` cover the controllers and pages through Django's test client.
 
 ## Command-line shell (Sprint 1)
 
