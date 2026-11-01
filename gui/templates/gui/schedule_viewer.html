@@ -75,8 +75,8 @@
 <h2 id="schedule-overview-heading" class="section-title visually-hidden">Schedule {{ current_schedule }} weekly overview &ndash; {{ view_label }} view{% if resources %}: {{ resources|join:', ' }}{% endif %}</h2>
 <div class="card schedule-details" aria-labelledby="schedule-overview-heading">
     <div class="scroll-x">
-        <div class="week-grid schedule-grid" role="group" aria-label="Weekly grid for schedule {{ current_schedule }}"
-             style="--hour-pct: {{ schedule_grid.hour_pct }}%; min-width: {{ schedule_grid.min_width }}; grid-template-columns: {{ schedule_grid.columns }};">
+        <div class="week-grid schedule-grid{% if time_format == '12h' %} schedule-grid--12h{% endif %}" role="group" aria-label="Weekly grid for schedule {{ current_schedule }}"
+             style="--hour-pct: {{ schedule_grid.hour_pct }}%; --grid-height: {{ schedule_grid.height_rem }}rem; grid-template-columns: {{ schedule_grid.columns }};">
             <div class="week-grid__col">
                 <div class="week-grid__day-name">&nbsp;</div>
                 <div class="week-grid__track week-grid__track--axis">
@@ -102,7 +102,7 @@
                             <span class="week-grid__label">{{ meeting.label }}</span>
                             <span class="schedule-grid__time">{{ meeting.range_text }}</span>
                         </div>
-                        {% if meeting.detail and not meeting.compact %}<div class="schedule-grid__detail">{{ meeting.detail }}</div>{% endif %}
+                        {% if not meeting.compact %}<div class="schedule-grid__details">{% for part in meeting.details %}<span class="schedule-grid__detail">{{ part }}</span>{% endfor %}</div>{% endif %}
                     </div>
                     {% endfor %}
                 </div>

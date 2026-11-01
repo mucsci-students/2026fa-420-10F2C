@@ -175,6 +175,12 @@ main {
     margin: 0 auto;
 }
 
+/* The Schedule Viewer's calendar gets the whole window, not the 1200px column the other pages use. */
+main:has(.schedule-grid) {
+    max-width: none;
+    padding-inline: 1.25rem;
+}
+
 .breadcrumb {
     color: var(--muted);
     font-size: 0.85rem;
@@ -624,7 +630,9 @@ a.schedule-chips__chip {
 }
 
 .week-grid.schedule-grid {
-    --grid-height: 40rem;
+    --grid-height: 40rem; /* the page sets the real height: one tall hour per hour shown */
+    /* The week fits the window; only a window narrower than this scrolls sideways. */
+    min-width: 44rem;
 }
 
 .week-grid__block.schedule-grid__meeting {
@@ -634,7 +642,10 @@ a.schedule-chips__chip {
     color: #fff;
     border-color: rgba(0, 0, 0, 0.35);
     cursor: pointer;
+    overflow: hidden;
+    padding: 0.1rem 0.2rem;
 }
+
 .week-grid__block.schedule-color-0  { --block-bg: #1d4ed8; }
 .week-grid__block.schedule-color-1  { --block-bg: #b45309; }
 .week-grid__block.schedule-color-2  { --block-bg: #047857; }
@@ -648,54 +659,65 @@ a.schedule-chips__chip {
 .week-grid__block.schedule-color-10 { --block-bg: #0f766e; }
 .week-grid__block.schedule-color-11 { --block-bg: #854d0e; }
 
-.schedule-grid__meeting.is-compact .schedule-grid__header { 
-    flex-wrap: nowrap;
-}
-
 .schedule-grid__header {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
     column-gap: 0.3rem;
-    row-gap: 0.2rem;
     min-width: 0;
-}
-
-.schedule-grid__cluster .schedule-grid__header + .schedule-grid__header {
-    margin-top: 0.4rem;
 }
 
 .schedule-grid__header .week-grid__label {
-    background: #1e3a8a;
-    padding: 0 0.25rem;
-    margin: 1px;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+    background: none;
     border-radius: 3px;
-    font-weight: 600;
+    font-weight: 700;
     line-height: 1.15;
-    flex: 0 0 auto;
-    min-width: min-content;
-    overflow-wrap: normal;
-    white-space: normal;
-    font-size: clamp(0.5rem, 13cqi, 0.7rem);
+    font-size: 0.75rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .schedule-grid__time {
-    flex: 0 1 auto;
+    display: block;
+    flex: 1 0 100%;
     min-width: 0;
-    margin: 0 0 0 calc(0.25rem - 1px);
-    font-size: clamp(0.45rem, 11cqi, 0.68rem);
+    max-width: 100%;
+    margin: 0;
+    font-size: 0.68rem;
     line-height: 1.2;
-    overflow-wrap: anywhere;
-    white-space: normal;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* Schedule grid: one color per course/room/faculty, details inside the block */
 
 .schedule-grid__meeting:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; z-index: 3; }
-.schedule-grid .schedule-grid__header .week-grid__label { background: none; padding: 0; margin: 0; font-weight: 700; }
+/* What a block shows
+   Every block is laid out the same way, whatever its size or the window's: the name, the time, then the
+   other two facts, one per line, all in the same type sizes. Each hour of the calendar is tall enough
+   (see HOUR_HEIGHT_REM in gui/views.py) for a 50-minute class to hold all four lines. A line that is
+   too long for its block is shortened with "...", never pushed outside it. */
+.schedule-grid__details {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    font-size: 0.68rem;
+    line-height: 1.25;
+}
+
 .schedule-grid__detail {
-    font-size: 0.65rem; line-height: 1.25; opacity: 0.92;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    min-width: 0;
+    opacity: 0.95;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* Color key under the calendar (collapsed until opened). */

@@ -569,16 +569,15 @@ def _schedule_rows(
 
     `resources` (one value or several) keeps only those meetings: the picked courses
     (or all sections of a course) in the Courses view, the picked rooms/labs in the
-    Rooms view, the picked faculty in the Faculty view. With exactly one room or
-    faculty member picked, each block is labeled with its course, since the picker
-    already names who or what is shown.
+    Rooms view, the picked faculty in the Faculty view.
+    Every block says the same three things, filtered or not: the view's own item
+    first (course, room/lab or faculty), then the other two.
     `time_format` decides how the on-screen times are written (the start, end and
     sorting stay 24-hour).
     """
     day_order = {day: index for index, day in enumerate(DAY_NAMES)}
     chosen = _as_resources(resources)
     filtering = bool(chosen) and view_mode in (VIEW_ROOMS, VIEW_FACULTY)
-    focused = filtering and len(chosen) == 1
     rows = []
     for assignment in assignments:
         if (
@@ -610,9 +609,7 @@ def _schedule_rows(
                     "faculty": assignment.faculty,
                     "meeting_type": "Lab" if is_lab else "Class",
                     "location": location,
-                    "label": assignment.course
-                    if focused
-                    else _block_label(
+                    "label": _block_label(
                         view_mode, assignment.course, location, assignment.faculty
                     ),
                     "sort_key": (
@@ -621,12 +618,10 @@ def _schedule_rows(
                         assignment.course,
                     ),
                     "duration": meeting.duration,
-                    "detail": (
-                        (assignment.faculty if view_mode == VIEW_ROOMS else location)
-                        or ""
-                    )
-                    if focused
-                    else _block_detail(
+                    "detail": _block_detail(
+                        view_mode, assignment.course, location, assignment.faculty
+                    ),
+                    "details": _block_details(
                         view_mode, assignment.course, location, assignment.faculty
                     ),
                 }
@@ -658,14 +653,14 @@ def _schedule_grid(
     meetings_by_day = {day: [] for day in DAY_NAMES}
     for row in rows:
         start, end = _clock_minutes(row["start"]), _clock_minutes(row["end"])
-        height_pct = (end - start) / span * 100
         meetings_by_day[row["day"]].append(
             {
                 **row,
                 "color": color_of[row["label"]],
                 "top": f"{(start - axis_start) / span * 100:.2f}",
                 "height": f"{(end - start) / span * 100:.2f}",
-                "compact": height_pct / 100 * GRID_HEIGHT_REM < COMPACT_BELOW_REM,
+                "compact": (end - start) / MINUTES_PER_HOUR * HOUR_HEIGHT_REM
+                < COMPACT_BELOW_REM,
             }
         )
 
@@ -676,14 +671,11 @@ def _schedule_grid(
         day_lanes.append(max((m["lane_count"] for m in meetings), default=1))
         days.append({"day": day, "name": DAY_NAMES[day], "meetings": meetings})
 
-    # Busy days get proportionally wider columns instead of being merged.
+    # The days share whatever width the window gives the calendar, so there is no
+    # sideways scrolling. A busy day (more overlapping blocks side by side) gets a
+    # wider column, so lanes stay about the same width.
     columns = f"{TIME_AXIS_REM:g}rem " + " ".join(
-        f"minmax({LANE_MIN_REM * n:g}rem, {n}fr)" for n in day_lanes
-    )
-    min_width = (
-        TIME_AXIS_REM
-        + sum(LANE_MIN_REM * n for n in day_lanes)
-        + COLUMN_GAP_REM * len(day_lanes)
+        f"minmax(0, {n + LANE_PADDING_FR:g}fr)" for n in day_lanes
     )
 
     return {
@@ -697,8 +689,9 @@ def _schedule_grid(
         ],
         "legend": [{"label": key, "color": color} for key, color in color_of.items()],
         "hour_pct": f"{MINUTES_PER_HOUR / span * 100:.3f}",
+        "height_rem": f"{span / MINUTES_PER_HOUR * HOUR_HEIGHT_REM:g}",
         "columns": columns,
-        "min_width": f"{round(min_width, 1):g}rem",
+        "day_lanes": day_lanes,
     }
 
 
@@ -714,12 +707,26 @@ LEGEND_NOUN = {
     VIEW_ROOMS: "room or lab",
     VIEW_FACULTY: "faculty member",
 }
-LANE_MIN_REM = 6.5  # minimum width of one lane
-TIME_AXIS_REM = 3.5
-COLUMN_GAP_REM = 0.4
+TIME_AXIS_REM = 3.5  # width of the hour labels on the left
+LANE_PADDING_FR = 0.5  # extra share per day, so a one-lane day is not squeezed
 PALETTE_SIZE = 12  # matches .schedule-color-0..11 in style.css
-GRID_HEIGHT_REM = 40  # matches --grid-height in .week-grid.schedule-grid
-COMPACT_BELOW_REM = 3.4  # blocks shorter than this hide the detail line
+HOUR_HEIGHT_REM = (
+    5.5  # every hour of the calendar is this tall, so a 50-minute class fits 4 lines
+)
+COMPACT_BELOW_REM = (
+    3.0  # only blocks shorter than this (about 30 minutes) drop the detail lines
+)
+
+
+def _block_details(view_mode, course, location, faculty):
+    """The two facts under a block's main label, always both: a missing room or
+    faculty member is written out ("No room assigned") instead of silently left off."""
+    where = location or NO_LOCATION_LABEL
+    who = faculty or NO_FACULTY_LABEL
+    return {
+        VIEW_ROOMS: [course, who],
+        VIEW_FACULTY: [course, where],
+    }.get(view_mode, [where, who])
 
 
 def _block_detail(view_mode, course, location, faculty):

@@ -6,6 +6,8 @@ courses), the block labels in each view, the filter menu, and the pager
 keeping the chosen view. Nothing here touches the session.
 """
 
+import pathlib
+
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 
@@ -369,14 +371,14 @@ def test_picking_a_course_does_not_match_a_longer_course_number():
     ]
 
 
-def test_picking_a_faculty_member_keeps_only_their_meetings_labeled_by_course():
+def test_picking_a_faculty_member_keeps_only_their_meetings_and_still_names_them():
     grid = _schedule_grid(sample_schedule(), VIEW_FACULTY, "Hogg")
-    assert block_titles(grid) == [("MON", "CMSC 140.01", "Roddy 136")]
+    assert block_titles(grid) == [("MON", "Hogg", "CMSC 140.01 · Roddy 136")]
 
 
 def test_picking_a_lab_keeps_only_the_meetings_held_there():
     grid = _schedule_grid(sample_schedule(), VIEW_ROOMS, "Roddy 147")
-    assert block_titles(grid) == [("MON", "CMSC 162.01", "Killen")]
+    assert block_titles(grid) == [("MON", "Roddy 147", "CMSC 162.01 · Killen")]
 
 
 def test_picking_a_resource_does_not_move_the_time_axis():
@@ -431,9 +433,9 @@ def test_picking_a_faculty_member_shows_only_that_persons_blocks(client):
         VIEWER_URL, {"view": "faculty", "resource": "Hogg"}
     ).content.decode()
     assert '<option value="Hogg" selected>Hogg</option>' in html
-    assert COURSE_TITLE in html
-    assert 'title="Monday 10:00-11:50: CMSC 162.01"' not in html
-    assert 'title="Monday 13:00-13:50: CMSC 201.01"' not in html
+    assert FACULTY_TITLE in html
+    assert 'title="Monday 10:00-11:50: Killen"' not in html
+    assert 'title="Monday 13:00-13:50: Zoppetti"' not in html
 
 
 def test_an_unknown_resource_shows_everything(client):
@@ -599,10 +601,10 @@ def test_a_course_and_one_of_its_sections_do_not_show_a_meeting_twice():
     assert shown(grid) == [("MON", "CMSC 140.01"), ("TUE", "CMSC 140.02")]
 
 
-def test_one_picked_item_is_still_labeled_by_course_and_a_plain_string_still_works():
+def test_one_picked_item_reads_the_same_as_several_and_a_plain_string_still_works():
     as_list = _schedule_grid(sample_schedule(), VIEW_FACULTY, ["Hogg"])
     as_text = _schedule_grid(sample_schedule(), VIEW_FACULTY, "Hogg")
-    assert shown(as_list) == shown(as_text) == [("MON", "CMSC 140.01")]
+    assert shown(as_list) == shown(as_text) == [("MON", "Hogg")]
 
 
 def test_view_query_repeats_resource_for_each_picked_item():
@@ -687,3 +689,117 @@ def test_unknown_and_repeated_items_are_dropped(client):
     ).content.decode()
     assert html.count("Remove Hogg") == 1
     assert "Nobody" not in html
+
+
+# ---------------------------------------------------------------------- #
+#  Every block says the same three things
+# ---------------------------------------------------------------------- #
+def all_rows(grid):
+    return [row for day in grid["days"] for row in day["meetings"]]
+
+
+def test_every_block_leads_with_the_views_own_item_and_lists_the_other_two():
+    expected = {
+        VIEW_COURSES: ("CMSC 140.01", ["Roddy 136", "Hogg"]),
+        VIEW_ROOMS: ("Roddy 136", ["CMSC 140.01", "Hogg"]),
+        VIEW_FACULTY: ("Hogg", ["CMSC 140.01", "Roddy 136"]),
+    }
+    for view, (label, details) in expected.items():
+        row = all_rows(_schedule_grid(sample_schedule(), view))[0]
+        assert (row["label"], row["details"]) == (label, details), view
+
+
+def test_a_missing_room_or_faculty_member_is_written_out_not_left_off():
+    schedule = [
+        Assignment(
+            "CMSC 390.01", None, None, None, (MeetingTime("MON", "09:00", "09:50", 50),)
+        )
+    ]
+    assert all_rows(_schedule_grid(schedule, VIEW_COURSES))[0]["details"] == [
+        NO_LOCATION_LABEL,
+        NO_FACULTY_LABEL,
+    ]
+    assert all_rows(_schedule_grid(schedule, VIEW_ROOMS))[0]["details"] == [
+        "CMSC 390.01",
+        NO_FACULTY_LABEL,
+    ]
+    assert all_rows(_schedule_grid(schedule, VIEW_FACULTY))[0]["details"] == [
+        "CMSC 390.01",
+        NO_LOCATION_LABEL,
+    ]
+
+
+def test_short_classes_keep_their_details_and_only_tiny_blocks_drop_them():
+    schedule = [
+        Assignment(
+            "A",
+            "Hogg",
+            "Roddy 136",
+            None,
+            (MeetingTime("MON", "09:00", "09:50", 50),),
+        ),
+        Assignment(
+            "B",
+            "Hogg",
+            "Roddy 136",
+            None,
+            (MeetingTime("TUE", "09:00", "09:15", 15),),
+        ),
+        # A full teaching day, so the calendar spans 09:00-18:00 like a real week.
+        Assignment(
+            "C",
+            "Hogg",
+            "Roddy 136",
+            None,
+            (MeetingTime("FRI", "17:00", "18:00", 60),),
+        ),
+    ]
+    rows = {row["course"]: row for row in all_rows(_schedule_grid(schedule))}
+    assert rows["A"]["compact"] is False  # a 50-minute class keeps both details
+    assert rows["B"]["compact"] is True  # a 15-minute block has no room for them
+
+
+def test_the_page_writes_each_block_with_both_details(client):
+    load(client, sample_schedule())
+    html = client.get(VIEWER_URL).content.decode()
+    assert (
+        '<div class="schedule-grid__details"><span class="schedule-grid__detail">Roddy 136</span>'
+        '<span class="schedule-grid__detail">Hogg</span></div>'
+    ) in html
+
+
+# ---------------------------------------------------------------------- #
+#  What fits in a block (the layout itself needs a browser; these guard the pieces it relies on)
+# ---------------------------------------------------------------------- #
+CSS = pathlib.Path("gui/static/gui/css/style.css").read_text()
+
+
+def test_every_block_is_laid_out_the_same_whatever_its_size():
+    assert "@container" not in CSS and "cqi" not in CSS
+    time_rule = CSS.split(".schedule-grid__time {")[1].split("}")[0]
+    assert "display: block;" in time_rule and "flex: 1 0 100%;" in time_rule
+
+
+def test_each_hour_is_tall_enough_for_a_50_minute_class_to_hold_four_lines(client):
+    from gui.views import HOUR_HEIGHT_REM
+
+    # name 0.75rem*1.15 + time 0.68*1.2 + two facts 0.68*1.25 each + padding, for 50 of 60 minutes
+    assert HOUR_HEIGHT_REM * 50 / 60 >= 3.6
+    load(client, sample_schedule())
+    html = client.get(VIEWER_URL).content.decode()
+    assert "--grid-height: " in html
+
+
+def test_a_blocks_name_and_facts_are_never_allowed_to_wrap_past_the_block():
+    label = CSS.split(".schedule-grid__header .week-grid__label {")[1].split("}")[0]
+    detail = CSS.split(".schedule-grid__detail {")[1].split("}")[0]
+    for rule in (label, detail):
+        assert "white-space: nowrap;" in rule and "text-overflow: ellipsis;" in rule
+
+
+def test_the_12_hour_clock_still_marks_the_grid(client):
+    load(client, sample_schedule())
+    plain = client.get(VIEWER_URL).content.decode()
+    twelve = client.get(VIEWER_URL, {"time": "12h"}).content.decode()
+    assert "schedule-grid--12h" not in plain
+    assert 'class="week-grid schedule-grid schedule-grid--12h"' in twelve
