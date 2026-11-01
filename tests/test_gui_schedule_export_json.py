@@ -281,8 +281,9 @@ def test_viewer_shows_selected_schedule_meetings_in_chronological_order(client):
     assert "Schedule 1 weekly overview" in html
     assert 'class="week-grid schedule-grid"' in html
     assert "CMSC 161.01" in html and "CMSC 162.01" in html
-    assert "Roddy 136 · Hogg" in html  # detail line: room · faculty
-    assert "Roddy 147 · Killen" in html  # lab meeting shows the lab
+    # Each block lists room and faculty as separate lines (a lab meeting shows the lab).
+    for fact in ("Roddy 136", "Hogg", "Roddy 147", "Killen"):
+        assert f'<span class="schedule-grid__detail">{fact}</span>' in html
     assert 'data-faculty="Hogg"' in html
     assert 'data-location="Roddy 147"' in html
 
@@ -329,17 +330,24 @@ def test_dense_overlaps_stay_as_separate_blocks_in_side_by_side_lanes():
     assert [m["left"] for m in monday] == ["0.00", "33.33", "66.67"]
     assert [m["width"] for m in monday] == ["33.33", "33.33", "33.33"]
     assert "clusters" not in grid["days"][0]
-    # Monday needs 3 lanes, the other four days 1 each: 3.5 + 6.5*7 + 0.4*5
-    assert grid["min_width"] == "51rem"
+    # Monday needs 3 lanes, the other four days 1 each.
+    assert grid["day_lanes"] == [3, 1, 1, 1, 1]
 
 
-def test_grid_min_width_grows_with_two_lane_overlaps():
+def test_day_columns_share_the_window_width_in_proportion_to_their_lanes():
     assignments = [
         Assignment("CMSC 140.01", meetings=(MeetingTime("MON", "09:00", "10:00", 60),)),
         Assignment("CMSC 140.02", meetings=(MeetingTime("MON", "09:30", "10:30", 60),)),
     ]
 
-    assert _schedule_grid(assignments)["min_width"] == "44.5rem"
+    grid = _schedule_grid(assignments)
+
+    assert grid["columns"] == (
+        "3.5rem minmax(0, 2.5fr) minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1.5fr)"
+    )
+    # No fixed minimum: the calendar must be able to shrink to the window.
+    assert "rem," not in grid["columns"].replace("3.5rem", "")
+    assert "min_width" not in grid
 
 
 def test_single_schedule_pager_identifies_the_selection_and_disables_boundaries(client):

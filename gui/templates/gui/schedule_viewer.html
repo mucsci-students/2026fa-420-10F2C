@@ -5,7 +5,7 @@
 <div class="page-header">
     <div>
         <h1>Schedule Viewer</h1>
-        <p class="page-intro">Present generated or imported schedules in a readable format.</p>
+        {% if not schedule_count %}<p class="page-intro">Present generated or imported schedules in a readable format.</p>{% endif %}
     </div>
 </div>
 
@@ -30,6 +30,36 @@
         <span class="btn btn-disabled schedule-pager__next" aria-disabled="true">Next</span>
         {% endif %}
     </nav>
+    <div class="schedule-controls">
+        <div class="schedule-modes" role="group" aria-label="Calendar view">
+            {% for value, label in view_options.items %}
+            <a class="btn{% if view_mode == value %} btn-primary{% endif %}" href="?schedule={{ current_schedule }}&amp;view={{ value }}"{% if view_mode == value %} aria-current="true"{% endif %}>{{ label }}</a>
+            {% endfor %}
+        </div>
+        {% if picker_all %}
+        <form method="get" class="schedule-picker" data-picker-all="{{ picker_all }}">
+            <input type="hidden" name="schedule" value="{{ current_schedule }}">
+            <input type="hidden" name="view" value="{{ view_mode }}">
+            <label for="resource-picker">{{ picker_label }}</label>
+            <select id="resource-picker" name="resource" multiple size="6">
+                {% for value, label in resource_options %}<option value="{{ value }}"{% if value in resources %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+            <button type="submit" class="btn btn-small" data-picker-apply>Show</button>
+        </form>
+        {% endif %}
+        <div class="schedule-modes" role="group" aria-label="Time format">
+            {% for link in time_links %}
+            <a class="btn{% if link.active %} btn-primary{% endif %}" href="{{ link.href }}"{% if link.active %} aria-current="true"{% endif %}>{{ link.label }}</a>
+            {% endfor %}
+        </div>
+    </div>
+    {% if resource_chips %}
+    <div class="schedule-chips">
+        <span class="schedule-chips__label">Showing only:</span>
+        {% for chip in resource_chips %}<a class="chip chip--info schedule-chips__chip" href="{{ chip.href }}" title="Remove {{ chip.label }}">{{ chip.label }} <span aria-hidden="true">&times;</span><span class="visually-hidden">(remove)</span></a>{% endfor %}
+        <a class="schedule-chips__clear" href="{{ resource_clear }}">Show all</a>
+    </div>
+    {% endif %}
 </div>
 {% else %}
 <div class="empty-state" role="status">
@@ -42,23 +72,11 @@
 {% endif %}
 
 {% if schedule_count %}
-<h2 id="schedule-overview-heading" class="section-title">Schedule {{ current_schedule }} weekly overview</h2>
-<div class="view-filter">
-    <button type="button" class="btn view-filter__trigger" aria-label="Filter grid view" title="Filter grid view">
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5L3 5z" fill="currentColor"/></svg>
-    </button>
-    <nav class="view-filter__menu" aria-label="Grid view">
-        <div class="view-filter__options">
-            {% for value, label in view_options.items %}
-            <a class="btn{% if view_mode == value %} btn-primary{% endif %}" href="?schedule={{ current_schedule }}&amp;view={{ value }}"{% if view_mode == value %} aria-current="true"{% endif %}>{{ label }}</a>
-            {% endfor %}
-        </div>
-    </nav>
-</div>
+<h2 id="schedule-overview-heading" class="section-title visually-hidden">Schedule {{ current_schedule }} weekly overview &ndash; {{ view_label }} view{% if resources %}: {{ resources|join:', ' }}{% endif %}</h2>
 <div class="card schedule-details" aria-labelledby="schedule-overview-heading">
     <div class="scroll-x">
-        <div class="week-grid schedule-grid" role="group" aria-label="Weekly grid for schedule {{ current_schedule }}"
-             style="--hour-pct: {{ schedule_grid.hour_pct }}%; min-width: {{ schedule_grid.min_width }}; grid-template-columns: {{ schedule_grid.columns }};">
+        <div class="week-grid schedule-grid{% if time_format == '12h' %} schedule-grid--12h{% endif %}" role="group" aria-label="Weekly grid for schedule {{ current_schedule }}"
+             style="--hour-pct: {{ schedule_grid.hour_pct }}%; --grid-height: {{ schedule_grid.height_rem }}rem; grid-template-columns: {{ schedule_grid.columns }};">
             <div class="week-grid__col">
                 <div class="week-grid__day-name">&nbsp;</div>
                 <div class="week-grid__track week-grid__track--axis">
@@ -72,19 +90,19 @@
                     {% for meeting in day.meetings %}
                     <div class="week-grid__block schedule-grid__meeting schedule-color-{{ meeting.color }}" role="group" tabindex="0"
                          style="top: {{ meeting.top }}%; height: calc({{ meeting.height }}% - 3px); left: calc(3px + {{ meeting.left }}%); width: calc({{ meeting.width }}% - 6px);"
-                         title="{{ day.name }} {{ meeting.start }}-{{ meeting.end }}: {{ meeting.label }}"
-                         aria-label="{{ meeting.course }}, {{ meeting.faculty|default:'no faculty assigned' }}, {{ meeting.location|default:'no room assigned' }}, {{ day.name }} {{ meeting.start }} to {{ meeting.end }}"
+                         title="{{ day.name }} {{ meeting.title_range }}: {{ meeting.label }}"
+                         aria-label="{{ meeting.course }}, {{ meeting.faculty|default:'no faculty assigned' }}, {{ meeting.location|default:'no room assigned' }}, {{ day.name }} {{ meeting.start_text }} to {{ meeting.end_text }}"
                          data-key="{{ meeting.label }}"
                          data-course="{{ meeting.course }}"
                          data-faculty="{{ meeting.faculty|default:'No faculty assigned' }}"
                          data-location="{{ meeting.location|default:'No room assigned' }}"
                          data-type="{{ meeting.meeting_type }}"
-                         data-when="{{ day.name }} {{ meeting.start }}–{{ meeting.end }} ({{ meeting.duration }} min)">
+                         data-when="{{ day.name }} {{ meeting.range_text }} ({{ meeting.duration }} min)">
                         <div class="schedule-grid__header">
                             <span class="week-grid__label">{{ meeting.label }}</span>
-                            <span class="schedule-grid__time">{{ meeting.start }}&ndash;{{ meeting.end }}</span>
+                            <span class="schedule-grid__time">{{ meeting.range_text }}</span>
                         </div>
-                        {% if meeting.detail and not meeting.compact %}<div class="schedule-grid__detail">{{ meeting.detail }}</div>{% endif %}
+                        {% if not meeting.compact %}<div class="schedule-grid__details">{% for part in meeting.details %}<span class="schedule-grid__detail">{{ part }}</span>{% endfor %}</div>{% endif %}
                     </div>
                     {% endfor %}
                 </div>
@@ -93,6 +111,15 @@
         </div>
     </div>
     <p class="help">Hover over or focus a block for full details. Click it (or press Enter) to highlight every meeting with the same label; click again to clear.</p>
+    {% if schedule_grid.legend %}
+    <details class="schedule-legend">
+        <summary>Color key ({{ schedule_grid.legend|length }})</summary>
+        <p class="help">Each {{ legend_noun }} has its own color. The name is always written on the block too.</p>
+        <ul class="schedule-legend__list">
+            {% for item in schedule_grid.legend %}<li class="schedule-legend__item"><span class="schedule-legend__swatch schedule-color-{{ item.color }}" aria-hidden="true"></span>{{ item.label }}</li>{% endfor %}
+        </ul>
+    </details>
+    {% endif %}
 </div>
 {% endif %}
 
