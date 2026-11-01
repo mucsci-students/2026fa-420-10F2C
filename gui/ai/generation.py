@@ -48,6 +48,7 @@ from gui.ai import diagnose
 from gui.ai.base import (
     LOAD_OR_NEW_ACTION,
     UNDO_CHIP,
+    WAITING_ATTR,
     AiTool,
     NoArgs,
     Outcome,
@@ -213,10 +214,11 @@ def _refuse_if_it_would_discard(request, doing: str, where: str) -> None:
 
 
 def _forget_waiting(session) -> None:
-    """A different configuration is now open: nothing described for the old one may be confirmed."""
+    """A different configuration (or chat) is now open: nothing described for the old one may be confirmed."""
     setattr(session, _PLAN_ATTR, None)
     setattr(session, DELETE_SLOT, None)
     setattr(session, config_controller.PENDING_NEW_ATTR, None)
+    setattr(session, WAITING_ATTR, None)
 
 
 def _no_configuration(request, wanted: str) -> Outcome:
@@ -540,6 +542,7 @@ GENERATION_TOOLS: tuple[AiTool, ...] = (
         PrepareArgs,
         prepare_schedule_generation,
         needs_config=False,
+        acts=True,
     ),
     AiTool(
         "confirm_schedule_generation",
@@ -549,6 +552,7 @@ GENERATION_TOOLS: tuple[AiTool, ...] = (
         NoArgs,
         confirm_schedule_generation,
         needs_config=False,
+        acts=True,
     ),
     AiTool(
         "cancel_schedule_generation",
@@ -588,5 +592,6 @@ GENERATION_TOOLS: tuple[AiTool, ...] = (
         LoadArgs,
         load_saved_configuration,
         needs_config=False,
+        acts=True,
     ),
 )

@@ -213,11 +213,13 @@ UNDO_TOOLS = [
         "everything removed together with them. Use for undo, revert, restore, 'put it back'.",
         UndoArgs,
         undo_changes,
+        acts=True,
     ),
     AiTool(
         "redo_changes",
         "Bring back changes that were just undone (the opposite of undo_changes).",
         RedoArgs,
         redo_changes,
+        acts=True,
     ),
 ]

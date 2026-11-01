@@ -34,15 +34,19 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from app.memento import ConfigOriginator, MementoError
+from gui.ai import clarify
 from gui.ai.base import (
     NO_CONFIG_MESSAGE,
     UNDO_CHIP,
     WEEKDAYS,
     AiTool,
+    AmbiguousName,
     AvailabilityArgs,
     CourseArgs,
     NameArgs,
+    NeedsDetails,
     NoArgs,
+    Question,
     ToolResult,
     Unchanged,
     _course_line,
@@ -434,31 +438,48 @@ def add_course(request, args: AddCourseArgs) -> str:
         args.conflicts, sorted({course.course_id for course in entities.courses})
     )
 
-    # Guard rail: a course needs these before it can exist. Ask for ALL that are missing at once,
-    # instead of trying and failing one library error at a time (or letting the AI guess).
+    # Ask for ALL that is missing at once, instead of trying and failing one library error at a time (or
+    # letting the AI guess). A value the user gave, even an empty one ("none"), is answered, not asked again.
     capacity, capacity_note = args.capacity, ""
     sizes = {
         room.name: room.capacity for room in entities.rooms if room.name in room_names
     }
-    missing = []
+    questions: list[Question] = []
     if capacity is None:
         if sizes:
             smallest = min(sizes, key=lambda name: sizes[name])
             capacity, capacity_note = sizes[smallest], f" (from room {smallest})"
         else:
-            missing.append(
-                "Capacity is required. Say how many students the course holds."
+            questions.append(
+                Question("capacity", "How many students does the course hold?")
             )
+    people = _join(person.name for person in entities.faculty)
     if not teachers and not _someone_prefers(entities.faculty, args.course_id):
-        missing.append(
-            "Faculty is required. Say which faculty member teaches it (they must already exist; "
-            "otherwise add the faculty member first)."
+        questions.append(
+            Question(
+                "faculty",
+                "Faculty is required here: nobody prefers this course yet, so say which faculty member "
+                f"teaches it (they must already exist: {people}; otherwise add the faculty member first).",
+            )
         )
-    if missing:
-        raise ControllerError(
-            f"I need a bit more before I can add {args.course_id.strip()}. "
-            + " ".join(missing)
+    elif "faculty" not in args.model_fields_set:
+        questions.append(
+            Question(
+                "faculty",
+                f'Which faculty teach it? Existing faculty: {people}. Say "none" to let it be chosen '
+                "from faculty preferences.",
+            )
         )
+    if "rooms" not in args.model_fields_set:
+        places = _join(room.name for room in entities.rooms)
+        questions.append(
+            Question(
+                "rooms",
+                f'Which rooms may it use? Existing rooms: {places}. Say "none" if it needs no room.',
+            )
+        )
+    if questions:
+        raise NeedsDetails(questions)
 
     notices = courses.add_course(
         request,
@@ -619,11 +640,15 @@ def apply_changes(request, args: ApplyChangesArgs) -> str:
     checkpoint = history.checkpoint() if history is not None else None
     dirty_before = session.dirty
 
-    steps = ToolBox(request, allowed.values())
+    steps = ToolBox(request, allowed.values(), remember=False)
     done: list[str] = []
     edited = False
     for number, operation in enumerate(args.operations, start=1):
         result = steps.call(operation.tool, operation.arguments)
+        if result.questions:
+            # The whole combined change waits (nothing is applied) and the details are given for this step.
+            _roll_back(session, memento, checkpoint, dirty_before)
+            raise NeedsDetails(result.questions, step=number)
         if not result.ok:
             _roll_back(session, memento, checkpoint, dirty_before)
             # The step's own message already starts with "Could not ...".
@@ -637,6 +662,13 @@ def apply_changes(request, args: ApplyChangesArgs) -> str:
         [f"All {_plural(len(done), 'change')} were applied together:"] + done
     )
     return text if edited else Unchanged(text)
+
+
+def provide_details(request, args: clarify.ProvideDetailsArgs) -> str:
+    """Merge the user's answer into the waiting request and run it again through a tool box, so it gets
+    exactly the checks it would have got had it been complete (gui/ai/clarify.py)."""
+    box = ToolBox(request)
+    return clarify.resume(request, args, box.tools, box.call)
 
 
 # ---------------------------------------------------------------------- #
@@ -729,17 +761,27 @@ TOOLS: tuple[AiTool, ...] = (
     ),
     AiTool(
         "add_faculty",
-        "Add a new faculty member.",
+        "Add a new faculty member. The library requires their credit range, course limit and availability: "
+        "the application asks the user for any they did not give, so do not fill them in yourself. When the "
+        "user accepts the defaults, pass the default values explicitly (availability: an empty list).",
         AddFacultyArgs,
         add_faculty,
         write=True,
+        ask=(
+            "maximum_credits",
+            "minimum_credits",
+            "unique_course_limit",
+            "availability",
+        ),
     ),
     AiTool(
         "add_time_slot",
-        "Add a time slot (time block) to one weekday.",
+        "Add a time slot (time block) to one weekday. The library requires the spacing: the application asks "
+        "for it when the user did not give it; when they accept the default, pass it explicitly.",
         AddTimeSlotArgs,
         add_time_slot,
         write=True,
+        ask=("spacing",),
     ),
     AiTool(
         "add_class_pattern",
@@ -759,6 +801,18 @@ TOOLS: tuple[AiTool, ...] = (
     ),
     *GENERATION_TOOLS,
     *LIFECYCLE_TOOLS,
+    AiTool(
+        "provide_details",
+        "Give the application the details it asked for, or correct one you gave, for the request that is "
+        "waiting for details (see the note about the waiting request). Pass ONLY the new or corrected "
+        "values in details, using the argument names of the waiting tool; structured values (lists, "
+        "objects) are allowed. The application keeps everything already given and runs the request once "
+        "nothing is missing. Do not repeat the whole request.",
+        clarify.ProvideDetailsArgs,
+        provide_details,
+        needs_config=False,
+    ),
+    *clarify.CLARIFY_TOOLS,
     *UNDO_TOOLS,
     *DIAGNOSE_TOOLS,
 )
@@ -799,11 +853,18 @@ class ToolBox:
     """
 
     def __init__(
-        self, request, tools: Iterable[AiTool] = TOOLS, history: Iterable[dict] = ()
+        self,
+        request,
+        tools: Iterable[AiTool] = TOOLS,
+        history: Iterable[dict] = (),
+        remember: bool = True,
     ):
         self.request = request
         self.tools = {tool.name: tool for tool in tools}
         self.results: list[ToolResult] = []
+        # False for the box that runs the steps of a combined change: its questions are reported to
+        # apply_changes, which makes the whole change wait, instead of being stored one by one.
+        self.remember = remember
         # The last few chat messages ({"role", "content"}) the runner may send along (story 6).
         self.history: list[dict] = list(history)
         # The model may ask for several tools in one turn and LangChain runs them on threads: one at a time,
@@ -870,38 +931,89 @@ class ToolBox:
         return result
 
     def _call(self, name: str, arguments: dict | None = None) -> ToolResult:
+        return self._guarded(name, arguments)
+
+    def _guarded(
+        self,
+        name: str,
+        arguments: dict | None,
+        rejected: ValidationError | None = None,
+    ) -> ToolResult:
+        """Run one tool unless a request is waiting for details (then only reading and answering are allowed).
+
+        `rejected` is the framework's own validation error, when it already refused the arguments.
+        """
         tool = self.tools.get(name)
         if tool is None:
             return self._record(
                 ToolResult(name, False, f"There is no '{name}' action.")
             )
+        session = get_session(self.request)
+        held = clarify.current(session)
+        dropped = ""
+        if held is not None and tool.acts_on_state:
+            if name != held.tool:
+                return self._record(
+                    ToolResult(name, False, clarify.refusal(held), write=tool.write)
+                )
+            dropped = clarify.drop(session)  # the same action again is a new request
+        result = self._run(tool, arguments, rejected)
+        if dropped:
+            result = replace(result, message=f"{result.message}\n{dropped}")
+            self.results[-1] = result  # _run recorded exactly one result
+        return result
+
+    def _run(
+        self,
+        tool: AiTool,
+        arguments: dict | None,
+        rejected: ValidationError | None = None,
+    ) -> ToolResult:
+        name = tool.name
+        raw = dict(arguments or {})
+
+        # Treat blank required names as missing information.
+        if (
+            tool.name in {"add_room", "add_lab", "add_faculty"}
+            and isinstance(raw.get("name"), str)
+            and not raw["name"].strip()
+        ):
+            raw.pop("name")
+
         try:
-            args = tool.args.model_validate(arguments or {})
+            if rejected is not None:
+                raise rejected
+            args = tool.args.model_validate(raw)
         except ValidationError as error:
-            reason = f"the request had invalid values ({_argument_problems(error)})."
-            return self._record(
-                ToolResult(name, False, _failure(tool, reason), write=tool.write)
-            )
+            if rejected is not None and arguments is None:
+                return self._invalid_values(tool, None, error)
+
+            return self._invalid_values(tool, raw, error)
 
         if tool.needs_config and get_session(self.request).config is None:
             return self._record(
                 ToolResult(name, False, NO_CONFIG_MESSAGE, write=tool.write)
             )
+        recommended = clarify.unanswered(tool, args.model_fields_set)
+        if (
+            recommended
+        ):  # required by the library, defaulted by the schema: the user chooses
+            return self._ask(tool, arguments or {}, recommended)
         try:
             message = tool.handler(self.request, args)
-        except ControllerError as error:
-            advice = tuple(
-                getattr(error, "suggestions", ())
-            )  # quick replies a failure can offer ("Undo the last change")
-            return self._record(
-                ToolResult(
-                    name,
-                    False,
-                    _failure(tool, error.message),
-                    write=tool.write,
-                    suggestions=advice,
-                )
+        except NeedsDetails as needed:
+            return self._ask(tool, arguments or {}, needed.questions, needed.step)
+        except AmbiguousName as error:
+            field = (
+                clarify.field_for(arguments or {}, error.wanted) if tool.final else None
             )
+            if (
+                field is None
+            ):  # a lookup, or not one of the values the AI sent: just the message
+                return self._failed(tool, error)
+            return self._ask(tool, arguments or {}, (Question(field, error.message),))
+        except ControllerError as error:
+            return self._failed(tool, error)
         except Exception:
             logger.exception("AI tool %s failed unexpectedly", name)
             return self._record(
@@ -926,11 +1038,15 @@ class ToolBox:
                 suggestions=suggestions,
                 note=note,
                 action=getattr(message, "action", None),
+                questions=tuple(getattr(message, "questions", ())),
             )
         )
 
     def invalid(self, name: str, error: Exception) -> ToolResult:
-        """Record arguments LangChain already rejected (wrong types, missing values)."""
+        """Record arguments LangChain already rejected (wrong types, missing values).
+
+        Missing values are asked for, like in call(): the framework reports the error without the call, but
+        the error carries the values the AI did send."""
         tool = self.tools.get(name)
         if tool is None or not isinstance(error, ValidationError):
             return self._record(
@@ -941,10 +1057,74 @@ class ToolBox:
                     write=bool(tool and tool.write),
                 )
             )
+        with self._lock:
+            return self._guarded(name, None, error)
+
+    def _invalid_values(
+        self, tool: AiTool, arguments: dict | None, error: ValidationError
+    ) -> ToolResult:
+        """A missing value is a question (the request waits); a wrong one is a failure, as before."""
+        questions = clarify.missing_questions(tool, error) if tool.final else None
+        if questions:
+            sent = arguments if arguments is not None else clarify.provided(error)
+            # Everything that is missing is asked in one message: the required values and the recommended ones.
+            questions += clarify.unanswered(tool, sent or {})
+            return self._ask(tool, sent or {}, questions)
         reason = f"the request had invalid values ({_argument_problems(error)})."
         return self._record(
-            ToolResult(name, False, _failure(tool, reason), write=tool.write)
+            ToolResult(tool.name, False, _failure(tool, reason), write=tool.write)
         )
+
+    def _failed(self, tool: AiTool, error: ControllerError) -> ToolResult:
+        advice = tuple(
+            getattr(error, "suggestions", ())
+        )  # quick replies a failure can offer ("Undo the last change")
+        return self._record(
+            ToolResult(
+                tool.name,
+                False,
+                _failure(tool, error.message),
+                write=tool.write,
+                suggestions=advice,
+            )
+        )
+
+    def _ask(
+        self,
+        tool: AiTool,
+        details: dict,
+        questions: tuple[Question, ...],
+        step: int | None = None,
+    ) -> ToolResult:
+        """Stop the request and ask. Nothing has changed; the request waits for provide_details."""
+        held = clarify.ask(
+            get_session(self.request),
+            tool.name,
+            details,
+            questions,
+            step,
+            remember=self.remember,
+        )
+        # A combined change's steps only report their questions; the whole change is asked about once.
+        text = (
+            clarify.render(held)
+            if self.remember
+            else " ".join(q.text for q in questions)
+        )
+        return self._record(
+            ToolResult(
+                tool.name,
+                True,
+                text,
+                write=tool.write,
+                suggestions=(clarify.CANCEL_CHIP,),
+                questions=held.questions,
+            )
+        )
+
+    def waiting_note(self) -> str:
+        """What the AI should know about a request that is waiting for details ('' when none is)."""
+        return clarify.prompt_note(get_session(self.request))
 
     def _record(self, result: ToolResult) -> ToolResult:
         tool = self.tools.get(result.tool)

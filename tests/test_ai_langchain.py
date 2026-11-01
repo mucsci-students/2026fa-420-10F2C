@@ -399,3 +399,190 @@ def test_several_tools_in_one_turn_are_all_carried_out(monkeypatch):
     }
     assert {"RODDY150", "RODDY151"} <= names
     assert reply.suggestions == ("Undo the last change",)
+
+
+# ---------------------------------------------------------------------- #
+#  A missing detail is asked for, and the answer completes the request (gui/ai/clarify.py)
+# ---------------------------------------------------------------------- #
+def test_a_missing_detail_is_asked_for_and_the_answer_completes_the_request(
+    monkeypatch,
+):
+    requests = []
+    script = iter(
+        [
+            tool_calls(
+                ("add_room", {"name": "RODDY150"})
+            ),  # the framework rejects it: capacity is missing
+            tool_calls(("provide_details", {"details": {"capacity": 35}})),
+        ]
+    )
+
+    def respond(request):
+        requests.append(json.loads(request.content))
+        return response(len(requests), next(script))
+
+    use(monkeypatch, respond)
+    request = FakeRequest()
+    session = session_store.get_session(request)
+
+    asked = service.handle_request(request, "Add a room named RODDY150")
+    assert (
+        asked.ok
+        and not asked.changed
+        and "Nothing has been changed yet" in asked.message
+    )
+    assert (
+        "capacity" in asked.message and "Already noted: name: RODDY150" in asked.message
+    )
+    assert "A request is waiting for details:" not in json.dumps(
+        requests[0]
+    )  # nothing waited when the first message was sent
+    assert all(
+        room.name != "RODDY150" for room in session.require_config().config.rooms
+    )
+    assert "Cancel" in asked.suggestions
+
+    done = service.handle_request(request, "It holds 35")
+    assert done.ok and done.changed and "RODDY150" in done.message
+    assert any(
+        room.name == "RODDY150" and room.capacity == 35
+        for room in session.require_config().config.rooms
+    )
+    # the second request told the model what was waiting, so it could answer with provide_details
+    second = json.dumps(requests[1])
+    assert "A request is waiting for details: add room 'RODDY150'" in second
+    assert "provide_details" in {tool["name"] for tool in requests[1]["tools"]}
+
+
+def test_the_details_argument_accepts_structured_values_through_the_framework(
+    monkeypatch,
+):
+    script = iter(
+        [
+            tool_calls(("add_class_pattern", {"credits": 3})),
+            tool_calls(
+                (
+                    "provide_details",
+                    {
+                        "details": {
+                            "meetings": [
+                                {"day": "MON", "duration": 50},
+                                {"day": "WED", "duration": 50},
+                            ]
+                        }
+                    },
+                )
+            ),
+        ]
+    )
+    count = []
+
+    def respond(request):
+        count.append(1)
+        return response(len(count), next(script))
+
+    use(monkeypatch, respond)
+    request = FakeRequest()
+    asked = service.handle_request(request, "Add a 3 credit class pattern")
+    assert asked.ok and "meetings" in asked.message and not asked.changed
+
+    done = service.handle_request(request, "Monday and Wednesday for 50 minutes")
+    assert done.ok and done.changed, done.message
+    patterns = (
+        session_store.get_session(request).require_config().time_slot_config.classes
+    )
+    assert any(p.credits == 3 and len(p.meetings) == 2 for p in patterns)
+
+
+def test_faculty_values_the_model_did_not_send_are_asked_for_not_defaulted(monkeypatch):
+    """Through the real framework, only what the model sent counts as given, so the library-required faculty
+    values it left out are asked for instead of being filled in by the schema's defaults."""
+    script = iter(
+        [
+            tool_calls(("add_faculty", {"name": "Dr. Smith"})),
+            tool_calls(
+                (
+                    "provide_details",
+                    {
+                        "details": {
+                            "maximum_credits": 12,
+                            "minimum_credits": 0,
+                            "unique_course_limit": 2,
+                            "availability": [],
+                        }
+                    },
+                )
+            ),
+        ]
+    )
+    count = []
+
+    def respond(request):
+        count.append(1)
+        return response(len(count), next(script))
+
+    use(monkeypatch, respond)
+    request = FakeRequest()
+    faculty = lambda: [
+        p.name
+        for p in session_store.get_session(request).require_config().config.faculty
+    ]
+
+    asked = service.handle_request(request, "Add a faculty member named Dr. Smith")
+    assert asked.ok and not asked.changed and "Dr. Smith" not in faculty()
+    for detail in (
+        "maximum_credits",
+        "minimum_credits",
+        "unique_course_limit",
+        "availability",
+    ):
+        assert detail in asked.message
+    assert 'Say "default"' in asked.message
+
+    done = service.handle_request(request, "Use the defaults")
+    assert done.ok and done.changed and "Dr. Smith" in faculty()
+
+
+def test_course_faculty_and_rooms_the_model_did_not_send_are_asked_for_through_the_framework(
+    monkeypatch,
+):
+    script = iter(
+        [
+            tool_calls(
+                ("add_course", {"course_id": "CMSC 421", "credits": 3, "capacity": 20})
+            ),
+            tool_calls(
+                (
+                    "provide_details",
+                    {"details": {"faculty": ["Hogg"], "rooms": ["Roddy 140"]}},
+                )
+            ),
+        ]
+    )
+    count = []
+
+    def respond(request):
+        count.append(1)
+        return response(len(count), next(script))
+
+    use(monkeypatch, respond)
+    request = FakeRequest()
+    courses = lambda: [
+        c.course_id
+        for c in session_store.get_session(request).require_config().config.courses
+    ]
+
+    asked = service.handle_request(
+        request, "Add the course CMSC 421, 3 credits, 20 students"
+    )
+    assert asked.ok and not asked.changed and "CMSC 421" not in courses()
+    assert "Faculty is required here" in asked.message  # nobody prefers CMSC 421 yet
+    assert (
+        "Which rooms may it use?" in asked.message
+    )  # never sent, so asked, not taken as "none"
+    assert (
+        "Already noted: course_id: CMSC 421, credits: 3, capacity: 20." in asked.message
+    )  # only what the model sent
+
+    done = service.handle_request(request, "Hogg teaches it, in Roddy 140")
+    assert done.ok and done.changed and "CMSC 421" in courses()

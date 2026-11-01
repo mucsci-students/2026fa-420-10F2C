@@ -27,6 +27,7 @@ that use a fake runner) still work where it isn't installed.
 from __future__ import annotations
 
 import os
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -38,6 +39,9 @@ DEFAULT_MODEL = "gpt-6-luna"
 TIMEOUT_SECONDS = 60
 MAX_RETRIES = 2
 MAX_STEPS = 6  # model calls per request: look, look, act, ...
+_SENT = (
+    threading.local()
+)  # the argument names the model sent for the tool call running on this thread
 API_KEY_FILE = Path(__file__).resolve().parents[2] / "config" / "openai_api_key.txt"
 
 
@@ -57,6 +61,16 @@ class Runner(Protocol):
 
 def model_name() -> str:
     return os.environ.get("OPENAI_MODEL", "").strip() or DEFAULT_MODEL
+
+
+def system_prompt(toolbox: ToolBox) -> str:
+    """The base rules, the tools, and (only while one waits) the request that is waiting for details."""
+    return (
+        BASE_PROMPT
+        + "\n"
+        + tool_overview(toolbox.tools.values())
+        + toolbox.waiting_note()
+    )
 
 
 @dataclass
@@ -104,14 +118,31 @@ class LangChainRunner:
                 "The AI assistant isn't installed. Run `uv sync` and restart."
             ) from error
 
+        class SentKeysTool(StructuredTool):
+            """LangChain fills in every field that has a default before it calls a tool, so the arguments no
+            longer say what the model actually sent. Whether a value was given (even as "none") decides
+            whether it is asked for (gui/ai/clarify.py), so the keys it sent are kept for the call."""
+
+            def run(self, tool_input, *args, **kwargs):
+                _SENT.keys = set(tool_input) if isinstance(tool_input, dict) else None
+                try:
+                    return super().run(tool_input, *args, **kwargs)
+                finally:
+                    _SENT.keys = None
+
         def bind(name: str):
             def run_tool(**arguments) -> str:
+                sent = getattr(_SENT, "keys", None)
+                if sent is not None:
+                    arguments = {
+                        key: value for key, value in arguments.items() if key in sent
+                    }
                 return toolbox.call(name, arguments).message
 
             return run_tool
 
         tools = [
-            StructuredTool.from_function(
+            SentKeysTool.from_function(
                 name=tool.name,
                 func=bind(tool.name),
                 description=tool.description,
@@ -124,8 +155,9 @@ class LangChainRunner:
             )
             for tool in toolbox.tools.values()
         ]
-        prompt = BASE_PROMPT + "\n" + tool_overview(toolbox.tools.values())
-        return create_agent(model=self.chat_model(), tools=tools, system_prompt=prompt)
+        return create_agent(
+            model=self.chat_model(), tools=tools, system_prompt=system_prompt(toolbox)
+        )
 
     def run(self, text: str, toolbox: ToolBox) -> str:
         agent = self.build(toolbox)

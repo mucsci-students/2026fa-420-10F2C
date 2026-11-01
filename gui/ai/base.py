@@ -28,12 +28,37 @@ from gui.controllers.errors import ControllerError
 
 NO_CONFIG_MESSAGE = "There is no configuration yet. Load or create one first in the Configuration Editor."
 WEEKDAYS = tuple(DAY_NAMES)
+WAITING_ATTR = "ai_waiting_request"  # where an unfinished request waits, on the browser's own Session
 # Drawn by the chat when there is nothing open: the Configuration Editor's Load Configuration and New forms.
 LOAD_OR_NEW_ACTION = {"kind": "configuration"}
 
 
 LOOKUP_PREFIXES = ("list_", "get_", "show_")
 UNDO_CHIP = "Undo the last change"  # the quick reply offered after every real change
+
+
+@dataclass(frozen=True)
+class Question:
+    """One thing the application still needs from the user before it can run a request.
+
+    `field` is the argument of the tool the answer fills (None when it is not one value, e.g. "what
+    should change?"); `text` is the question in the user's words, with the options when there are some.
+    """
+
+    field: str | None
+    text: str
+
+
+class NeedsDetails(ControllerError):
+    """Raised by a tool that cannot run yet: the request waits for the answers (gui/ai/clarify.py).
+
+    `step` says which step of a combined change (apply_changes) the questions are about.
+    """
+
+    def __init__(self, questions: Iterable[Question], step: int | None = None):
+        self.questions = tuple(questions)
+        self.step = step
+        super().__init__(" ".join(question.text for question in self.questions))
 
 
 @dataclass(frozen=True)
@@ -59,6 +84,9 @@ class ToolResult:
     action: dict | None = (
         None  # something the chat draws under the message (a Save JSON box, choices); see gui/ai/lifecycle.py
     )
+    questions: tuple[
+        Question, ...
+    ] = ()  # what the application still needs to know; the request waits and nothing changed (gui/ai/clarify.py)
 
 
 class Outcome(str):
@@ -78,6 +106,7 @@ class Outcome(str):
     edited: bool
     note: bool
     action: dict | None
+    questions: tuple[Question, ...]
 
     def __new__(
         cls,
@@ -86,12 +115,16 @@ class Outcome(str):
         edited: bool = False,
         note: bool = True,
         action: dict | None = None,
+        questions: Iterable[Question] = (),
     ):
         item = super().__new__(cls, text)
         item.suggestions = tuple(suggestions)
         item.edited = edited  # a tool that is not a write tool but did change the configuration (undo, redo)
         item.note = note
         item.action = action
+        item.questions = tuple(
+            questions
+        )  # set when the reply is a question: the request waits
         return item
 
 
@@ -111,6 +144,15 @@ class AiTool:
     handler: Callable[[Any, Any], str]
     write: bool = False
     needs_config: bool = True
+    acts: bool = False  # True for a tool that is not a write tool but still changes the configuration, schedules or open file
+    ask: tuple[
+        str, ...
+    ] = ()  # values the library requires but the schema defaults: asked for unless the user gave one (gui/ai/clarify.py)
+
+    @property
+    def acts_on_state(self) -> bool:
+        """True for tools that change something. They are refused while a request waits for details."""
+        return self.write or self.acts
 
     @property
     def final(self) -> bool:
@@ -176,11 +218,21 @@ def _tokens(text: str) -> list[str]:
     return re.findall(r"[0-9]+|[^\W\d_]+", str(text).casefold())
 
 
+class AmbiguousName(ControllerError):
+    """A name that fits several items. The tool box turns it into a question when it can tell which
+    value of the request it was (see gui/ai/clarify.py); otherwise it is just this message."""
+
+    def __init__(self, wanted: str, fits: list[str]):
+        self.wanted = wanted
+        self.fits = list(fits)
+        super().__init__(
+            f"'{wanted}' could mean {_join(fits)}. Say which one you mean."
+        )
+
+
 def _ask_which(wanted: str, fits: list[str]) -> ControllerError:
     # Never guess between two real items (e.g. "RODDY140" and "Roddy 140").
-    return ControllerError(
-        f"'{wanted}' could mean {_join(fits)}. Say which one you mean."
-    )
+    return AmbiguousName(wanted, fits)
 
 
 def find_name(wanted: str, names: Iterable[str]) -> str | None:
