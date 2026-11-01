@@ -281,8 +281,9 @@ def test_viewer_shows_selected_schedule_meetings_in_chronological_order(client):
     assert "Schedule 1 weekly overview" in html
     assert 'class="week-grid schedule-grid"' in html
     assert "CMSC 161.01" in html and "CMSC 162.01" in html
-    assert "Roddy 136 · Hogg" in html  # detail line: room · faculty
-    assert "Roddy 147 · Killen" in html  # lab meeting shows the lab
+    # Each block lists room and faculty as separate lines (a lab meeting shows the lab).
+    for fact in ("Roddy 136", "Hogg", "Roddy 147", "Killen"):
+        assert f'<span class="schedule-grid__detail">{fact}</span>' in html
     assert 'data-faculty="Hogg"' in html
     assert 'data-location="Roddy 147"' in html
 
