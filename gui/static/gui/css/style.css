@@ -965,6 +965,158 @@ a.area-card:focus-visible {
     text-align: left;
 }
 
+/* Schedule Viewer: the view menu and, in the Rooms & labs and Faculty views, the checkbox
+   popup that picks which ones to show (gui/controllers/schedule_filters.py). */
+.viewer-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+.resource-picker {
+    position: relative;
+    display: inline-block;
+    margin: 0.5rem 0 1rem;
+}
+
+.resource-picker__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    list-style: none;
+    user-select: none;
+}
+
+.resource-picker__toggle::-webkit-details-marker { display: none; }
+
+.resource-picker__toggle::after {
+    content: "";
+    width: 0.45rem;
+    height: 0.45rem;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: translateY(-0.12rem) rotate(45deg);
+    transition: transform 0.15s ease;
+}
+
+.resource-picker[open] > .resource-picker__toggle::after {
+    transform: translateY(0.1rem) rotate(-135deg);
+}
+
+.resource-picker__count {
+    padding: 0.05rem 0.5rem;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+    font-size: 0.85em;
+    font-weight: 600;
+}
+
+.resource-picker__panel {
+    position: absolute;
+    top: calc(100% + 0.3rem);
+    left: 0;
+    z-index: 20;
+    width: min(24rem, calc(100vw - 2rem));
+    padding: 0.75rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.resource-picker__tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 0.6rem;
+}
+
+.resource-picker__tools[hidden] { display: none; }
+
+.resource-picker__search {
+    flex: 1 1 10rem;
+    min-width: 0;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+}
+
+.resource-picker__groups {
+    max-height: min(22rem, 55vh);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.resource-picker__group {
+    margin: 0 0 0.6rem;
+    padding: 0;
+    border: 0;
+}
+
+.resource-picker__group[hidden],
+.resource-picker__option[hidden],
+.resource-picker__nomatch[hidden] { display: none; }
+
+.resource-picker__group legend {
+    margin-bottom: 0.2rem;
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.resource-picker__option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.4rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+
+.resource-picker__option:hover { background: var(--surface-alt); }
+
+.resource-picker__option input {
+    width: 1rem;
+    height: 1rem;
+    margin: 0;
+    accent-color: var(--accent);
+}
+
+.resource-picker__name {
+    flex: 1;
+    overflow-wrap: anywhere;
+}
+
+.resource-picker__meetings {
+    min-width: 1.6rem;
+    color: var(--muted);
+    font-size: 0.85em;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+.resource-picker__panel .button-row {
+    margin-top: 0.5rem;
+}
+
+.resource-picker__summary {
+    margin: -0.25rem 0 0.75rem;
+}
+
+/* On a narrow screen the popup hangs from the toolbar's left edge, so it never runs off-screen. */
+@media (max-width: 560px) {
+    .viewer-toolbar { position: relative; }
+    .resource-picker { position: static; }
+    .resource-picker__panel { width: 100%; }
+}
+
 /* The Save / Cancel bar under a form. On the long Course and Faculty forms
    it stays in view while you scroll, so the buttons are never far away. */
 .form-actions {

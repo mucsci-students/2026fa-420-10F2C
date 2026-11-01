@@ -176,18 +176,23 @@ def test_view_toggle_marks_the_active_view(client):
         'href="?schedule=1&amp;view=courses" aria-current="true">Courses</a>'
         in courses_html
     )
-    assert 'href="?schedule=1&amp;view=rooms">Rooms</a>' in courses_html
-    assert 'href="?schedule=1&amp;view=faculty">Faculty</a>' in courses_html
+    # Switching into Rooms & labs or Faculty opens that view's picker (&pick=1).
+    assert (
+        'href="?schedule=1&amp;view=rooms&amp;pick=1">Rooms &amp; labs</a>'
+        in courses_html
+    )
+    assert 'href="?schedule=1&amp;view=faculty&amp;pick=1">Faculty</a>' in courses_html
 
     rooms_html = client.get(VIEWER_URL, {"view": "rooms"}).content.decode()
     assert (
-        'href="?schedule=1&amp;view=rooms" aria-current="true">Rooms</a>' in rooms_html
+        'href="?schedule=1&amp;view=rooms&amp;pick=1" aria-current="true">Rooms &amp; labs</a>'
+        in rooms_html
     )
     assert 'href="?schedule=1&amp;view=courses">Courses</a>' in rooms_html
 
     faculty_html = client.get(VIEWER_URL, {"view": "faculty"}).content.decode()
     assert (
-        'href="?schedule=1&amp;view=faculty" aria-current="true">Faculty</a>'
+        'href="?schedule=1&amp;view=faculty&amp;pick=1" aria-current="true">Faculty</a>'
         in faculty_html
     )
 

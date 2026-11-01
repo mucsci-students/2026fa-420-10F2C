@@ -20,7 +20,11 @@ VIEW_ROOMS = "rooms"
 VIEW_FACULTY = "faculty"
 
 # Filter option values mapped to their menu labels, in display order.
-VIEW_OPTIONS = {VIEW_COURSES: "Courses", VIEW_ROOMS: "Rooms", VIEW_FACULTY: "Faculty"}
+VIEW_OPTIONS = {
+    VIEW_COURSES: "Courses",
+    VIEW_ROOMS: "Rooms & labs",
+    VIEW_FACULTY: "Faculty",
+}
 
 # Block text for a meeting that has no room or lab (e.g. an online section).
 NO_LOCATION_LABEL = "No room assigned"

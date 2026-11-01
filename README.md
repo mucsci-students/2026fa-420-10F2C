@@ -202,8 +202,9 @@ The viewer shows whatever schedules are currently available, whether generated o
 - **Navigation.** The page shows how many schedules are available and which one you are viewing. **Previous** and **Next** step through them (they are disabled at either end), and `?schedule=N` in the address links straight to one.
 - **Views.** One schedule at a time as a weekly overview, in three views:
   - **Course** — each meeting labelled by course section.
-  - **Room** — grouped by room and lab; lab meetings appear under the lab, other meetings under the room.
-  - **Faculty** — grouped by faculty member.
+  - **Rooms & labs** — each meeting labelled by its room or lab; lab meetings appear under the lab, other meetings under the room.
+  - **Faculty** — each meeting labelled by its faculty member.
+- **Choosing rooms, labs or faculty.** Switching into **Rooms & labs** or **Faculty** from the filter menu opens a checkbox popup (**Choose rooms & labs** / **Choose faculty**) listing every room and lab, or every faculty member, in the loaded schedules, grouped under Rooms, Labs and Not assigned. Tick any number and choose **Show selected** to see only their meetings; tick none, or choose **Show all**, to see everything. Each row shows how many meetings it has in the schedule on screen. The popup has a search box and **Tick all** / **Untick all** (which act on the rows the search is showing), and closes on Escape or a click outside. The choice is kept in the address (`?view=rooms&resource=Roddy+136&resource=Roddy+147`), so it stays as you page with Previous/Next and can be bookmarked; the time axis stays the same so schedules line up. The list and the filtering are in `gui/controllers/schedule_filters.py`.
 
 ### Loading schedules
 

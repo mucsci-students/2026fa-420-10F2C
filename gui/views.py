@@ -14,6 +14,7 @@ template.
 """
 
 import re
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.http import Http404, HttpResponse
@@ -33,6 +34,7 @@ from gui.constants import (
 from gui.controllers import (
     config_controller,
     schedule_controller,
+    schedule_filters,
 )
 from gui.controllers import (
     settings as settings_controller,
@@ -306,19 +308,28 @@ def schedule_viewer(request, import_form=None):
     count = schedule_controller.schedule_count(request)
     current = _current_schedule_number(request, count)
     view_mode = _current_view_mode(request)
-    schedule_grid = (
-        _schedule_grid(
-            schedule_controller.get_schedule(request, current - 1), view_mode
+    assignments = (
+        schedule_controller.get_schedule(request, current - 1) if count else []
+    )
+    requested = request.GET.getlist("resource")
+    groups = (
+        schedule_filters.resource_groups(
+            schedule_controller.get_schedules(request),
+            view_mode,
+            current=assignments,
+            selected=requested,
         )
         if count
-        else None
+        else []
     )
+    selected = schedule_filters.selected_resources(requested, groups)
+    schedule_grid = _schedule_grid(assignments, view_mode, selected) if count else None
     if import_form is None:
         import_form = ScheduleImportForm(schedule_count=count)
     export_form = ScheduleExportForm(
         schedule_count=count, initial={"schedule": current}
     )
-    pager = _schedule_pager_context(current, count, view_mode)
+    pager = _schedule_pager_context(current, count, view_mode, selected)
     return render(
         request,
         "gui/schedule_viewer.html",
@@ -329,7 +340,9 @@ def schedule_viewer(request, import_form=None):
             "schedule_grid": schedule_grid,
             "view_mode": view_mode,
             "view_options": VIEW_OPTIONS,
+            "view_links": _view_links(current),
             **pager,
+            **_resource_picker_context(request, view_mode, groups, selected),
             "import_form": import_form,
             "export_form": export_form,
         },
@@ -382,8 +395,47 @@ def _current_view_mode(request):
     return requested if requested in VIEW_OPTIONS else VIEW_COURSES
 
 
+def _view_query(view_mode: str = VIEW_COURSES, selected=()) -> str:
+    """The part of a viewer link after ?schedule=N: the view and any picked rooms/faculty.
+
+    Empty for the plain Courses view, so those links stay ?schedule=N."""
+    params = [] if view_mode == VIEW_COURSES else [("view", view_mode)]
+    params += [("resource", value) for value in selected]
+    return f"&{urlencode(params)}" if params else ""
+
+
+def _view_links(current: int) -> list[dict[str, str]]:
+    """The filter menu's links. Switching into Rooms & labs or Faculty opens its picker (&pick=1)."""
+    return [
+        {
+            "value": value,
+            "label": label,
+            "href": f"?schedule={current}&view={value}"
+            + ("&pick=1" if schedule_filters.filters_view(value) else ""),
+        }
+        for value, label in VIEW_OPTIONS.items()
+    ]
+
+
+def _resource_picker_context(request, view_mode, groups, selected) -> dict:
+    """What the template needs for the checkbox popup; empty values in the Courses view."""
+    if not groups:
+        return {"resource_groups": [], "resource_selected": []}
+    total = len(schedule_filters.all_options(groups))
+    return {
+        "resource_groups": groups,
+        "resource_noun": schedule_filters.RESOURCE_NOUNS[view_mode],
+        "resource_total": total,
+        "resource_selected": [
+            schedule_filters.label_for(value, groups) for value in selected
+        ],
+        # Open when the user just switched into this view from the menu.
+        "resource_picker_open": request.GET.get("pick") == "1",
+    }
+
+
 def _schedule_pager_context(
-    current: int, count: int, view_mode: str = VIEW_COURSES
+    current: int, count: int, view_mode: str = VIEW_COURSES, selected=()
 ) -> dict[str, int | bool | str | None]:
     """Build valid one-based pager values from the selected schedule.
 
@@ -398,7 +450,7 @@ def _schedule_pager_context(
         "has_next": has_next,
         "previous_schedule": current - 1 if has_previous else None,
         "next_schedule": current + 1 if has_next else None,
-        "view_query": "" if view_mode == VIEW_COURSES else f"&view={view_mode}",
+        "view_query": _view_query(view_mode, selected),
     }
 
 
@@ -438,6 +490,9 @@ def _schedule_rows(assignments, view_mode=VIEW_COURSES):
                         assignment.course,
                     ),
                     "duration": meeting.duration,
+                    "resource": schedule_filters.meeting_resource(
+                        view_mode, assignment, meeting
+                    ),
                     "detail": _block_detail(
                         view_mode, assignment.course, location, assignment.faculty
                     ),
@@ -446,11 +501,17 @@ def _schedule_rows(assignments, view_mode=VIEW_COURSES):
     return sorted(rows, key=lambda row: row["sort_key"])
 
 
-def _schedule_grid(assignments, view_mode=VIEW_COURSES):
-    rows = _schedule_rows(assignments, view_mode)
+def _schedule_grid(assignments, view_mode=VIEW_COURSES, selected=()):
+    """The calendar for one schedule. `selected` limits it to those rooms/labs or faculty
+    (see gui/controllers/schedule_filters.py); empty shows every meeting."""
+    all_rows = _schedule_rows(assignments, view_mode)
+    rows = [
+        row for row in all_rows if schedule_filters.shows(row["resource"], selected)
+    ]
+    # The hours come from the whole schedule, so the axis doesn't jump as the picks change.
     minutes = [
         v
-        for row in rows
+        for row in all_rows
         for v in (_clock_minutes(row["start"]), _clock_minutes(row["end"]))
     ]
     axis_start, axis_end = _schedule_axis_bounds(minutes)
@@ -503,6 +564,8 @@ def _schedule_grid(assignments, view_mode=VIEW_COURSES):
             for m in range(axis_start, axis_end + 1, MINUTES_PER_HOUR)
         ],
         "hour_pct": f"{MINUTES_PER_HOUR / span * 100:.3f}",
+        "shown": len(rows),
+        "total": len(all_rows),
         "columns": columns,
         "min_width": f"{round(min_width, 1):g}rem",
     }
