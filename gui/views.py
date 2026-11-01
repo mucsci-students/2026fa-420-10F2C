@@ -306,13 +306,10 @@ def schedule_viewer(request, import_form=None):
     count = schedule_controller.schedule_count(request)
     current = _current_schedule_number(request, count)
     view_mode = _current_view_mode(request)
-    schedule_grid = (
-        _schedule_grid(
-            schedule_controller.get_schedule(request, current - 1), view_mode
-        )
-        if count
-        else None
-    )
+    assignments = schedule_controller.get_schedule(request, current - 1) if count else []
+    schedule_grid = _schedule_grid(assignments, view_mode) if count else None
+    meeting_rows = _schedule_rows(assignments, view_mode) if count else []
+
     if import_form is None:
         import_form = ScheduleImportForm(schedule_count=count)
     export_form = ScheduleExportForm(
@@ -329,6 +326,9 @@ def schedule_viewer(request, import_form=None):
             "schedule_grid": schedule_grid,
             "view_mode": view_mode,
             "view_options": VIEW_OPTIONS,
+            "view_label": VIEW_OPTIONS[view_mode],
+            "assignment_count": len(assignments),
+            "meeting_rows": meeting_rows,
             **pager,
             "import_form": import_form,
             "export_form": export_form,
@@ -410,6 +410,10 @@ def _block_label(view_mode, course, location, faculty):
         return faculty or NO_FACULTY_LABEL
     return course
 
+def _split_course(course):
+    """'CMSC 140.01' -> ('CMSC 140', '01'); no section -> (course, '')."""
+    base, dot, section = course.rpartition(".")
+    return (base, section) if dot and base else (course, "")
 
 def _schedule_rows(assignments, view_mode=VIEW_COURSES):
     """Expand a selected schedule into chronological, human-readable meeting rows."""
@@ -419,6 +423,7 @@ def _schedule_rows(assignments, view_mode=VIEW_COURSES):
         for meeting in assignment.meetings:
             is_lab = meeting.lab
             location = assignment.lab if is_lab else assignment.room
+            course_id, section = _split_course(assignment.course)
             rows.append(
                 {
                     "day": meeting.day,
@@ -426,6 +431,8 @@ def _schedule_rows(assignments, view_mode=VIEW_COURSES):
                     "start": meeting.start,
                     "end": meeting.end,
                     "course": assignment.course,
+                    "course_id": course_id,
+                    "section": section,
                     "faculty": assignment.faculty,
                     "meeting_type": "Lab" if is_lab else "Class",
                     "location": location,
@@ -505,6 +512,8 @@ def _schedule_grid(assignments, view_mode=VIEW_COURSES):
         "hour_pct": f"{MINUTES_PER_HOUR / span * 100:.3f}",
         "columns": columns,
         "min_width": f"{round(min_width, 1):g}rem",
+        "has_meetings": bool(rows),
+        "meeting_count": len(rows),
     }
 
 

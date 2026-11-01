@@ -42,7 +42,8 @@
 {% endif %}
 
 {% if schedule_count %}
-<h2 id="schedule-overview-heading" class="section-title">Schedule {{ current_schedule }} weekly overview</h2>
+<h2 id="schedule-overview-heading" class="section-title">Schedule {{ current_schedule }} weekly overview
+    <span class="chip chip--info" data-view-mode="{{ view_mode }}">{{ view_label }} view</span></h2>
 <div class="view-filter">
     <button type="button" class="btn view-filter__trigger" aria-label="Filter grid view" title="Filter grid view">
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5L3 5z" fill="currentColor"/></svg>
@@ -55,6 +56,7 @@
         </div>
     </nav>
 </div>
+{% if schedule_grid.has_meetings %}
 <div class="card schedule-details" aria-labelledby="schedule-overview-heading">
     <div class="scroll-x">
         <div class="week-grid schedule-grid" role="group" aria-label="Weekly grid for schedule {{ current_schedule }}"
@@ -67,7 +69,7 @@
             </div>
             {% for day in schedule_grid.days %}
             <div class="week-grid__col">
-                <div class="week-grid__day-name">{{ day.day }}</div>
+                <div class="week-grid__day-name">{{ day.name }}</div>
                 <div class="week-grid__track">
                     {% for meeting in day.meetings %}
                     <div class="week-grid__block schedule-grid__meeting schedule-color-{{ meeting.color }}" role="group" tabindex="0"
@@ -76,6 +78,8 @@
                          aria-label="{{ meeting.course }}, {{ meeting.faculty|default:'no faculty assigned' }}, {{ meeting.location|default:'no room assigned' }}, {{ day.name }} {{ meeting.start }} to {{ meeting.end }}"
                          data-key="{{ meeting.label }}"
                          data-course="{{ meeting.course }}"
+                         data-course-id="{{ meeting.course_id }}"
+                         data-section="{{ meeting.section }}"
                          data-faculty="{{ meeting.faculty|default:'No faculty assigned' }}"
                          data-location="{{ meeting.location|default:'No room assigned' }}"
                          data-type="{{ meeting.meeting_type }}"
@@ -92,8 +96,40 @@
             {% endfor %}
         </div>
     </div>
-    <p class="help">Hover over or focus a block for full details. Click it (or press Enter) to highlight every meeting with the same label; click again to clear.</p>
+    <p class="help">Hover over or focus a block for full details. Click it (or press Enter) to highlight every meeting with the same label; click again to clear. Overlapping meetings sit side by side. The meeting list below gives the same facts as text.</p>
 </div>
+
+<details class="card meeting-list">
+    <summary>Meeting list ({{ meeting_rows|length }} meeting{{ meeting_rows|length|pluralize }})</summary>
+    <div class="table-wrap">
+        <table class="data-table">
+            <caption class="visually-hidden">Meetings in schedule {{ current_schedule }}, in chronological order</caption>
+            <thead>
+                <tr><th scope="col">Day</th><th scope="col">Start</th><th scope="col">End</th><th scope="col">Course</th><th scope="col">Section</th><th scope="col">Faculty</th><th scope="col">Room / lab</th><th scope="col">Type</th></tr>
+            </thead>
+            <tbody>
+            {% for row in meeting_rows %}
+                <tr>
+                    <td>{{ row.day_name }}</td>
+                    <td>{{ row.start }}</td>
+                    <td>{{ row.end }}</td>
+                    <td>{{ row.course }}</td>
+                    <td>{{ row.section|default:"—" }}</td>
+                    <td>{{ row.faculty|default:"—" }}</td>
+                    <td>{{ row.location|default:"—" }}</td>
+                    <td>{{ row.meeting_type }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</details>
+{% else %}
+<div class="empty-state" role="status">
+    <h3>No meetings to show</h3>
+    <p>Schedule {{ current_schedule }} has {{ assignment_count }} course section{{ assignment_count|pluralize }}, but none of them has a scheduled meeting time (online sections, for example, may have none). Changing the view will not change this; try another schedule.</p>
+</div>
+{% endif %}
 {% endif %}
 
 <div class="split">

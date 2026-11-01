@@ -2217,3 +2217,8 @@ html[data-theme="dark"] .chat-form { border-top-color: #3f3f46; }
 html[data-theme="dark"] .chat-form textarea { background: #18181b; color: #f3f4f6; border-color: #52525b; }
 
 @media print { .chat-widget { display: none; } }
+
+.section-title .chip { font-size: 0.8rem; }
+.meeting-list > summary { cursor: pointer; font-weight: 600; }
+.meeting-list .table-wrap { margin-top: 0.75rem; }
+.week-grid__day-name { white-space: nowrap; }

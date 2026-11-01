@@ -23,7 +23,8 @@
       var title = document.createElement("strong");
       title.textContent = b.dataset.course;
       tip.appendChild(title);
-      [["Faculty", b.dataset.faculty], ["Room / lab", b.dataset.location],
+
+      [["Section", b.dataset.section || "-"], ["Faculty", b.dataset.faculty], ["Room / lab", b.dataset.location],
        ["When", b.dataset.when], ["Type", b.dataset.type]].forEach(function (pair) {
         var line = document.createElement("div");
         var key = document.createElement("span");
