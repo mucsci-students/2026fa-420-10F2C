@@ -19,6 +19,7 @@ DJANGO_SETTINGS_MODULE = "config.settings"
 
 [tool.coverage.run]
 source = [
+    "app.commands.common",
     "app.crud",
     "app.generation_job",
     "app.history",
