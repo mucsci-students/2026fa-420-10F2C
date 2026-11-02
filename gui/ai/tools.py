@@ -834,9 +834,9 @@ UNREPORTED_CHANGE = "The configuration was changed anyway; check the History pag
 
 
 def _fingerprint(session) -> str | None:
-    """The whole configuration as JSON, to tell whether an action really changed it."""
+    """The whole configuration as stable JSON, to tell whether it really changed."""
     config = session.config
-    return None if config is None else config.model_dump_json()
+    return None if config is None else session.dumps()
 
 
 def _failure(tool: AiTool, reason: str) -> str:

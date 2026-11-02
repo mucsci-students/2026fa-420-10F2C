@@ -368,6 +368,7 @@ The GUI follows Model–View–Controller. User actions go through a controller;
 | | `app/memento.py`, `app/history.py` | Undo and redo with the Memento pattern: one memento class per kind of configuration item, and the history that keeps them (see [Design patterns](#design-patterns)). |
 | | `app/crud.py` | `apply_edit()`: every configuration change runs inside the library's `edit_mode()`, so only a fully valid configuration is ever stored. |
 | | `app/schedule_ops.py` | Schedule generation through `Scheduler`, reported as a `GenerationOutcome`. |
+| | `app/generation_job.py` | One generation run on a background thread. `GenerationJob` is the subject of the Observer pattern: it notifies `GenerationObserver`s (`ProgressTracker` here, `ResultsStore` in the controller) of progress and of the result (see [Design patterns](#design-patterns)). |
 | | `app/schedule_io.py` | Neutral schedule records (`Assignment`, `MeetingTime`) used by both generated and loaded schedules; JSON/CSV reading, writing and validation. |
 | | `course-constraint-scheduler` | The configuration models, validation rules and Z3 solver. Validation is never reimplemented in this project. |
 | **Controller** | `gui/controllers/` | One module per area: `config_controller.py` (lifecycle), `timeslots.py`, `rooms.py`, `labs.py`, `courses.py`, `faculty.py`, `patterns.py`, `meetings.py`, `settings.py`, `schedule_controller.py` (generate, load, export, clear). `errors.py` defines `ControllerError` / `FieldError`; `uploads.py` reads uploaded files safely. Controllers return plain data and never touch templates or `HttpResponse`. |
@@ -384,7 +385,7 @@ The Sprint 1 shell (`app/shell.py`, `app/commands/`) uses the same Model layer, 
 
 ### Design patterns
 
-MVC (above) is one of the patterns used. The others are described here as they are added.
+MVC (above) is one of the patterns used. The others are described here as they are added: Memento and Observer.
 
 #### Memento (undo and redo)
 
@@ -408,6 +409,38 @@ MVC (above) is one of the patterns used. The others are described here as they a
   encapsulation is kept; and because each kind of item has its own memento, an edit to one room saves one slice of
   the configuration rather than a copy of everything.
 
+#### Observer (schedule generation)
+
+- **Problem.** When a background generation run makes progress or ends, more than one part of the application needs to
+  know: the session must store (or clear) the schedules and be released, and the progress display needs the number of
+  schedules found so far. A job that was handed one callback could serve only one of them, and adding another would
+  mean changing the job.
+- **Where.** `app/generation_job.py` (the pattern: `GenerationJob`, `GenerationObserver`, `ProgressTracker`),
+  `gui/controllers/schedule_controller.py` (`ResultsStore`, and `start_generation`, where it is subscribed). Tests:
+  `tests/test_generation_observers.py` and `tests/test_generation_progress.py`.
+- **Participants.**
+  - *Subject*: `GenerationJob` keeps a list of observers (`subscribe`, `unsubscribe`, `observers`) and notifies each
+    one, in subscription order, from its worker thread. It only runs the solver and notifies; it does not store
+    anything or track progress itself.
+  - *Observer*: the base class `GenerationObserver` with two no-op hooks, `on_progress(job, found, limit)` after each
+    schedule the solver finds and `on_finished(job, result)` once when the run ends. An observer overrides only the
+    hooks it needs.
+  - *Concrete observers*: `ProgressTracker` (found, limit and percent; every job subscribes one first, and
+    `job.snapshot()`, which the progress bar and the AI chat poll, reads it) and `ResultsStore` (on a successful run it
+    stores the schedules, when no schedule is feasible it clears the old ones, for a cancel, an invalid configuration
+    or an error it keeps them, and it always releases the session).
+- **How they interact.** `start_generation` creates the job, subscribes a `ResultsStore` (the tracker is already
+  subscribed) and starts it. For each schedule the solver finds, the job tells every observer, the tracker first, so
+  it is up to date before anyone else hears about it. When the run ends the job tells every observer the result,
+  **before** the job counts as finished, so anyone who sees "finished" can rely on the results having been stored.
+- **When an observer fails.** Every observer is always notified. A failing `on_progress` is logged and ignored. A
+  failing `on_finished` (for example, storing the results failed) makes the job's result a runtime error with that
+  message, and the other observers still receive the original result. The old `on_finish=` argument still works: it
+  subscribes a small observer that calls the function.
+- **Why it fits.** The subject does not know who is listening, so a new subscriber (a log line, a test recorder, another
+  display) needs no change to the job (open/closed); each observer has one job (single responsibility); and the job
+  depends on the abstract `GenerationObserver`, not on the controller or the session, which keeps the model layer free
+  of Django and of the GUI.
 #### Adapter (the AI service)
 
 - **Problem.** The chat needs a language model to pick tools, but the rest of the app should not depend on LangChain or

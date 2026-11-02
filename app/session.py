@@ -109,6 +109,26 @@ _MINIMAL_SEED_TIME_SLOT_CONFIG = {
     ],
 }
 
+_WEEKDAYS = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
+
+
+def _ordered_weekdays(value):
+    """Sort weekday-name lists in JSON emitted from set-backed model fields."""
+    if isinstance(value, dict):
+        return {key: _ordered_weekdays(item) for key, item in value.items()}
+    if isinstance(value, list):
+        items = [_ordered_weekdays(item) for item in value]
+        if items and all(isinstance(item, str) and item in _WEEKDAYS for item in items):
+            return sorted(items, key=_WEEKDAYS.index)
+        return items
+    return value
+
+
+def _config_json(config: CombinedConfig, indent: int = 2) -> str:
+    """Serialize a config with set-backed weekday fields in stable order."""
+    data = json.loads(config.model_dump_json(indent=indent))
+    return json.dumps(_ordered_weekdays(data), indent=indent, ensure_ascii=False)
+
 
 @dataclass
 class PreviousConfig:
@@ -333,7 +353,7 @@ class Session:
                 "No path given, and this config hasn't been saved/loaded from one yet."
             )
 
-        target.write_text(self.config.model_dump_json(indent=2), encoding="utf-8")
+        target.write_text(self.dumps(), encoding="utf-8")
         self.config_path = target
         self.config_name = target.name
         self.dirty = False
@@ -391,7 +411,7 @@ class Session:
     def dumps(self) -> str:
         """The in-memory config as JSON text, through the library's own
         Pydantic serialization (the same text save() writes to disk)."""
-        return self.require_config().model_dump_json(indent=2)
+        return _config_json(self.require_config())
 
     def mark_saved(self, name: str | None = None) -> None:
         """Record that the current config was handed to the user as a file

@@ -34,7 +34,7 @@ from dataclasses import dataclass
 
 from app import schedule_io, schedule_ops
 from app.commands.common import VALID_OPTIMIZER_FLAGS
-from app.generation_job import GenerationJob
+from app.generation_job import GenerationJob, GenerationObserver
 from app.schedule_io import Assignment
 from gui.controllers.common import require_config
 from gui.controllers.errors import ControllerError, FieldError
@@ -330,18 +330,28 @@ def _set_schedules(session, schedules, version=None, tracked=True) -> None:
     session.set_schedules(list(schedules), version, tracked)
 
 
-def _finish_generation(session, job, result, started_from=None) -> None:
-    """Runs on the worker thread when a background run ends: store the
-    results exactly as generate() does, then release the session."""
-    try:
-        if result.outcome == schedule_ops.GenerationOutcome.SUCCESS:
-            _set_schedules(session, result.schedules, started_from)
-        elif result.outcome == schedule_ops.GenerationOutcome.NO_FEASIBLE_SCHEDULE:
-            _set_schedules(session, [])  # don't leave stale results, same as generate()
-        # invalid configuration, runtime error and cancel keep the previous results
-    finally:
-        with _GENERATION_LOCK:
-            session.generating = False
+class ResultsStore(GenerationObserver):
+    """The results store: an observer of a background run (app/generation_job.py).
+
+    When the run ends it stores the results exactly as generate() does, then releases the session. It runs
+    on the worker thread, before the job counts as finished."""
+
+    def __init__(self, session, started_from=None) -> None:
+        self._session = session
+        self._started_from = started_from
+
+    def on_finished(self, job, result) -> None:
+        try:
+            if result.outcome == schedule_ops.GenerationOutcome.SUCCESS:
+                _set_schedules(self._session, result.schedules, self._started_from)
+            elif result.outcome == schedule_ops.GenerationOutcome.NO_FEASIBLE_SCHEDULE:
+                _set_schedules(
+                    self._session, []
+                )  # don't leave stale results, same as generate()
+            # invalid configuration, runtime error and cancel keep the previous results
+        finally:
+            with _GENERATION_LOCK:
+                self._session.generating = False
 
 
 def start_generation(request, limit_override=None, optimizer_overrides=None) -> dict:
@@ -359,14 +369,8 @@ def start_generation(request, limit_override=None, optimizer_overrides=None) -> 
         if session.generating:
             raise ControllerError(BUSY_MESSAGE)
         session.generating = True
-        job = GenerationJob(
-            config,
-            limit_override,
-            optimizer_overrides,
-            on_finish=lambda finished_job, result: _finish_generation(
-                session, finished_job, result, started_from
-            ),
-        )
+        job = GenerationJob(config, limit_override, optimizer_overrides)
+        job.subscribe(ResultsStore(session, started_from))
         session.generation_job = job
     try:
         job.start()
