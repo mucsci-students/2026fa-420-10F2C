@@ -4,7 +4,7 @@ A web application for building, validating and solving university course-schedul
 
 The Sprint 1 command-line shell is still included and shares the same model code (see [Command-line shell](#command-line-shell-sprint-1)).
 
-**Contributors:** Calvin Becker, Alan Reider, Henry Malesker, Joseph Lucks, Samsong Tamang, James Liranzo
+**Contributors:** Calvin Becker, Alan Reider, Henry Malesker, Joseph Lucks, Samsong Tamang, James Liranzo, Agustin Espinoza-Ortiz
 
 ## Contents
 
