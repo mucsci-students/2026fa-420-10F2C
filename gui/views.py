@@ -634,11 +634,12 @@ def _schedule_grid(
 ):
     assignments = list(assignments)
     rows = _schedule_rows(assignments, view_mode, resources, time_format)
-    # The time axis comes from the whole schedule, so it does not shift when
-    # the picker narrows the calendar to one room or faculty member.
+    # The time axis and the colors come from the whole schedule, so neither
+    # shifts when the picker narrows the calendar to some rooms or people.
+    everything = _schedule_rows(assignments, view_mode)
     minutes = [
         v
-        for row in _schedule_rows(assignments, view_mode)
+        for row in everything
         for v in (_clock_minutes(row["start"]), _clock_minutes(row["end"]))
     ]
     axis_start, axis_end = _schedule_axis_bounds(minutes)
@@ -647,8 +648,9 @@ def _schedule_grid(
     # One color per distinct label, so overlapping blocks always differ.
     color_of = {
         key: i % PALETTE_SIZE
-        for i, key in enumerate(sorted({r["label"] for r in rows}))
+        for i, key in enumerate(sorted({r["label"] for r in everything}))
     }
+    shown_labels = {r["label"] for r in rows}
 
     meetings_by_day = {day: [] for day in DAY_NAMES}
     for row in rows:
@@ -687,7 +689,17 @@ def _schedule_grid(
             }
             for m in range(axis_start, axis_end + 1, MINUTES_PER_HOUR)
         ],
-        "legend": [{"label": key, "color": color} for key, color in color_of.items()],
+        "legend": [
+            {"label": key, "color": color}
+            for key, color in color_of.items()
+            if key in shown_labels
+        ],
+        # The empty state: how many blocks are drawn, and which sections have no
+        # meeting times at all (for example an online section).
+        "meeting_count": len(rows),
+        "without_meetings": sorted(
+            {assignment.course for assignment in assignments if not assignment.meetings}
+        ),
         "hour_pct": f"{MINUTES_PER_HOUR / span * 100:.3f}",
         "height_rem": f"{span / MINUTES_PER_HOUR * HOUR_HEIGHT_REM:g}",
         "columns": columns,

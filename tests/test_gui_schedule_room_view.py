@@ -803,3 +803,58 @@ def test_the_12_hour_clock_still_marks_the_grid(client):
     twelve = client.get(VIEWER_URL, {"time": "12h"}).content.decode()
     assert "schedule-grid--12h" not in plain
     assert 'class="week-grid schedule-grid schedule-grid--12h"' in twelve
+
+
+# ---------------------------------------------------------------------- #
+#  Empty state and stable colors
+# ---------------------------------------------------------------------- #
+def online_only():
+    return [Assignment("CMSC 999.01", "Hogg", None, None, ())]
+
+
+def test_a_schedule_without_meetings_has_nothing_to_draw_and_names_the_sections():
+    grid = _schedule_grid(online_only(), VIEW_COURSES)
+    assert grid["meeting_count"] == 0
+    assert grid["without_meetings"] == ["CMSC 999.01"]
+    assert grid["legend"] == []
+
+
+def test_the_page_explains_a_schedule_with_no_meetings(client):
+    load(client, online_only())
+    html = client.get(VIEWER_URL).content.decode()
+    assert "No meetings to show" in html
+    assert "Schedule 1 has no meetings to place on the calendar." in html
+    assert "CMSC 999.01" in html
+    assert 'class="week-grid schedule-grid' not in html  # no blank grid
+
+
+def test_a_pick_with_no_meetings_explains_itself_and_offers_show_all(client):
+    load(client, sample_schedule() + online_only())
+    html = client.get(
+        VIEWER_URL, {"schedule": "1", "resource": "CMSC 999.01"}
+    ).content.decode()
+    assert "No meetings to show" in html
+    assert "Nothing you picked has a meeting in schedule 1." in html
+    assert 'href="?schedule=1">show all</a>' in html
+
+
+def test_a_schedule_with_meetings_shows_the_grid_not_the_empty_state(client):
+    load(client, sample_schedule())
+    html = client.get(VIEWER_URL).content.decode()
+    assert 'class="week-grid schedule-grid' in html
+    assert "No meetings to show" not in html
+
+
+def test_picking_items_keeps_each_items_color():
+    def colors(grid):
+        return {m["label"]: m["color"] for d in grid["days"] for m in d["meetings"]}
+
+    everything = colors(_schedule_grid(sample_schedule(), VIEW_ROOMS))
+    picked = colors(_schedule_grid(sample_schedule(), VIEW_ROOMS, "Roddy 147"))
+    assert picked == {"Roddy 147": everything["Roddy 147"]}
+
+
+def test_the_color_key_lists_only_the_picked_items_with_their_usual_colors():
+    full = _schedule_grid(sample_schedule(), VIEW_FACULTY)["legend"]
+    picked = _schedule_grid(sample_schedule(), VIEW_FACULTY, ["Killen"])["legend"]
+    assert picked == [item for item in full if item["label"] == "Killen"]

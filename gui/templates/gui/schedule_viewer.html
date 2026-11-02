@@ -74,6 +74,19 @@
 {% if schedule_count %}
 <h2 id="schedule-overview-heading" class="section-title visually-hidden">Schedule {{ current_schedule }} weekly overview &ndash; {{ view_label }} view{% if resources %}: {{ resources|join:', ' }}{% endif %}</h2>
 <div class="card schedule-details" aria-labelledby="schedule-overview-heading">
+    {% if not schedule_grid.meeting_count %}
+    <div class="empty-state" role="status">
+        <h2>No meetings to show</h2>
+        {% if resources %}
+        <p>Nothing you picked has a meeting in schedule {{ current_schedule }}. Pick something else, or <a href="{{ resource_clear }}">show all</a>.</p>
+        {% else %}
+        <p>Schedule {{ current_schedule }} has no meetings to place on the calendar.</p>
+        {% endif %}
+        {% if schedule_grid.without_meetings %}
+        <p>Sections with no meeting times (for example online sections): {{ schedule_grid.without_meetings|join:", " }}.</p>
+        {% endif %}
+    </div>
+    {% else %}
     <div class="scroll-x">
         <div class="week-grid schedule-grid{% if time_format == '12h' %} schedule-grid--12h{% endif %}" role="group" aria-label="Weekly grid for schedule {{ current_schedule }}"
              style="--hour-pct: {{ schedule_grid.hour_pct }}%; --grid-height: {{ schedule_grid.height_rem }}rem; grid-template-columns: {{ schedule_grid.columns }};">
@@ -111,6 +124,7 @@
         </div>
     </div>
     <p class="help">Hover over or focus a block for full details. Click it (or press Enter) to highlight every meeting with the same label; click again to clear.</p>
+    {% endif %}
     {% if schedule_grid.legend %}
     <details class="schedule-legend">
         <summary>Color key ({{ schedule_grid.legend|length }})</summary>
