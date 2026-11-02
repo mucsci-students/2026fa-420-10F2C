@@ -440,6 +440,30 @@ MVC (above) is one of the patterns used. The others are described here as they a
   display) needs no change to the job (open/closed); each observer has one job (single responsibility); and the job
   depends on the abstract `GenerationObserver`, not on the controller or the session, which keeps the model layer free
   of Django and of the GUI.
+#### Adapter (the AI service)
+
+- **Problem.** The chat needs a language model to pick tools, but the rest of the app should not depend on LangChain or
+  OpenAI. Their tool objects, agent loop and message format are not ours, and routine tests must run with no AI and no
+  API key.
+- **Where.** `gui/ai/runner.py` (`Runner`, `LangChainRunner`), used by `gui/ai/service.py` (`get_runner`, `_run`). The
+  tools it adapts are `AiTool` and `ToolBox` (`gui/ai/base.py`, `gui/ai/tools.py`). Tests: `tests/test_ai_adapter.py`,
+  `tests/test_ai_langchain.py`.
+- **Participants.**
+  - *Target*: `Runner`, the one interface the app wants: `run(text, toolbox)` returns the model's own text, or an empty
+    string when an action's own result is the answer.
+  - *Client*: `service._run` in `gui/ai/service.py`. It asks `get_runner()` for a runner and calls `run`; it knows
+    nothing about LangChain.
+  - *Adaptee*: LangChain's agent and tool classes (`create_agent`, `StructuredTool`), talking to OpenAI.
+  - *Adapter*: `LangChainRunner`. `langchain_tools()` turns each of our tools (name, description, argument schema,
+    handler) into a LangChain tool, and `reply_from()` turns LangChain's answer back into plain text. Reading the API
+    key (`load_api_key`) is kept separate from this translation.
+- **How they interact.** The client calls `run`. The adapter builds the LangChain tools from the request's tool box and
+  starts the agent. Every tool call the model makes is forwarded to `toolbox.call`, which checks the arguments, runs
+  the controller and records what really happened. When the agent stops, `reply_from` returns the single piece of text
+  the client expects.
+- **Why it fits.** The client talks only to the interface it wants, and the incompatible LangChain interface is
+  converted in one class. Replacing the real AI with a fake one (as the tests do) or with another provider only
+  changes what `get_runner` returns.
 
 ## Running the tests
 
@@ -454,7 +478,7 @@ uv run ty check
 uv run pytest --cov --cov-report=xml
 ```
 
-Coverage measures the Model package in `app/` and fails below 80%. The Codecov upload is performed by CI; no OpenAI secret is needed for routine tests. The tests live in `tests/`: `test_crud_*` and `test_schedule_*` cover the model and CLI layer, `test_gui_*` cover the controllers and pages through Django's test client.
+Coverage measures team-written code in `app/`: `app.commands.common`, `app.crud`, `app.generation_job`, `app.history`, `app.memento`, `app.schedule_io`, `app.schedule_ops`, and `app.session`. `app.commands.common` is included because its shared edit helper is used by both the CLI and GUI; its prompt helpers are included as part of that module. Third-party scheduler-library code is outside the target. Coverage is line coverage and fails below 80%; reproduce it locally with `uv run pytest --cov --cov-report=xml`. CI uploads the XML report to Codecov. No OpenAI secret is needed for routine tests. The tests live in `tests/`: `test_crud_*` and `test_schedule_*` cover the model and CLI layer, `test_gui_*` cover the controllers and pages through Django's test client.
 
 ## Command-line shell (Sprint 1)
 
