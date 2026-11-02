@@ -34,7 +34,9 @@ def view_schedule(session, index):
         print("No generated schedules in this session.")
         return
     if not 0 <= index < len(session.schedules):
-        print(f"No schedule at index {index}. Valid range: 0-{len(session.schedules) - 1}.")
+        print(
+            f"No schedule at index {index}. Valid range: 0-{len(session.schedules) - 1}."
+        )
         return
     print(schedule_ops.summarize_schedule(session.schedules[index]))
 
@@ -52,7 +54,9 @@ def export_schedule(session, fmt, path, index=None, overwrite=False):
         return
     if index is not None:
         if not 0 <= index < len(session.schedules):
-            print(f"No schedule at index {index}. Valid range: 0-{len(session.schedules) - 1}.")
+            print(
+                f"No schedule at index {index}. Valid range: 0-{len(session.schedules) - 1}."
+            )
             return
         payload = [session.schedules[index]]
     else:

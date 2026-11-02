@@ -1,0 +1,82 @@
+{% extends "gui/config_base.html" %}
+{% block title %}Scheduler — Change History{% endblock %}
+{% block config_content %}
+<p class="breadcrumb"><a href="{% url 'gui:config_editor' %}">Configuration Editor</a> &rsaquo; History</p>
+<div class="page-header">
+    <div>
+        <h1>Change history</h1>
+        <p class="page-intro">
+            Every change you make to the configuration in this session is listed here, newest first. Pick
+            <strong>Go back to before this</strong> to return to how things were just before that change
+            (the changes after it are kept, so you can redo them). The latest 25 changes are remembered,
+            and the history is cleared when you start a new configuration or load a different one.
+        </p>
+    </div>
+</div>
+
+{% if not config_loaded %}
+<div class="empty-state" role="status">
+    <h2>No configuration is loaded</h2>
+    <p>Create or load a configuration in the <a href="{% url 'gui:config_editor' %}">Configuration Editor</a> first.</p>
+</div>
+{% elif not history.undo_entries and not history.redo_entries %}
+<div class="empty-state" role="status">
+    <h2>No changes yet</h2>
+    <p>Changes you make to rooms, labs, courses, faculty, class patterns, time slots and settings will be listed here, and can be undone.</p>
+</div>
+{% else %}
+
+{% if history.redo_entries %}
+<h2 class="section-title">Undone changes <span class="count-chip">{{ history.redo_entries|length }}</span></h2>
+<p class="help">These were undone. Applying a new change clears this list.</p>
+<ol class="history-list history-list--undone">
+    {% for entry in history.redo_entries reversed %}
+    <li>
+        <div class="history-list__text">
+            <strong>{{ entry.label }}</strong>
+            {% if entry.summary %}<span class="help">{{ entry.summary }}</span>{% endif %}
+            <span class="help">{{ entry.when }}</span>
+        </div>
+        <form method="post" action="{% url 'gui:history_goto' %}">
+            {% csrf_token %}
+            <input type="hidden" name="entry" value="{{ entry.id }}">
+            <input type="hidden" name="token" value="{{ history.token }}">
+            <input type="hidden" name="direction" value="forward">
+            <input type="hidden" name="next" value="{% url 'gui:history' %}">
+            <button type="submit" class="btn btn-small">Redo up to here{% if entry.steps > 1 %} ({{ entry.steps }} changes){% endif %}</button>
+        </form>
+    </li>
+    {% endfor %}
+</ol>
+{% endif %}
+
+<h2 class="section-title">Changes <span class="count-chip">{{ history.undo_entries|length }}</span></h2>
+{% if history.undo_entries %}
+<p class="help">The top entry is the current state of the configuration.</p>
+<ol class="history-list">
+    {% for entry in history.undo_entries %}
+    <li{% if forloop.first %} class="history-list__current"{% endif %}>
+        <div class="history-list__text">
+            <strong>{{ entry.label }}</strong>
+            {% if forloop.first %}<span class="chip chip--ok">current</span>{% endif %}
+            {% if entry.summary %}<span class="help">{{ entry.summary }}</span>{% endif %}
+            <span class="help">{{ entry.when }}</span>
+        </div>
+        <form method="post" action="{% url 'gui:history_goto' %}">
+            {% csrf_token %}
+            <input type="hidden" name="entry" value="{{ entry.id }}">
+            <input type="hidden" name="token" value="{{ history.token }}">
+            <input type="hidden" name="direction" value="back">
+            <input type="hidden" name="next" value="{% url 'gui:history' %}">
+            <button type="submit" class="btn btn-small">Go back to before this{% if entry.steps > 1 %} ({{ entry.steps }} changes){% endif %}</button>
+        </form>
+    </li>
+    {% endfor %}
+    <li class="history-list__start"><span class="help">The configuration as it was when you opened it.</span></li>
+</ol>
+{% else %}
+<p class="help">Nothing to go back to. Everything you changed has been undone.</p>
+{% endif %}
+
+{% endif %}
+{% endblock %}

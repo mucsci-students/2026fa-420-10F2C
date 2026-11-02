@@ -22,7 +22,8 @@ reports problems and tracks unsaved changes the same way.
 
 from __future__ import annotations
 
-from typing import Callable, Iterable
+from collections.abc import Callable, Iterable
+from typing import Any
 
 from app.commands.common import apply_session_edit
 from app.crud import ValidationFailure
@@ -48,8 +49,9 @@ def apply_config_edit(
     session,
     config,
     area: str,
-    mutate: Callable[[object], None],
+    mutate: Callable[[Any], None],
     form_fields: Iterable[str] = (),
+    label: str | None = None,
 ) -> None:
     """Apply an atomic, fully validated edit and mark the session dirty.
 
@@ -57,6 +59,6 @@ def apply_config_edit(
     `form_fields` names the form fields library errors may be attached to.
     """
     try:
-        apply_session_edit(session, config, area, mutate)
+        apply_session_edit(session, config, area, mutate, label=label)
     except ValidationFailure as error:
         raise to_controller_error(error, form_fields=form_fields) from error

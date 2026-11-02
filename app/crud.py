@@ -33,7 +33,8 @@
 
 from __future__ import annotations
 
-from typing import Callable, Iterable
+from collections.abc import Callable, Iterable
+from typing import Any
 
 from scheduler.config import ValidationError
 
@@ -63,7 +64,7 @@ class ReferenceError_(Exception):
         self.referenced_by = list(referenced_by)
 
 
-def apply_edit(config, area: str, mutate_fn: Callable[[object], None]) -> None:
+def apply_edit(config, area: str, mutate_fn: Callable[[Any], None]) -> None:
     """Run mutate_fn(draft) inside the library's atomic edit context, where
     `draft` is the deep copy edit_mode() yields -- NOT the original config.
     On successful exit, edit_mode() re-validates the draft and copies it

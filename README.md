@@ -4,7 +4,7 @@ A web application for building, validating and solving university course-schedul
 
 The Sprint 1 command-line shell is still included and shares the same model code (see [Command-line shell](#command-line-shell-sprint-1)).
 
-**Contributors:** Calvin Becker, Alan Reider, Henry Malesker, Joseph Lucks, Samsong Tamang, James Liranzo
+**Contributors:** Calvin Becker, Alan Reider, Henry Malesker, Joseph Lucks, Samsong Tamang, James Liranzo, Agustin Espinoza-Ortiz
 
 ## Contents
 
@@ -14,6 +14,7 @@ The Sprint 1 command-line shell is still included and shares the same model code
 - [Configuration Editor](#configuration-editor)
 - [Schedule Generator](#schedule-generator)
 - [Schedule Viewer](#schedule-viewer)
+- [AI Assistant](#ai-assistant)
 - [Behavior shared by every page](#behavior-shared-by-every-page)
 - [Architecture (MVC)](#architecture-mvc)
 - [Running the tests](#running-the-tests)
@@ -98,10 +99,80 @@ Every add, edit and delete runs through the library's edit mode, which re-valida
 
 ### Deleting and renaming referenced items
 
-- **Blocked deletes.** A room, lab, faculty member or course that something else still refers to (a course's candidate list, a conflict, a faculty preference) cannot be deleted. Its **Delete** button is disabled and the page lists what refers to it, so you can see the references before trying.
-- **Other guards.** The last time block on a weekday and the only meeting in a pattern cannot be deleted. Deleting a pattern lists the meetings it removes; if a course would be left with no usable pattern, the change is rejected and nothing is removed.
-- **Confirmation.** Every delete asks for confirmation first.
-- **Renames propagate.** Renaming a room, lab, faculty member or course shows a confirmation page listing every reference that will be updated. Confirming renames the item and all of its references in one validated step.
+Rooms, labs, faculty, courses and class patterns are linked to each other by name, so deleting one can leave other
+records pointing at nothing. Instead of blocking the delete, every one of them works the same way: **Delete** is
+always available and opens a review page that says what else will change, asks you to confirm anything that
+removes more than the item itself, and then does everything as ONE validated change. If any part is rejected,
+nothing is removed and the page tells you why. The page lists the affected records and notes that the whole thing
+can be undone (see [Undo, redo and history](#undo-redo-and-history)).
+
+**A delete never puts a different record in the deleted one's place.** If you delete the lab "Mac", the lab
+"Linux" does not take over its course sections; the references to "Mac" are simply removed. A section that would
+be left with nothing it can use is deleted too, but only after you tick a box that says so.
+
+| Deleting a... | ...is removed from | Also deletes course sections when |
+| --- | --- | --- |
+| **Room** | course room lists, faculty room preferences | a section lists only this room (it could not be scheduled without one) |
+| **Lab** | course lab lists, faculty lab preferences | never: a section that listed only this lab is left without one, and the page says so |
+| **Faculty member** | course faculty assignments, their own preferences | nobody else could teach the section: they were its only assignee and nobody else prefers the course, or they are the only one who prefers a course with no assigned person. A section that assigned only them, where someone else prefers the course, goes back to "the scheduler chooses" |
+| **Course** (its last section) | other courses' conflict lists, faculty course preferences | never |
+| **Class pattern** | nothing | it is the only enabled pattern for its credit value (the sections with that many credits could not be scheduled any more) |
+
+- **One tick-box.** When course sections would be deleted too, the page lists them and shows a box ("I understand
+  this also deletes 3 course sections ..."). Without the tick nothing is deleted and the page explains why.
+- **Label only.** The page names the item being deleted and nothing more (no extra capacity or credit details).
+- **Used by.** The Rooms, Labs, Faculty, Courses and Class Patterns lists show, for each row, what depends on it
+  (for example "9 courses", "only candidate for 2 sections"), folded into a details control.
+- **Other guards.** A configuration always keeps at least one room, course and faculty member, so the last of
+  each cannot be deleted. The last time block on a weekday and the only meeting in a pattern cannot be deleted.
+  If the library still rejects the combined result (for example a lab-less section it does not accept), nothing
+  changes and the page shows the library's reason.
+- **Confirmation.** Every delete asks for confirmation first, and Cancel changes nothing.
+- **Renames propagate.** Renaming a room, lab, faculty member or course updates every reference to it in the same
+  validated step, and says how many it updated.
+
+### Undo, redo and history
+
+Every successful change in the Configuration Editor can be undone, including a delete that cascaded through many
+courses and faculty preferences.
+
+- **Where to find it.** After a change, the "saved" message carries an **Undo** button right where you are
+  looking. The **Undo** and **Redo** buttons at the top of every Configuration Editor page name the change they
+  will reverse (for example "Undo: Delete room 'Roddy 136'"); the bar only appears once there is something to undo
+  or redo. **Ctrl+Z** presses Undo and **Ctrl+Y** (or Ctrl+Shift+Z) presses Redo (Cmd on a Mac), except while you
+  are typing in a field.
+- **History page.** **History** lists every remembered change, newest first, with when it happened and what it
+  changed ("Removed room Roddy 136; Changed 14 courses; Changed 9 faculty members"). **Go back to before this**
+  returns to how things were just before any entry in one step; the later changes are kept so they can be redone.
+- **How it works.** Undo and redo use the Memento design pattern (see [Design patterns](#design-patterns)). Just
+  before each edit the configuration saves a memento of each part of itself (rooms, labs, courses, faculty, class
+  patterns, time slots, global settings); after the edit only the parts that really changed are kept. Undo puts
+  those parts back as one step, so a cascade is reversed completely, never partly. Redo re-applies it. Making a
+  new change after an undo clears redo.
+- **Safe with several tabs.** Every Undo, Redo and "go back" button carries a version number of the configuration
+  it was drawn from. If the configuration has changed since (another tab, a double click), the request is refused
+  with an explanation instead of undoing something you did not see.
+- **Unsaved changes.** Undoing back to the state you loaded or saved clears the "Unsaved changes" indicator. After
+  you save, undoing an older change marks the configuration as unsaved again, because the saved file still contains it.
+- **Restore previous configuration.** Starting a new configuration, loading a file or switching to a saved one
+  still asks before discarding unsaved work, but the replaced configuration (with its edits, undo history and
+  schedules) is kept for the rest of the session. The Configuration Editor shows **Restore previous
+  configuration**; restoring swaps the two, so it can be reversed too. Only the one before is kept, and it is lost
+  when the server restarts.
+- **Schedules and changes.** Generated schedules are not changed by undo or redo, and editing the configuration
+  does not delete them. Instead the Schedule Viewer and Generator say "These schedules are out of date. They were
+  generated from an earlier version of the configuration" for as long as that is true; undoing back to the
+  configuration they came from makes the notice go away. Schedules imported from a file are never flagged, because
+  their origin is unknown.
+- **Limits.** The newest 25 changes are remembered. History is kept in memory only, so it is lost when the server
+  restarts.
+- **Where the code is (MVC).** Model: `app/memento.py` (the mementos), `app/history.py` (the undo and redo stacks,
+  versions), the hooks in
+  `app/commands/common.py` (`apply_session_edit`) and `app/session.py` (restore previous, schedule versions).
+  Controller: `gui/controllers/dependencies.py` (how the records depend on each other, shared by every delete),
+  `gui/controllers/history_controller.py`. View: `gui/views_delete.py` (the one delete flow),
+  `gui/views_history.py`, `gui/templates/gui/components/cascade_delete.html`, `history_bar.html`,
+  `gui/templates/gui/history.html` and `gui/static/gui/js/history.js`.
 
 ## Schedule Generator
 
@@ -133,6 +204,12 @@ The viewer shows whatever schedules are currently available, whether generated o
   - **Course** — each meeting labelled by course section.
   - **Room** — grouped by room and lab; lab meetings appear under the lab, other meetings under the room.
   - **Faculty** — grouped by faculty member.
+
+  Every block says the same four things in every view, filtered or not: the view's own item in bold (course, room/lab or faculty member), the time, then the other two (a missing room or faculty member is written out, for example "No room assigned"). Every block uses the same four lines and the same type sizes, and each hour of the calendar is tall enough for a 50-minute class to show all of them; a line too long for its block is shortened with an ellipsis. Hover or focus a block for everything in full. The calendar uses the whole width of the window and the week fits it without sideways scrolling (only a window narrower than about 780 px scrolls).
+- **Picker.** Next to the view buttons, a searchable drop-down narrows the calendar to the courses (Course view), rooms and labs (Room view) or faculty (Faculty view) you tick. Click it and start typing: the list filters as you type, and spaces and punctuation don't matter (`cmsc140` finds `CMSC 140.01`; `roddy 1` finds `Roddy 136`). Tick as many items as you like, use **Select shown** to tick everything the search currently shows, **Clear** to untick all, then **Apply** (or press Enter). Ticked items appear as chips under the toolbar; click a chip's × to drop just that one, or **Show all**. A course with several sections also has an "all sections" choice (for example `CMSC 140`). The days are the columns of the weekly grid and the time axis stays the same, so picking items never moves the hours. `?resource=` (repeat it for each item) in the address links straight to a choice, and Previous/Next keep it. Without JavaScript the picker is a plain multi-select list with a **Show** button.
+- **Clock.** **24-hour** or **12-hour (AM/PM)** buttons change every time on the page (axis, blocks, hover details). The choice is remembered for your browser session; `?time=12h` or `?time=24h` in the address sets it. It only changes how times are shown, never the schedule or the exported files.
+- **Color key.** A collapsible **Color key** under the calendar lists what each color stands for in the current view, and each item keeps its color when you pick items. Names are always written on the blocks too, so color is never the only cue.
+- **Nothing to show.** If a schedule has no meetings (for example only online sections), or nothing you picked meets in it, the calendar is replaced by a "No meetings to show" message that names any sections without meeting times and, after a pick, links back to **Show all**.
 
 ### Loading schedules
 
@@ -190,6 +267,63 @@ The viewer shows whatever schedules are currently available, whether generated o
 - Also accepted: a single schedule (just the list of assignments); a bare list of schedules, as written by the scheduler library's `JSONWriter` (where `meetings` may be called `times`); and meetings written as `"MON 09:00-09:50"`.
 - Rejected: a `version` newer than 1, a different `format` value, and files over 5 MB.
 
+## AI Assistant
+
+Click the round chat button in the bottom-right corner of any page and type a request in everyday language. Hover the button and click the small arrow to slide it out of the way; a small tab at the screen edge brings it back. For example:
+
+- "What can you do?"
+- "List all rooms", "How many credits is CMSC 420?", "Show me faculty Hogg"
+- "Add a room named RODDY150 with capacity 35"
+- "Add course CMSC 421 with 3 credits, taught by Hogg in RODDY150"
+- "Add a time slot on Friday from 17:00 to 19:00", "Add a class pattern for 3 credits meeting Monday for 150 minutes"
+- "Change the capacity of Roddy 140 to 40", "Give Hogg a maximum of 9 credits", "Disable class pattern 4", "Turn off the pack_rooms setting"
+- "Delete room Roddy 136" (see **Deleting** below)
+
+**Setup.** Set `OPENAI_API_KEY` in your environment, or copy [`config/openai_api_key.example.txt`](config/openai_api_key.example.txt) to `config/openai_api_key.txt` and replace its contents with your OpenAI key. The local key file is ignored by Git; do not commit or share it. The environment variable takes precedence if both are set. The key is never shown on a page or written to a log. The model is `gpt-6-luna` unless `OPENAI_MODEL` is set:
+
+```bash
+export OPENAI_MODEL="gpt-6-luna"           # optional; this is the default
+uv run python manage.py runserver
+```
+
+With no key set in either place, the assistant says so and nothing else changes.
+
+**Changing and deleting.** The update tools (`update_room`, `update_lab`, `update_course`, `update_faculty`, `update_time_slot`, `update_timing_options`, `update_class_pattern`, `update_meeting`, `update_global_settings`, plus `add_meeting`) take only the values you want changed and merge them into the current record, then call the same controller the Edit pages use. A change that the scheduler library rejects is rejected as a whole, so nothing is half-applied; a request that changes nothing says so and does not mark the configuration as unsaved. Every real change is on the **History** page and can be undone there.
+
+**Deleting** takes two messages. A `delete_*` tool only describes what would be deleted (the same dependency review the Delete pages show, including other items that go with it). The delete happens only when you confirm in a *new* message (`confirm_delete`); `cancel_delete` forgets it. A pending delete expires after 10 minutes, is refused if the configuration changed after it was described, and only the browser session that asked can confirm it. The assistant cannot confirm in the same message that describes the delete.
+
+**Generating schedules.** Ask in your own words ("generate 5 schedules", "make some schedules with pack rooms on"). It also takes two messages, and uses the same scheduler as the Schedule Generator page:
+1. `prepare_schedule_generation` checks that a configuration is open, validates it, and shows the generation limit and optimizer flags this run would use. You can change either in the chat ("make it 10", "turn off pack rooms"); the settings are shown again. They apply to **this run only**; the saved configuration is never modified by generating (use `update_global_settings` to change the saved ones).
+2. In a *new* message, "go ahead" (`confirm_schedule_generation`) validates again and starts the run. It is refused if the settings were shown more than 10 minutes ago, the configuration changed since, or a delete is waiting. `cancel_schedule_generation` forgets the settings, or asks a running generation to stop.
+
+While it works, the chat shows a progress line ("Generating schedules… found 3 of 10"). When it finishes the assistant says how many schedules were generated and, on the Schedule Viewer, the page reloads by itself to show them; on other pages the reply links to the viewer. If no feasible schedule exists, or the run fails, the reply explains why and nothing is added to the viewer (a failed run keeps earlier schedules; "no feasible schedule" clears them, as on the generator page). A run that takes longer than `AI_GENERATION_WAIT_SECONDS` (default 600, at most 3600) is left running; ask "how is the generation going?" (`check_generation_status`).
+
+With no configuration open, the assistant says one must be created or loaded and offers both: `create_new_configuration` (then configure it in the chat, `validate_configuration`, and generate) or `load_saved_configuration` (saved configurations in this session; after loading and validating it carries on into the settings review), plus a **Load Configuration** link to the Configuration Editor's form for a JSON file on your computer. `load_saved_configuration` refuses when it would discard unsaved changes or loaded schedules. Quick replies ("Go ahead and generate", "Cancel", ...) appear as buttons under such messages and just send that text as an ordinary message.
+
+**Saving.** "Save my configuration", "Download my config" or "Save as fall.json" (`save_configuration`) shows a file name box and a **Save JSON** button under the reply. The button posts to the Configuration Editor's own Save view (the Editor's Save form has the same optional file name box), so there is one export: the same validation and JSON, delivered as a normal browser download. Your browser decides where the file goes and what happens if a file with that name already exists; the app writes nothing to disk, so it can never overwrite a file. It cannot tell whether the download finished, so the assistant only says a download was requested, never that the file was saved. With no configuration open it explains there is nothing to save and offers Load and New; ask again afterwards.
+
+**Starting a new configuration** (`create_new_configuration`) happens at once only when there are no unsaved changes and no generated schedules. Otherwise the assistant warns about what would be discarded and shows **Save JSON**, **Discard and Continue** and **Cancel**. Nothing changes until you choose; Cancel (or a stale or reused warning) leaves the configuration, its changes and its schedules as they were, and after Discard and Continue the old configuration can be brought back with Restore previous configuration in the Configuration Editor.
+
+**Understanding you.** You can talk to the assistant the way you would to a person.
+- *Part of a name is enough.* "Delete room 136" finds Roddy 136, "hog" finds Hogg, "cmsc 140" finds CMSC 140.01. When two items fit ("roddy"), it asks which you mean instead of guessing, and a near miss gets a "Did you mean ...?" with the real names.
+- *Undo and redo.* `undo_changes` takes back the newest change, the newest N, or a specific one by its words ("put the room we deleted back" undoes that delete, with everything that was removed with it, and any later changes, and says so). `redo_changes` brings changes back and `show_change_history` lists them. It is the same history as the Undo/Redo buttons and the History page, so the same 25 changes apply. Every real change offers an **Undo the last change** quick reply.
+- *Why generation found nothing.* When a run finds no feasible schedule, the reply says what is probably wrong (faculty minimum credits larger than the courses add up to, courses with more credits than the faculty can teach, a course nobody can teach, a course too big for its rooms) and lists your newest changes with a quick reply to undo them. `diagnose_configuration` ("check my configuration for problems") gives the same check on demand. These are likely causes, not proof: the solver has the final word.
+- *Several things in one message.* "Put the room back, then generate a single schedule" makes the assistant call every tool the message needs, in order. The two-step safeguards still apply: a delete is only described and generation only shows its settings, and you confirm in a new message.
+
+**Chats.** The conversation is kept on the server for each browser, so it is still there after you change pages or reload (open the panel and it is drawn again; whether the panel is open is remembered for the tab). The button at the left of the panel header opens the **chat history**, a sidebar like the one in Claude: your chats newest first, grouped by day (Today, Yesterday, Previous 7 days, ...). Click a chat to open it, use **New chat** for a fresh one, and the bin that appears on a row deletes it (the row asks "Delete?" in place, no pop-up). The sidebar is open by default on a wide screen and remembered in the browser; on a phone it slides over the chat. Each chat has its own memory for the AI, and a new chat or a switch forgets anything that was waiting for a "yes" (a delete, generation settings). If a request is still running when the page changes, the panel shows it as working and draws the answer when it is done. The history is locked while a request runs. At most 20 chats of 200 lines are kept (the oldest chat is dropped). Chats live with the browser session like the configuration does, so restarting the server starts fresh.
+
+**How a request runs.**
+- The AI can only call the tools in `gui/ai/tools.py`, and every tool calls the same controller the normal pages use. Duplicate names, unknown rooms and bad values are rejected the same way the forms reject them, and a rejected change leaves the configuration as it was.
+- Your request stays on screen with a **"Working on it…"** status. When the request finishes, the status is replaced by the result, and the chat box takes a new request. If the AI changed something, the top bar shows **Unsaved changes** and the page behind the chat **updates in place**, with no reload: a new room appears in the list, new schedules in the Schedule Viewer. The chat stays open, and your scroll position, open dropdowns and list filter are kept. The page is *not* swapped while you have typed something into one of its forms (that would throw it away) or while the Schedule Generator page is running a generation; then the reply offers a **Refresh page** button instead.
+- While a request is running, Send and Enter are ignored, so a double click or a second Enter does nothing. The server also refuses a second request from the same browser until the first one is done, so a change can't be applied twice.
+- **Look first, then act.** The AI can read the configuration (lists, details) and then decide, so "delete the room with the smallest number" or "give the biggest room 10 more seats" work in one message. Lookups are only for the AI; any add, update, delete or confirmation ends the request with the application's own message, so the AI can't re-word what really happened. A request is limited to 6 model steps.
+- **Short memory.** The last 6 chat messages are sent along so "yes, that one" or "make it 40 instead" are understood (set `AI_HISTORY_MESSAGES` from 0 to 20; `0` sends each request on its own). They are only a hint: names and numbers always come from the tools, which read the configuration as it is right now, edits you just made by hand included. Deleting still needs a separate confirmation that the application enforces itself.
+- **Only real actions are reported.** The AI's own text never counts as an action: if it says something was added, changed or deleted but no action tool ran, that text is replaced with "That wasn't done: no action ran, so nothing was changed." Every add, change or delete is also checked against the configuration itself, so a step that reports success but left the configuration unchanged is reported as a failure, and a change that did happen is always reported.
+- The reply comes from what the application actually did. A change says **"applied but not yet saved to a file"**: it's in the open configuration and marked as unsaved changes, but it isn't written to disk until you save it.
+- AI service errors are retried at most twice, with a 60-second timeout. After that you get a "couldn't finish" message, and nothing is changed.
+
+Tests use a fake AI (`tests/test_ai_chat.py`, `tests/test_ai_tools.py`, `tests/test_ai_changes.py`, `tests/test_ai_generation.py`, `tests/test_ai_chats.py`, `tests/test_ai_smarter.py`) or a mocked OpenAI endpoint (`tests/test_ai_langchain.py`), so no key is needed and no API calls are made.
+
 ## Behavior shared by every page
 
 ### Errors and error pages
@@ -231,8 +365,10 @@ The GUI follows Model–View–Controller. User actions go through a controller;
 | Layer | Where | Responsibility |
 |---|---|---|
 | **Model** | `app/session.py` | `Session`: the current `CombinedConfig`, available schedules, unsaved-changes flag, saved configuration snapshots. Load/save through the library's Pydantic models. |
+| | `app/memento.py`, `app/history.py` | Undo and redo with the Memento pattern: one memento class per kind of configuration item, and the history that keeps them (see [Design patterns](#design-patterns)). |
 | | `app/crud.py` | `apply_edit()`: every configuration change runs inside the library's `edit_mode()`, so only a fully valid configuration is ever stored. |
 | | `app/schedule_ops.py` | Schedule generation through `Scheduler`, reported as a `GenerationOutcome`. |
+| | `app/generation_job.py` | One generation run on a background thread. `GenerationJob` is the subject of the Observer pattern: it notifies `GenerationObserver`s (`ProgressTracker` here, `ResultsStore` in the controller) of progress and of the result (see [Design patterns](#design-patterns)). |
 | | `app/schedule_io.py` | Neutral schedule records (`Assignment`, `MeetingTime`) used by both generated and loaded schedules; JSON/CSV reading, writing and validation. |
 | | `course-constraint-scheduler` | The configuration models, validation rules and Z3 solver. Validation is never reimplemented in this project. |
 | **Controller** | `gui/controllers/` | One module per area: `config_controller.py` (lifecycle), `timeslots.py`, `rooms.py`, `labs.py`, `courses.py`, `faculty.py`, `patterns.py`, `meetings.py`, `settings.py`, `schedule_controller.py` (generate, load, export, clear). `errors.py` defines `ControllerError` / `FieldError`; `uploads.py` reads uploaded files safely. Controllers return plain data and never touch templates or `HttpResponse`. |
@@ -240,20 +376,110 @@ The GUI follows Model–View–Controller. User actions go through a controller;
 | | `gui/templates/gui/` | Pages and shared components (`components/`), including `base.html` (navigation, status, loading banner). |
 | | `gui/forms.py` | Django forms: field types, labels, help text, confirmation checkboxes. |
 | | `gui/static/gui/` | CSS and JavaScript (`loading.js` for busy states, `theme.js` for dark mode). |
+| **AI** | `gui/ai/` | `tools.py`: the fixed tool set (each tool has a Pydantic argument schema and calls a controller); `generation.py`: validate, review settings, generate, load/new configuration; `undo.py`: undo, redo, change history; `diagnose.py`: why a run found nothing; `chats.py`: the saved chats; `service.py`: one request (duplicate guard, reply built from tool results); `runner.py`: the LangChain agent; `prompt.py`: base prompt. `gui/views_ai.py` has the endpoint the chat button posts to and a read-only progress endpoint; the button itself is `templates/gui/components/chat_widget.html` with `static/gui/js/chat.js`. |
 | **Glue** | `gui/session_store.py` | Gives each browser its own `Session` (keyed by an id in a signed-cookie session). |
 | | `gui/middleware.py` | Turns unexpected exceptions into the friendly error page and logs the traceback. |
 | | `config/` | Django settings and root URL configuration; `gui/urls.py` maps each URL to a view. |
 
 The Sprint 1 shell (`app/shell.py`, `app/commands/`) uses the same Model layer, which is why both interfaces validate and save configurations identically.
 
+### Design patterns
+
+MVC (above) is one of the patterns used. The others are described here as they are added: Memento and Observer.
+
+#### Memento (undo and redo)
+
+- **Problem.** Every configuration edit must be undoable and redoable, including a delete that changes rooms, courses
+  and faculty at once, without the history having to know how each kind of item is stored.
+- **Where.** `app/memento.py` (the pattern), `app/history.py` (the caretaker), `app/commands/common.py`
+  (`apply_session_edit`, where an edit is wrapped), `gui/controllers/history_controller.py` (what the buttons call).
+- **Participants.**
+  - *Originator*: `ConfigOriginator` creates mementos from the loaded configuration and restores it from them.
+  - *Memento*: the abstract `Memento` and one concrete class per kind of item, `RoomsMemento`, `LabsMemento`,
+    `CoursesMemento`, `FacultyMemento`, `PatternsMemento` (which carries each pattern's meetings), `TimeSlotsMemento`
+    and `SettingsMemento`. Each knows how to read and write only its own part of the configuration, and how to
+    describe a change to it in words.
+  - *Composite*: `CompositeMemento` holds the mementos of several parts, so a cascading delete is still one step.
+  - *Caretaker*: `ConfigHistory` keeps the undo and redo stacks of composite mementos. It never looks inside them.
+- **How they interact.** `apply_session_edit` asks the history to `capture()` (the originator saves a memento of every
+  part) and runs the edit. If the library accepts it, `record()` keeps only the mementos whose part changed. On Undo
+  the caretaker has the originator save the parts it is about to replace (for Redo), then `restore()` puts the old
+  parts back through the library's edit mode, which validates the whole result and changes nothing if it is refused.
+- **Why it fits.** The state is saved and restored without the caretaker (or any page) knowing how it is stored, so
+  encapsulation is kept; and because each kind of item has its own memento, an edit to one room saves one slice of
+  the configuration rather than a copy of everything.
+
+#### Observer (schedule generation)
+
+- **Problem.** When a background generation run makes progress or ends, more than one part of the application needs to
+  know: the session must store (or clear) the schedules and be released, and the progress display needs the number of
+  schedules found so far. A job that was handed one callback could serve only one of them, and adding another would
+  mean changing the job.
+- **Where.** `app/generation_job.py` (the pattern: `GenerationJob`, `GenerationObserver`, `ProgressTracker`),
+  `gui/controllers/schedule_controller.py` (`ResultsStore`, and `start_generation`, where it is subscribed). Tests:
+  `tests/test_generation_observers.py` and `tests/test_generation_progress.py`.
+- **Participants.**
+  - *Subject*: `GenerationJob` keeps a list of observers (`subscribe`, `unsubscribe`, `observers`) and notifies each
+    one, in subscription order, from its worker thread. It only runs the solver and notifies; it does not store
+    anything or track progress itself.
+  - *Observer*: the base class `GenerationObserver` with two no-op hooks, `on_progress(job, found, limit)` after each
+    schedule the solver finds and `on_finished(job, result)` once when the run ends. An observer overrides only the
+    hooks it needs.
+  - *Concrete observers*: `ProgressTracker` (found, limit and percent; every job subscribes one first, and
+    `job.snapshot()`, which the progress bar and the AI chat poll, reads it) and `ResultsStore` (on a successful run it
+    stores the schedules, when no schedule is feasible it clears the old ones, for a cancel, an invalid configuration
+    or an error it keeps them, and it always releases the session).
+- **How they interact.** `start_generation` creates the job, subscribes a `ResultsStore` (the tracker is already
+  subscribed) and starts it. For each schedule the solver finds, the job tells every observer, the tracker first, so
+  it is up to date before anyone else hears about it. When the run ends the job tells every observer the result,
+  **before** the job counts as finished, so anyone who sees "finished" can rely on the results having been stored.
+- **When an observer fails.** Every observer is always notified. A failing `on_progress` is logged and ignored. A
+  failing `on_finished` (for example, storing the results failed) makes the job's result a runtime error with that
+  message, and the other observers still receive the original result. The old `on_finish=` argument still works: it
+  subscribes a small observer that calls the function.
+- **Why it fits.** The subject does not know who is listening, so a new subscriber (a log line, a test recorder, another
+  display) needs no change to the job (open/closed); each observer has one job (single responsibility); and the job
+  depends on the abstract `GenerationObserver`, not on the controller or the session, which keeps the model layer free
+  of Django and of the GUI.
+#### Adapter (the AI service)
+
+- **Problem.** The chat needs a language model to pick tools, but the rest of the app should not depend on LangChain or
+  OpenAI. Their tool objects, agent loop and message format are not ours, and routine tests must run with no AI and no
+  API key.
+- **Where.** `gui/ai/runner.py` (`Runner`, `LangChainRunner`), used by `gui/ai/service.py` (`get_runner`, `_run`). The
+  tools it adapts are `AiTool` and `ToolBox` (`gui/ai/base.py`, `gui/ai/tools.py`). Tests: `tests/test_ai_adapter.py`,
+  `tests/test_ai_langchain.py`.
+- **Participants.**
+  - *Target*: `Runner`, the one interface the app wants: `run(text, toolbox)` returns the model's own text, or an empty
+    string when an action's own result is the answer.
+  - *Client*: `service._run` in `gui/ai/service.py`. It asks `get_runner()` for a runner and calls `run`; it knows
+    nothing about LangChain.
+  - *Adaptee*: LangChain's agent and tool classes (`create_agent`, `StructuredTool`), talking to OpenAI.
+  - *Adapter*: `LangChainRunner`. `langchain_tools()` turns each of our tools (name, description, argument schema,
+    handler) into a LangChain tool, and `reply_from()` turns LangChain's answer back into plain text. Reading the API
+    key (`load_api_key`) is kept separate from this translation.
+- **How they interact.** The client calls `run`. The adapter builds the LangChain tools from the request's tool box and
+  starts the agent. Every tool call the model makes is forwarded to `toolbox.call`, which checks the arguments, runs
+  the controller and records what really happened. When the agent stops, `reply_from` returns the single piece of text
+  the client expects.
+- **Why it fits.** The client talks only to the interface it wants, and the incompatible LangChain interface is
+  converted in one class. Replacing the real AI with a fake one (as the tests do) or with another provider only
+  changes what `get_runner` returns.
+
 ## Running the tests
 
+Run the same checks as CI from the repository root:
+
 ```bash
-uv run pytest            # whole suite
-uv run pytest tests/test_gui_rooms_labs.py -q   # one file
+uv sync --locked
+uv build
+uv run ruff check .
+uv run ruff format --check .
+uv run ty check
+uv run pytest --cov --cov-report=xml
 ```
 
-The tests live in `tests/`: `test_crud_*` and `test_schedule_*` cover the model and CLI layer, `test_gui_*` cover the controllers and pages through Django's test client.
+Coverage measures team-written code in `app/`: `app.commands.common`, `app.crud`, `app.generation_job`, `app.history`, `app.memento`, `app.schedule_io`, `app.schedule_ops`, and `app.session`. `app.commands.common` is included because its shared edit helper is used by both the CLI and GUI; its prompt helpers are included as part of that module. Third-party scheduler-library code is outside the target. Coverage is line coverage and fails below 80%; reproduce it locally with `uv run pytest --cov --cov-report=xml`. CI uploads the XML report to Codecov. No OpenAI secret is needed for routine tests. The tests live in `tests/`: `test_crud_*` and `test_schedule_*` cover the model and CLI layer, `test_gui_*` cover the controllers and pages through Django's test client.
 
 ## Command-line shell (Sprint 1)
 

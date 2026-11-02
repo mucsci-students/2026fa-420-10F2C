@@ -33,16 +33,18 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 
 from app import schedule_io, schedule_ops
-from app.generation_job import STATE_FINISHED, GenerationJob
-from app.schedule_io import Assignment
 from app.commands.common import VALID_OPTIMIZER_FLAGS
+from app.generation_job import GenerationJob, GenerationObserver
+from app.schedule_io import Assignment
 from gui.controllers.common import require_config
 from gui.controllers.errors import ControllerError, FieldError
 from gui.controllers.uploads import read_upload
 from gui.session_store import get_session
 
 IMPORT_FIELD = "schedule_file"
-NO_SCHEDULES_MESSAGE = "There are no schedules yet. Generate schedules or load a schedule file first."
+NO_SCHEDULES_MESSAGE = (
+    "There are no schedules yet. Generate schedules or load a schedule file first."
+)
 JSON_CONTENT_TYPE = "application/json; charset=utf-8"
 CSV_CONTENT_TYPE = "text/csv; charset=utf-8"
 
@@ -70,7 +72,10 @@ def get_schedules(request) -> list[list[Assignment]]:
     schedules = get_session(request).schedules
     if not schedules:
         raise ControllerError(NO_SCHEDULES_MESSAGE)
-    return [_as_records(schedule, number) for number, schedule in enumerate(schedules, start=1)]
+    return [
+        _as_records(schedule, number)
+        for number, schedule in enumerate(schedules, start=1)
+    ]
 
 
 def get_schedule(request, index: int) -> list[Assignment]:
@@ -85,13 +90,15 @@ def get_schedule(request, index: int) -> list[Assignment]:
     return _as_records(schedules[index], index + 1)
 
 
-def replace_schedules(request, schedules: list) -> None:
+def replace_schedules(
+    request, schedules: list, version=None, tracked: bool = True
+) -> None:
     """Store a new set of results (generated, loaded, or [] to clear).
 
     The one place session.schedules is written, so anything that should
     happen whenever results change can be added here.
     """
-    _set_schedules(get_session(request), schedules)
+    _set_schedules(get_session(request), schedules, version, tracked)
 
 
 def _as_records(schedule, number: int) -> list[Assignment]:
@@ -120,13 +127,18 @@ def generate(request, limit_override=None, optimizer_overrides=None):
 
     optimizer_overrides = _validated_overrides(limit_override, optimizer_overrides)
 
+    # Remember which version of the configuration these schedules come from, so
+    # the pages can say when the configuration has changed since (stale notice).
+    started_from = session.history.version
     with generation_in_progress(request):
-        result = schedule_ops.generate_schedules(config, limit_override, optimizer_overrides)
+        result = schedule_ops.generate_schedules(
+            config, limit_override, optimizer_overrides
+        )
 
     if result.outcome == schedule_ops.GenerationOutcome.SUCCESS:
-        replace_schedules(request, result.schedules)
+        replace_schedules(request, result.schedules, started_from)
     elif result.outcome == schedule_ops.GenerationOutcome.NO_FEASIBLE_SCHEDULE:
-        replace_schedules(request, [])             # same as the CLI: don't leave stale results
+        replace_schedules(request, [])  # same as the CLI: don't leave stale results
     return result
 
 
@@ -163,11 +175,17 @@ def load_schedule_json(request, uploaded_file) -> int:
     try:
         schedules = schedule_io.parse_schedule_file(raw)
     except schedule_io.ScheduleFileError as error:
-        items = [FieldError(IMPORT_FIELD, f"{error.message} Your current schedules were kept.")]
+        items = [
+            FieldError(
+                IMPORT_FIELD, f"{error.message} Your current schedules were kept."
+            )
+        ]
         items += [FieldError(IMPORT_FIELD, problem) for problem in error.problems]
         raise ControllerError(items) from error
 
-    replace_schedules(request, schedules)
+    replace_schedules(
+        request, schedules, tracked=False
+    )  # an imported file: origin unknown
     return len(schedules)
 
 
@@ -216,19 +234,26 @@ def export_schedules(request, index: int | None, file_format: str) -> ExportFile
     try:
         exporter = EXPORTERS[file_format]
     except KeyError:
-        raise ControllerError(f"Unknown export format '{file_format}'. Choose JSON or CSV.") from None
+        raise ControllerError(
+            f"Unknown export format '{file_format}'. Choose JSON or CSV."
+        ) from None
     return exporter(request, index)
 
 
-def _schedules_to_export(request, index: int | None) -> tuple[list[list[Assignment]], str]:
+def _schedules_to_export(
+    request, index: int | None
+) -> tuple[list[list[Assignment]], str]:
     """The schedules to write and the file name without its extension."""
     if index is None:
         schedules = get_schedules(request)
         return schedules, f"schedules-all-{len(schedules)}"
     return [get_schedule(request, index)], f"schedule-{index + 1}"
 
+
 _GENERATION_LOCK = threading.Lock()  # the dev server is threaded
-BUSY_MESSAGE = "A schedule generation is already running. Wait for it to finish, then try again."
+BUSY_MESSAGE = (
+    "A schedule generation is already running. Wait for it to finish, then try again."
+)
 
 
 @contextmanager
@@ -271,37 +296,62 @@ def is_generating(request) -> bool:
 # ---------------------------------------------------------------------- #
 def _validated_overrides(limit_override, optimizer_overrides):
     """Check a run's one-off overrides; return the flag list (or None)."""
-    if limit_override is not None:
-        if isinstance(limit_override, bool) or not isinstance(limit_override, int) or limit_override <= 0:
-            raise ControllerError([FieldError("limit", "Generation limit must be a positive whole number.")])
+    if limit_override is not None and (
+        isinstance(limit_override, bool)
+        or not isinstance(limit_override, int)
+        or limit_override <= 0
+    ):
+        raise ControllerError(
+            [FieldError("limit", "Generation limit must be a positive whole number.")]
+        )
 
     if optimizer_overrides is not None:
         optimizer_overrides = list(optimizer_overrides)
-        unknown = [flag for flag in optimizer_overrides if flag not in VALID_OPTIMIZER_FLAGS]
+        unknown = [
+            flag for flag in optimizer_overrides if flag not in VALID_OPTIMIZER_FLAGS
+        ]
         if unknown:
             raise ControllerError(
-                [FieldError("optimizer_flags", f"'{flag}' is not a valid optimizer flag.") for flag in unknown]
+                [
+                    FieldError(
+                        "optimizer_flags", f"'{flag}' is not a valid optimizer flag."
+                    )
+                    for flag in unknown
+                ]
             )
     return optimizer_overrides
 
 
-def _set_schedules(session, schedules) -> None:
-    """The one place session.schedules is written (see replace_schedules)."""
-    session.schedules = list(schedules)
+def _set_schedules(session, schedules, version=None, tracked=True) -> None:
+    """The one place session.schedules is written (see replace_schedules).
+    `version` is the configuration version they were generated from (default:
+    the configuration as it is now); `tracked=False` is for schedules of unknown
+    origin (an imported file), which are never flagged as out of date."""
+    session.set_schedules(list(schedules), version, tracked)
 
 
-def _finish_generation(session, job, result) -> None:
-    """Runs on the worker thread when a background run ends: store the
-    results exactly as generate() does, then release the session."""
-    try:
-        if result.outcome == schedule_ops.GenerationOutcome.SUCCESS:
-            _set_schedules(session, result.schedules)
-        elif result.outcome == schedule_ops.GenerationOutcome.NO_FEASIBLE_SCHEDULE:
-            _set_schedules(session, [])  # don't leave stale results, same as generate()
-        # invalid configuration, runtime error and cancel keep the previous results
-    finally:
-        with _GENERATION_LOCK:
-            session.generating = False
+class ResultsStore(GenerationObserver):
+    """The results store: an observer of a background run (app/generation_job.py).
+
+    When the run ends it stores the results exactly as generate() does, then releases the session. It runs
+    on the worker thread, before the job counts as finished."""
+
+    def __init__(self, session, started_from=None) -> None:
+        self._session = session
+        self._started_from = started_from
+
+    def on_finished(self, job, result) -> None:
+        try:
+            if result.outcome == schedule_ops.GenerationOutcome.SUCCESS:
+                _set_schedules(self._session, result.schedules, self._started_from)
+            elif result.outcome == schedule_ops.GenerationOutcome.NO_FEASIBLE_SCHEDULE:
+                _set_schedules(
+                    self._session, []
+                )  # don't leave stale results, same as generate()
+            # invalid configuration, runtime error and cancel keep the previous results
+        finally:
+            with _GENERATION_LOCK:
+                self._session.generating = False
 
 
 def start_generation(request, limit_override=None, optimizer_overrides=None) -> dict:
@@ -313,17 +363,14 @@ def start_generation(request, limit_override=None, optimizer_overrides=None) -> 
     session = get_session(request)
     config = require_config(session, "generating schedules")
     optimizer_overrides = _validated_overrides(limit_override, optimizer_overrides)
+    started_from = session.history.version
 
     with _GENERATION_LOCK:
         if session.generating:
             raise ControllerError(BUSY_MESSAGE)
         session.generating = True
-        job = GenerationJob(
-            config,
-            limit_override,
-            optimizer_overrides,
-            on_finish=lambda finished_job, result: _finish_generation(session, finished_job, result),
-        )
+        job = GenerationJob(config, limit_override, optimizer_overrides)
+        job.subscribe(ResultsStore(session, started_from))
         session.generation_job = job
     try:
         job.start()
@@ -382,7 +429,10 @@ def describe_outcome(result) -> tuple[str, str]:
     if result.outcome == outcome.SUCCESS:
         return "success", result.message
     if result.outcome == outcome.NO_FEASIBLE_SCHEDULE:
-        return "warning", "No feasible schedule was found. Check the configuration and try again."
+        return (
+            "warning",
+            "No feasible schedule was found. Check the configuration and try again.",
+        )
     if result.outcome == outcome.CANCELLED:
         return "warning", result.message
     if result.outcome == outcome.INVALID_CONFIG:

@@ -50,6 +50,6 @@ def test_revalidate_passes_for_a_valid_session():
 def test_revalidate_reports_an_invalid_config_without_changing_it():
     session = Session()
     session.load(EXAMPLE)
-    session.config.config.rooms.clear()  # bypasses edit mode on purpose
+    session.require_config().config.rooms.clear()  # bypasses edit mode on purpose
     assert revalidate(session) is not None
-    assert session.config.config.rooms == []  # reported, not repaired
+    assert session.require_config().config.rooms == []  # reported, not repaired

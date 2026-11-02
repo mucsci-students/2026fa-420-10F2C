@@ -22,7 +22,13 @@ def prompt_meeting():
         print("  Fixed start time for this meeting, e.g. 09:00 (blank = none):")
         start_time = input("  > ").strip() or None
         try:
-            return Meeting(day=day, duration=duration, lab=lab, delivery=delivery, start_time=start_time)
+            return Meeting(
+                day=day,  # ty: ignore[invalid-argument-type]
+                duration=duration,
+                lab=lab,
+                delivery=delivery,
+                start_time=start_time,
+            )
         except ValidationError as error:
             print(f"Invalid meeting: {error}")
             print("Let's try that meeting again.")
@@ -115,7 +121,9 @@ def modify_meeting(session):
     updated_meeting = prompt_meeting()
 
     def mutate(draft):
-        draft.time_slot_config.classes[pattern_index].meetings[meeting_index] = updated_meeting
+        draft.time_slot_config.classes[pattern_index].meetings[meeting_index] = (
+            updated_meeting
+        )
 
     try:
         apply_session_edit(session, config, "meeting", mutate)
@@ -140,7 +148,9 @@ def delete_meeting(session):
     if not meetings:
         return
     if len(meetings) == 1:
-        print("Can't delete the only meeting on this pattern -- delete the pattern instead if you don't need it.")
+        print(
+            "Can't delete the only meeting on this pattern -- delete the pattern instead if you don't need it."
+        )
         return
     print("Which meeting would you like to delete?")
     meeting_index = prompt_meeting_index(len(meetings))

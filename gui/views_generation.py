@@ -20,7 +20,8 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
 from app import schedule_ops
-from gui.controllers import schedule_controller, settings as settings_controller
+from gui.controllers import schedule_controller
+from gui.controllers import settings as settings_controller
 from gui.controllers.errors import ControllerError
 from gui.forms import GenerationOverrideForm
 
@@ -48,9 +49,13 @@ def _form_problems(form) -> list[str]:
 @require_POST
 def generation_start(request):
     data = settings_controller.describe_settings(request)
-    form = GenerationOverrideForm(request.POST, flag_choices=data.get("flag_choices", ()))
+    form = GenerationOverrideForm(
+        request.POST, flag_choices=data.get("flag_choices", ())
+    )
     if not form.is_valid():
-        return JsonResponse({"started": False, "errors": _form_problems(form)}, status=400)
+        return JsonResponse(
+            {"started": False, "errors": _form_problems(form)}, status=400
+        )
 
     try:
         status = schedule_controller.start_generation(
@@ -61,7 +66,8 @@ def generation_start(request):
     except ControllerError as error:
         busy = error.message == schedule_controller.BUSY_MESSAGE
         return JsonResponse(
-            {"started": False, "errors": _controller_problems(error)}, status=409 if busy else 400
+            {"started": False, "errors": _controller_problems(error)},
+            status=409 if busy else 400,
         )
     return JsonResponse({"started": True, "status": status})
 

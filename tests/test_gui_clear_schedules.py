@@ -27,11 +27,21 @@ def page(response) -> str:
 
 
 def schedule(faculty):
-    return [Assignment("CMSC 140.01", faculty, "Roddy 136", None, (MeetingTime("MON", "09:00", "09:50", 50),))]
+    return [
+        Assignment(
+            "CMSC 140.01",
+            faculty,
+            "Roddy 136",
+            None,
+            (MeetingTime("MON", "09:00", "09:50", 50),),
+        )
+    ]
 
 
 def load(client, *faculty):
-    raw = schedule_io.schedules_to_json([schedule(name) for name in faculty]).encode("utf-8")
+    raw = schedule_io.schedules_to_json([schedule(name) for name in faculty]).encode(
+        "utf-8"
+    )
     upload = SimpleUploadedFile("fall.json", raw, content_type="application/json")
     return client.post(IMPORT_URL, {"schedule_file": upload}, follow=True)
 
@@ -72,7 +82,9 @@ class TestClearSchedules:
 def test_clear_button_is_disabled_when_there_are_no_schedules(client):
     html = page(client.get(VIEWER_URL))
     assert "Nothing to clear yet." in html
-    assert 'disabled aria-describedby="clear-unavailable">Clear schedules</button>' in html
+    assert (
+        'disabled aria-describedby="clear-unavailable">Clear schedules</button>' in html
+    )
     assert f'href="{CLEAR_URL}"' not in html
 
 
@@ -93,8 +105,13 @@ def test_clicking_clear_asks_for_confirmation_first(client):
     assert response.status_code == 200
     assert "Remove all <strong>3</strong> schedules from the viewer?" in html
     assert "This cannot be undone." in html
-    assert 'name="action" value="confirm"' in html and 'name="action" value="cancel"' in html
-    assert "<strong>3</strong> schedules available." in page(client.get(VIEWER_URL))  # nothing removed yet
+    assert (
+        'name="action" value="confirm"' in html
+        and 'name="action" value="cancel"' in html
+    )
+    assert "<strong>3</strong> schedules available." in page(
+        client.get(VIEWER_URL)
+    )  # nothing removed yet
 
 
 def test_cancel_keeps_the_schedules(client):
@@ -124,8 +141,12 @@ def test_a_post_without_confirm_does_not_clear(client):
 
 def test_one_schedule_uses_singular_wording(client):
     load(client, "A")
-    assert "Remove all <strong>1</strong> schedule from the viewer?" in page(client.get(CLEAR_URL))
-    assert "Cleared 1 schedule." in page(client.post(CLEAR_URL, {"action": "confirm"}, follow=True))
+    assert "Remove all <strong>1</strong> schedule from the viewer?" in page(
+        client.get(CLEAR_URL)
+    )
+    assert "Cleared 1 schedule." in page(
+        client.post(CLEAR_URL, {"action": "confirm"}, follow=True)
+    )
 
 
 @pytest.mark.parametrize("method", ["get", "post"])
@@ -138,4 +159,6 @@ def test_nothing_to_clear_goes_back_to_the_viewer(client, method):
 def test_clearing_keeps_the_configuration(client):
     load(client, "A")
     client.post(CLEAR_URL, {"action": "confirm"})
-    assert "none loaded" not in page(client.get("/"))  # the config status in the nav is unchanged
+    assert "none loaded" not in page(
+        client.get("/")
+    )  # the config status in the nav is unchanged

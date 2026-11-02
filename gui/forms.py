@@ -26,7 +26,13 @@ import re
 
 from django import forms
 
-from gui.constants import DAY_NAMES, OPTIMIZER_FLAG_HELP, OPTIMIZER_FLAGS_INTRO
+from gui.constants import (
+    DAY_NAMES,
+    FILENAME_PATTERN,
+    MAX_FILENAME_LENGTH,
+    OPTIMIZER_FLAG_HELP,
+    OPTIMIZER_FLAGS_INTRO,
+)
 
 # <input type="time"> submits "HH:MM" (or "HH:MM:SS" if a step is set); a plain
 # text fallback in older browsers may send "9:00", which %H:%M also accepts.
@@ -46,7 +52,9 @@ class TimeBlockFieldsForm(forms.Form):
     """start / end / spacing -- used as-is for editing a block (the day is
     fixed by the URL) and as the base of the add form."""
 
-    start = _time_field("Start time", "24-hour time, e.g. 09:00. Classes may begin at this time.")
+    start = _time_field(
+        "Start time", "24-hour time, e.g. 09:00. Classes may begin at this time."
+    )
     end = _time_field("End time", "Meetings must finish by this time.")
     spacing = forms.IntegerField(
         label="Spacing (minutes)",
@@ -67,7 +75,7 @@ class AddTimeBlockForm(TimeBlockFieldsForm):
         label="Day",
         choices=[(code, f"{name} ({code})") for code, name in DAY_NAMES.items()],
     )
-    field_order = ["day", "start", "end", "spacing"]
+    field_order = ["day", "start", "end", "spacing"]  # noqa: RUF012
 
 
 class TimingOptionsForm(forms.Form):
@@ -84,7 +92,6 @@ class TimingOptionsForm(forms.Form):
         min_value=0,
         help_text="Global scheduler timing option; see the scheduler library documentation.",
     )
-
 
 
 class ConfirmReplaceMixin:
@@ -109,8 +116,12 @@ class ConfirmReplaceMixin:
     """
 
     confirm_field = "confirm_replace"
+    fields: dict  # provided by django.forms.Form
+    cleaned_data: dict  # provided by django.forms.Form
 
-    def require_confirmation(self, needed: bool, *, label: str, error: str, help_text: str = ""):
+    def require_confirmation(
+        self, needed: bool, *, label: str, error: str, help_text: str = ""
+    ):
         self._confirm_error = error if needed else None
         if needed:
             self.fields[self.confirm_field] = forms.BooleanField(
@@ -168,8 +179,12 @@ class OptimizerFlagsWidget(forms.CheckboxSelectMultiple):
 
     option_template_name = "gui/widgets/flag_option.html"
 
-    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
-        option = super().create_option(name, value, label, selected, index, subindex=subindex, attrs=attrs)
+    def create_option(
+        self, name, value, label, selected, index, subindex=None, attrs=None
+    ):
+        option = super().create_option(
+            name, value, label, selected, index, subindex=subindex, attrs=attrs
+        )
         description = OPTIMIZER_FLAG_HELP.get(str(value), "")
         option["help"] = description
         if description:
@@ -199,7 +214,9 @@ class GenerationOverrideForm(forms.Form):
 
     def __init__(self, *args, flag_choices=(), **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["optimizer_flags"].choices = [(flag, flag.replace("_", " ").title()) for flag in flag_choices]
+        self.fields["optimizer_flags"].choices = [
+            (flag, flag.replace("_", " ").title()) for flag in flag_choices
+        ]
         self.fields["optimizer_flags"].widget.attrs["class"] = "flag-grid"
 
 
@@ -237,7 +254,7 @@ class ScheduleExportForm(forms.Form):
     schedule = ScheduleExportChoiceField(
         label="Schedule",
         coerce=_schedule_choice,
-        help_text="The schedule the \"This Schedule\" buttons export.",
+        help_text='The schedule the "This Schedule" buttons export.',
     )
     file_format = forms.ChoiceField(
         choices=[("json", "JSON"), ("csv", "CSV")],
@@ -247,7 +264,8 @@ class ScheduleExportForm(forms.Form):
     def __init__(self, *args, schedule_count=0, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["schedule"].choices = [
-            (number, f"Schedule {number} of {schedule_count}") for number in range(1, schedule_count + 1)
+            (number, f"Schedule {number} of {schedule_count}")
+            for number in range(1, schedule_count + 1)
         ]
 
     def clean(self):
@@ -274,7 +292,10 @@ class ConfigNewForm(ConfirmReplaceMixin, forms.Form):
         self.require_confirmation(
             bool(discard_note),
             label=f"Discard {discard_note}",
-            help_text="Starting a new configuration replaces the one you have now. Save it first to keep it.",
+            help_text=(
+                "Starting a new configuration replaces the one you have now. Save it first to keep it for good; "
+                "until then it is kept for this session and can be brought back with Restore previous configuration."
+            ),
             error=f"Tick this box to confirm discarding {discard_note}.",
         )
 
@@ -299,9 +320,35 @@ class ConfigLoadForm(ConfirmReplaceMixin, forms.Form):
         self.require_confirmation(
             bool(discard_note),
             label=f"Discard {discard_note}",
-            help_text="Loading a file replaces the configuration you have now. Save it first to keep it.",
+            help_text=(
+                "Loading a file replaces the configuration you have now. Save it first to keep it for good; "
+                "until then it is kept for this session and can be brought back with Restore previous configuration."
+            ),
             error=f"Tick this box to confirm discarding {discard_note}.",
         )
+
+
+class ConfigSaveForm(forms.Form):
+    """Configuration Editor: the file name box next to Save (Section 9).
+
+    Usability only: the controller makes the name safe and adds .json, and the
+    browser decides where the download goes. The AI chat's Save JSON box has
+    the same limits (gui/constants.py FILENAME_PATTERN / MAX_FILENAME_LENGTH).
+    """
+
+    filename = forms.CharField(
+        label="File name",
+        required=False,
+        max_length=MAX_FILENAME_LENGTH,
+        help_text="Letters, numbers, spaces, dots, dashes and underscores. .json is added if it is missing.",
+        widget=forms.TextInput(
+            attrs={"pattern": FILENAME_PATTERN, "autocomplete": "off"}
+        ),
+    )
+
+    def __init__(self, *args, save_name="", **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["filename"].initial = save_name
 
 
 # ---------------------------------------------------------------------- #
@@ -329,7 +376,9 @@ def parse_availability(text):
             continue
         match = _AVAILABILITY_LINE.match(line)
         if not match:
-            problems.append(f'Line {number} ("{line}") is not in the form MON 09:00-17:00.')
+            problems.append(
+                f'Line {number} ("{line}") is not in the form MON 09:00-17:00.'
+            )
             continue
         day = match.group(1).upper()
         if day not in DAY_NAMES:
@@ -361,7 +410,9 @@ class _SpaceForm(forms.Form):
         label="Name",
         help_text="Must be unique. It can only be changed while no course or faculty member uses it.",
     )
-    capacity = forms.IntegerField(label="Capacity", min_value=1, help_text="Number of seats (a whole number).")
+    capacity = forms.IntegerField(
+        label="Capacity", min_value=1, help_text="Number of seats (a whole number)."
+    )
     features = forms.CharField(
         label="Features",
         required=False,
@@ -526,102 +577,14 @@ COURSE_MODALITY_CHOICES = [
 ]
 
 
-class CourseForm(forms.Form):
-    """Add or edit one CourseConfig record.
-
-    The constructor receives names from the controller instead of reading
-    scheduler models in the view. That keeps the form responsible only for
-    user input shape while the controller owns cross-record validation.
-    """
-
-    course_id = forms.CharField(
-        label="Course ID",
-        help_text="Base identifier, such as CMSC 420. Repeated IDs create separate sections.",
-    )
-    section_id = forms.CharField(
-        label="Section ID",
-        required=False,
-        help_text="Optional suffix, such as 01. Leave blank to number by input order.",
-    )
-    credits = forms.IntegerField(label="Credits", min_value=1, help_text="Credit hours for this section.")
-    capacity = forms.IntegerField(
-        label="Expected enrollment",
-        min_value=1,
-        help_text="Students expected in this section; assigned rooms and labs must accommodate it.",
-    )
-    modality = forms.ChoiceField(
-        label="Modality",
-        choices=COURSE_MODALITY_CHOICES,
-        initial="in_person",
-        help_text="Required delivery composition for the selected class pattern.",
-    )
-    room = forms.MultipleChoiceField(
-        label="Candidate rooms",
-        required=False,
-        widget=forms.CheckboxSelectMultiple,
-        help_text="Rooms the scheduler may use for lecture meetings.",
-    )
-    lab = forms.MultipleChoiceField(
-        label="Candidate labs",
-        required=False,
-        widget=forms.CheckboxSelectMultiple,
-        help_text="Labs the scheduler may use. Leave blank when the section has no lab meeting.",
-    )
-    conflicts = forms.MultipleChoiceField(
-        label="Conflicting courses",
-        required=False,
-        widget=forms.CheckboxSelectMultiple,
-        help_text="Sections of these course IDs cannot overlap with this section.",
-    )
-    faculty = forms.MultipleChoiceField(
-        label="Faculty candidates",
-        required=False,
-        widget=forms.CheckboxSelectMultiple,
-        help_text="Leave blank to derive candidates from faculty course preferences.",
-    )
-    required_room_features = forms.CharField(
-        label="Required room features",
-        required=False,
-        help_text="Separate feature tags with commas. Leave blank when none are required.",
-    )
-    required_lab_features = forms.CharField(
-        label="Required lab features",
-        required=False,
-        help_text="Separate feature tags with commas. Leave blank when none are required.",
-    )
-    reserve_room_during_lab = forms.BooleanField(
-        label="Reserve the lecture room during lab meetings",
-        required=False,
-        initial=True,
-        help_text="Keep the selected lecture room occupied while this section's lab meets.",
-    )
-
-    def __init__(self, *args, course_names=(), room_names=(), lab_names=(), faculty_names=(), **kwargs):
-        """Populate checkbox choices from plain controller-provided names."""
-        super().__init__(*args, **kwargs)
-        self.fields["room"].choices = [(name, name) for name in sorted(set(room_names))]
-        self.fields["lab"].choices = [(name, name) for name in sorted(set(lab_names))]
-        self.fields["conflicts"].choices = [(name, name) for name in sorted(set(course_names))]
-        self.fields["faculty"].choices = [(name, name) for name in sorted(set(faculty_names))]
-
-    def clean_section_id(self):
-        """Use None for automatic section numbering, as required by CourseConfig."""
-        return self.cleaned_data["section_id"].strip() or None
-
-    def clean_faculty(self):
-        """An empty candidate list means the scheduler derives faculty choices."""
-        return self.cleaned_data["faculty"] or None
-
-
-# ---------------------------------------------------------------------- #
-#  Class Patterns and Meetings (Section 7). Forms only check shape (a whole
-#  number, a real time, a listed choice); the controllers
-#  (gui/controllers/patterns.py, meetings.py) and the scheduler library decide
-#  whether the values are acceptable.
 # ---------------------------------------------------------------------- #
 # The three delivery modes the scheduler's Meeting accepts (same list the
 # command-line shell offers in app/commands/meetings.py).
-DELIVERY_CHOICES = [("in_person", "In person"), ("online", "Online"), ("hybrid", "Hybrid")]
+DELIVERY_CHOICES = [
+    ("in_person", "In person"),
+    ("online", "Online"),
+    ("hybrid", "Hybrid"),
+]
 
 
 def _optional_time_field(label: str, help_text: str) -> forms.TimeField:
@@ -663,7 +626,9 @@ def _lab_field() -> forms.BooleanField:
 
 
 def _delivery_field() -> forms.ChoiceField:
-    return forms.ChoiceField(label="Delivery mode", choices=DELIVERY_CHOICES, initial="in_person")
+    return forms.ChoiceField(
+        label="Delivery mode", choices=DELIVERY_CHOICES, initial="in_person"
+    )
 
 
 _MEETING_START_HELP = "Optional. Leave blank to let the scheduler choose; otherwise a 24-hour time such as 09:00."
@@ -692,7 +657,7 @@ class AddMeetingForm(MeetingFieldsForm):
         choices=[],
         help_text="The meeting is added to this pattern.",
     )
-    field_order = ["pattern", "day", "duration", "lab", "delivery", "start_time"]
+    field_order = ["pattern", "day", "duration", "lab", "delivery", "start_time"]  # noqa: RUF012
 
     def __init__(self, *args, pattern_choices=(), **kwargs):
         super().__init__(*args, **kwargs)
@@ -731,9 +696,11 @@ class AddClassPatternForm(ClassPatternFieldsForm):
     meeting_duration = _duration_field()
     meeting_lab = _lab_field()
     meeting_delivery = _delivery_field()
-    meeting_start_time = _optional_time_field("First meeting: fixed start time", _MEETING_START_HELP)
+    meeting_start_time = _optional_time_field(
+        "First meeting: fixed start time", _MEETING_START_HELP
+    )
 
-    field_order = [
+    field_order = [  # noqa: RUF012
         "credits",
         "start_time",
         "enabled",
@@ -747,8 +714,15 @@ class AddClassPatternForm(ClassPatternFieldsForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Say which fields describe the first meeting.
-        for name in ("meeting_day", "meeting_duration", "meeting_lab", "meeting_delivery"):
-            self.fields[name].label = f"First meeting: {self.fields[name].label[0].lower()}{self.fields[name].label[1:]}"
+        for name in (
+            "meeting_day",
+            "meeting_duration",
+            "meeting_lab",
+            "meeting_delivery",
+        ):
+            self.fields[
+                name
+            ].label = f"First meeting: {self.fields[name].label[0].lower()}{self.fields[name].label[1:]}"
 
     def clean_meeting_start_time(self):
         return _time_or_none(self.cleaned_data.get("meeting_start_time"))
@@ -792,13 +766,18 @@ class CourseForm(forms.Form):
         initial="in_person",
         help_text="Online courses use no rooms or labs; those choices are cleared when you save.",
     )
-    room = _checkbox_list("Rooms", "Rooms this course may use. Leave all unticked only for patterns that need no room.")
+    room = _checkbox_list(
+        "Rooms",
+        "Rooms this course may use. Leave all unticked only for patterns that need no room.",
+    )
     required_room_features = forms.CharField(
         label="Required room features",
         required=False,
         help_text="Separated by commas, e.g. projector. Only rooms with all of them are used. Needs at least one room.",
     )
-    lab = _checkbox_list("Labs", "Labs this course may use. Leave all unticked if it has no lab meeting.")
+    lab = _checkbox_list(
+        "Labs", "Labs this course may use. Leave all unticked if it has no lab meeting."
+    )
     required_lab_features = forms.CharField(
         label="Required lab features",
         required=False,
@@ -809,7 +788,10 @@ class CourseForm(forms.Form):
         required=False,
         initial=True,
     )
-    conflicts = _checkbox_list("Conflicting courses", "Sections of these courses must never meet at the same time as this one.")
+    conflicts = _checkbox_list(
+        "Conflicting courses",
+        "Sections of these courses must never meet at the same time as this one.",
+    )
     faculty = _checkbox_list(
         "Faculty",
         "Who may teach it. Leave all unticked to choose from faculty who list this course as a preference.",
@@ -835,9 +817,13 @@ class CourseForm(forms.Form):
             self.fields[field].choices = [(name, name) for name in names]
         if credit_choices:
             listed = ", ".join(str(value) for value in credit_choices)
-            self.fields["credits"].help_text = f"Must match an enabled class pattern: {listed}."
+            self.fields[
+                "credits"
+            ].help_text = f"Must match an enabled class pattern: {listed}."
         else:
-            self.fields["credits"].help_text = "No class pattern is enabled yet. Add or enable one first."
+            self.fields[
+                "credits"
+            ].help_text = "No class pattern is enabled yet. Add or enable one first."
 
 
 # ---------------------------------------------------------------------- #

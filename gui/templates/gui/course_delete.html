@@ -7,31 +7,5 @@
         <h1>Delete course</h1>
     </div>
 </div>
-<div class="card">
-    {% if not course.can_delete %}
-    <div class="alert alert-error" role="alert">
-        <p><strong>Cannot delete:</strong> {{ course.display }} is the last section of {{ course.course_id }}, which is still used by:</p>
-        <ul>
-            {% for item in course.referenced_by %}<li>{{ item }}</li>{% endfor %}
-        </ul>
-        <p>Remove {{ course.course_id }} from those records first.</p>
-    </div>
-    <div class="form-actions">
-        <a class="btn" href="{% url 'gui:courses' %}">Back to courses</a>
-    </div>
-    {% else %}
-    <p>
-        Are you sure you want to delete <strong>{{ course.display }}</strong>
-        ({{ course.credits }} credits, {{ course.capacity }} seats)? This cannot be undone.
-    </p>
-    <form method="post">
-        {% csrf_token %}
-        <input type="hidden" name="expected_course_id" value="{{ course.course_id }}">
-        <div class="form-actions">
-            <button type="submit" name="action" value="confirm" class="btn btn-danger">Delete course</button>
-            <button type="submit" name="action" value="cancel" class="btn">Cancel</button>
-        </div>
-    </form>
-    {% endif %}
-</div>
+{% include "gui/components/cascade_delete.html" with kind_label="course section" plural_label="courses" list_url="gui:courses" item=course item_name=plan.name %}
 {% endblock %}

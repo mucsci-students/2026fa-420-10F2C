@@ -15,6 +15,7 @@ from gui.controllers import rooms as room_controller
 from gui.controllers.errors import ControllerError
 from gui.forms import RoomForm, availability_to_text
 from gui.views import _attach_errors, _flash_warnings
+from gui.views_delete import delete_page
 
 
 def _render_rooms(request, add_form=None):
@@ -58,11 +59,15 @@ def room_edit(request, room_name):
         form = RoomForm(request.POST)
         if form.is_valid():
             try:
-                notices = room_controller.update_room(request, room_name, form.cleaned_data)
+                notices = room_controller.update_room(
+                    request, room_name, form.cleaned_data
+                )
             except ControllerError as error:
                 _attach_errors(form, error)
             else:
-                messages.success(request, f"Room '{form.cleaned_data['name']}' updated.")
+                messages.success(
+                    request, f"Room '{form.cleaned_data['name']}' updated."
+                )
                 _flash_warnings(request, notices)
                 return redirect("gui:rooms")
     else:
@@ -74,31 +79,29 @@ def room_edit(request, room_name):
                 "times": availability_to_text(room["times"]),
             }
         )
-    return render(request, "gui/room_edit.html", {"active": "config", "form": form, "room": room})
+    return render(
+        request, "gui/room_edit.html", {"active": "config", "form": form, "room": room}
+    )
 
 
 def room_delete(request, room_name):
-    """Confirmation page (GET) and the confirm/cancel actions (POST).
+    """Review page (GET) and the confirm/cancel actions (POST).
 
-    A room that a course or faculty member still uses cannot be deleted; the
-    page lists what uses it instead (Section 12).
+    Deleting a room that is still in use is a deliberate cascade: the page lists every
+    record that will change, including any course section that listed only this room
+    (no other room takes its place), and commits everything or nothing (Section 12).
+    The result can be undone.
     """
     try:
         room = room_controller.get_room(request, room_name)
     except ControllerError as error:
         messages.error(request, error.message)
         return redirect("gui:rooms")
-
-    if request.method == "POST":
-        if request.POST.get("action") != "confirm":
-            messages.info(request, "Cancelled.")
-            return redirect("gui:rooms")
-        try:
-            room_controller.delete_room(request, room_name)
-        except ControllerError as error:
-            messages.error(request, error.message)
-        else:
-            messages.success(request, f"Room '{room_name}' deleted.")
-        return redirect("gui:rooms")
-
-    return render(request, "gui/room_delete.html", {"active": "config", "room": room})
+    return delete_page(
+        request,
+        template="gui/room_delete.html",
+        context={"active": "config", "room": room, "plan": room["plan"]},
+        list_url="gui:rooms",
+        done_text=f"Room '{room_name}' deleted.",
+        delete=lambda: room_controller.delete_room(request, room_name),
+    )

@@ -44,13 +44,16 @@ def course_fields(**overrides):
 
 def add_course_to_config(session, monkeypatch, **overrides):
     """Add a course through the command using controlled prompt data."""
-    monkeypatch.setattr(commands, "_prompt_course_fields", lambda config: course_fields(**overrides))
+    monkeypatch.setattr(
+        commands, "_prompt_course_fields", lambda config: course_fields(**overrides)
+    )
     commands.add_course(session)
 
 
 # --------------------------------------------------------------------------- #
 #  Create
 # --------------------------------------------------------------------------- #
+
 
 def test_add_course_appends_new_course(monkeypatch, capsys):
     """Verify that add course appends new course."""
@@ -76,7 +79,11 @@ def test_add_course_allows_a_second_section_of_the_same_id(monkeypatch, capsys):
     add_course_to_config(session, monkeypatch, section_id="A")
     add_course_to_config(session, monkeypatch, section_id="B")
 
-    sections = [c.section_id for c in session.require_config().config.courses if c.course_id == "CS 101"]
+    sections = [
+        c.section_id
+        for c in session.require_config().config.courses
+        if c.course_id == "CS 101"
+    ]
 
     assert sections == ["A", "B"]
     assert "Course added." in capsys.readouterr().out
@@ -100,7 +107,9 @@ def test_add_online_course_with_a_room_is_rejected(monkeypatch, capsys):
     from carrying rooms, labs, or required room features."""
     session = make_session()
 
-    add_course_to_config(session, monkeypatch, modality="online", room=["Placeholder Room"])
+    add_course_to_config(
+        session, monkeypatch, modality="online", room=["Placeholder Room"]
+    )
 
     assert len(session.require_config().config.courses) == 1
     assert "Could not add course" in capsys.readouterr().out
@@ -120,6 +129,7 @@ def test_add_course_with_unknown_faculty_is_rejected(monkeypatch, capsys):
 #  Read
 # --------------------------------------------------------------------------- #
 
+
 def test_view_course_lists_every_course(monkeypatch, capsys):
     """Verify that view course lists every course."""
     session = make_session()
@@ -136,6 +146,7 @@ def test_view_course_lists_every_course(monkeypatch, capsys):
 # --------------------------------------------------------------------------- #
 #  Update
 # --------------------------------------------------------------------------- #
+
 
 def test_modify_course_replaces_in_place(monkeypatch, capsys):
     """Verify that modify course replaces in place."""
@@ -199,6 +210,7 @@ def test_failed_modify_keeps_previous_valid_state(monkeypatch, capsys):
 #  Delete
 # --------------------------------------------------------------------------- #
 
+
 def test_delete_course_removes_unreferenced_course(monkeypatch, capsys):
     """Verify that delete course removes unreferenced course."""
     session = make_session()
@@ -216,11 +228,13 @@ def test_delete_course_removes_unreferenced_course(monkeypatch, capsys):
     assert "Course removed." in capsys.readouterr().out
 
 
-def test_delete_course_blocked_when_another_course_conflicts_with_it(monkeypatch, capsys):
+def test_delete_course_blocked_when_another_course_conflicts_with_it(
+    monkeypatch, capsys
+):
     """Verify that delete course blocked when another course conflicts with it."""
     session = make_session()
     add_course_to_config(session, monkeypatch, conflicts=["PLACEHOLDER 000"])
-    session.dirty = False 
+    session.dirty = False
 
     inputs = iter(["0", "yes"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
@@ -247,7 +261,9 @@ def test_delete_one_section_is_allowed_while_another_remains(monkeypatch, capsys
 
     commands.delete_course(session)
 
-    remaining = [(c.course_id, c.section_id) for c in session.require_config().config.courses]
+    remaining = [
+        (c.course_id, c.section_id) for c in session.require_config().config.courses
+    ]
 
     assert ("CS 101", "A") not in remaining
     assert ("CS 101", "B") in remaining

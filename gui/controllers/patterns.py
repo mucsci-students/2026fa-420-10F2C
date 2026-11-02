@@ -36,14 +36,21 @@ form_data keys (plain Python values; the View's form produces them):
     enabled     bool (optional, default True)
   add_pattern also reads the first meeting, prefixed with "meeting_":
     meeting_day, meeting_duration, meeting_lab, meeting_delivery, meeting_start_time
+  or, instead, "meetings": a list of meeting dicts (day, duration, lab, delivery,
+  start_time) to add a pattern with several meetings in one edit.
 """
 
 from __future__ import annotations
 
 from scheduler.config import ClassPattern, ValidationError
 
+from gui.controllers import dependencies as deps
 from gui.controllers.common import apply_config_edit, require_config
-from gui.controllers.errors import ControllerError, FieldError, translate_validation_error
+from gui.controllers.errors import (
+    ControllerError,
+    FieldError,
+    translate_validation_error,
+)
 from gui.controllers.meetings import (
     build_meeting,
     copy_meetings,
@@ -72,12 +79,16 @@ def _patterns(config):
 def _check_index(config, index: int):
     patterns = _patterns(config)
     if not 0 <= index < len(patterns):
-        raise ControllerError("That class pattern no longer exists. Refresh the page and try again.")
+        raise ControllerError(
+            "That class pattern no longer exists. Refresh the page and try again."
+        )
     return patterns[index]
 
 
-def _apply(session, config, mutate) -> None:
-    apply_config_edit(session, config, "pattern", mutate, form_fields=PATTERN_FIELDS)
+def _apply(session, config, mutate, label=None) -> None:
+    apply_config_edit(
+        session, config, "pattern", mutate, form_fields=PATTERN_FIELDS, label=label
+    )
 
 
 def _check_credits(form_data) -> int | None:
@@ -105,7 +116,7 @@ def _day_set(meetings) -> set[str]:
     return {str(getattr(m.day, "value", m.day)) for m in meetings}
 
 
-def _pattern_row(index: int, pattern) -> dict:
+def _pattern_row(index: int, pattern, usage=None) -> dict:
     meetings = [meeting_row(index, i, m) for i, m in enumerate(pattern.meetings)]
     return {
         "index": index,
@@ -114,6 +125,7 @@ def _pattern_row(index: int, pattern) -> dict:
         "start_time": getattr(pattern, "start_time", None) or "",
         "meetings": meetings,
         "summary": ", ".join(meeting_summary(m) for m in pattern.meetings),
+        "usage": usage if usage is not None else {"in_use": False, "groups": []},
     }
 
 
@@ -131,7 +143,10 @@ def describe_patterns(request) -> dict:
         return {"has_config": False}
     return {
         "has_config": True,
-        "patterns": [_pattern_row(i, p) for i, p in enumerate(_patterns(config))],
+        "patterns": [
+            _pattern_row(i, p, deps.usage(config, "pattern", i))
+            for i, p in enumerate(_patterns(config))
+        ],
     }
 
 
@@ -139,7 +154,11 @@ def get_pattern(request, pattern_index: int) -> dict:
     """One pattern as plain data, for the edit and delete pages."""
     config = _require_config(get_session(request))
     pattern = _check_index(config, pattern_index)
-    return _pattern_row(pattern_index, pattern)
+    row = _pattern_row(
+        pattern_index, pattern, deps.usage(config, "pattern", pattern_index)
+    )
+    row["plan"] = deps.plan(config, "pattern", pattern_index)
+    return row
 
 
 # ---------------------------------------------------------------------- #
@@ -153,15 +172,27 @@ def add_pattern(request, form_data) -> list[str]:
     problems: list[FieldError] = []
     if _check_credits(form_data) is None:
         problems.append(FieldError("credits", CREDITS_MESSAGE))
-    meeting = None
-    try:
-        meeting = build_meeting(form_data, prefix="meeting_")
-    except ControllerError as error:
-        problems.extend(error.errors)
+    meetings = []
+    if form_data.get("meetings"):
+        # Several meetings at once (the AI assistant's add_class_pattern tool),
+        # e.g. Monday/Wednesday/Friday, added in one atomic edit.
+        for number, item in enumerate(form_data["meetings"], start=1):
+            try:
+                meetings.append(build_meeting(item))
+            except ControllerError as error:
+                problems.extend(
+                    FieldError(None, f"Meeting {number}: {e.message}")
+                    for e in error.errors
+                )
+    else:
+        try:
+            meetings.append(build_meeting(form_data, prefix="meeting_"))
+        except ControllerError as error:
+            problems.extend(error.errors)
     if problems:
         raise ControllerError(problems)
 
-    pattern = _build_pattern(form_data, [meeting])
+    pattern = _build_pattern(form_data, meetings)
 
     def mutate(draft):
         _patterns(draft).append(pattern)
@@ -189,18 +220,20 @@ def update_pattern(request, pattern_index: int, form_data) -> list[str]:
 
 
 def delete_pattern(request, pattern_index: int) -> list[str]:
-    """Remove the pattern at pattern_index (the page asks for confirmation
-    first). The library rejects the change if it would leave the configuration
-    invalid, e.g. a course left with no usable pattern."""
+    """Remove the pattern at pattern_index (the page asks for confirmation first).
+
+    If it is the only enabled pattern for its credit value, the course sections
+    with that many credits could not be scheduled any more, so they are deleted
+    too. All of it is one validated edit; the library still rejects the result
+    if the configuration would be left invalid (for example with no courses at all)."""
     session = get_session(request)
     config = _require_config(session)
     _check_index(config, pattern_index)
-
-    def mutate(draft):
-        del _patterns(draft)[pattern_index]
-
-    _apply(session, config, mutate)
-    return []
+    the_plan = deps.plan(config, "pattern", pattern_index)
+    deps.resolve(the_plan)
+    mutate, notices = deps.build(config, "pattern", pattern_index, the_plan)
+    _apply(session, config, mutate, label=f"Delete {the_plan.name}")
+    return notices
 
 
 def _fit_warnings_for(config, pattern) -> list[str]:

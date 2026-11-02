@@ -1,0 +1,12 @@
+{% comment %}
+    Shown on the Schedule Viewer and Generator when the configuration has changed since the
+    schedules were generated (Sprint 2 Sections 13 and 15). The schedules are kept, not deleted.
+    Undoing back to the configuration they came from makes this notice go away.
+{% endcomment %}
+{% if schedules_stale %}
+<div class="alert alert-warning stale-schedules" role="status">
+    <p><strong>These schedules are out of date.</strong> They were generated from an earlier version of the configuration, which has been changed since.
+    {% if where == "viewer" %}<a href="{% url 'gui:schedule_generator' %}">Generate again</a> to get schedules for the current configuration.{% else %}Generating again replaces them.{% endif %}
+    You can still look at them and export them as they are.</p>
+</div>
+{% endif %}

@@ -1,0 +1,60 @@
+{% comment %}
+    Review-and-confirm body shared by every Delete page (Sprint 2 Section 12): rooms, labs,
+    faculty, courses and class patterns. It is driven by `plan`, built by gui/controllers/dependencies.py.
+    Context: meetings (optional, class patterns), kind_label ("room", "faculty member", ...), plural_label, list_url, item_name,
+    plan, and after a failed attempt: errors.
+    Deleting never puts a different record in the deleted one's place, and the page lists everything the Delete
+    button will change, so there is nothing to tick: one click does it all and it can be undone.
+{% endcomment %}
+<div class="card">
+    {% if errors %}
+    <div class="alert alert-error" role="alert">
+        <p><strong>Error:</strong> the {{ kind_label }} was not deleted and nothing was changed.</p>
+        <ul>{% for e in errors %}<li>{{ e.message }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+
+    {% if plan.blocked %}
+    <div class="alert alert-error" role="alert">
+        <p><strong>Cannot delete:</strong> {{ plan.blockers.0 }}</p>
+    </div>
+    <div class="form-actions"><a class="btn" href="{% url list_url %}">Back to {{ plural_label }}</a></div>
+    {% else %}
+    <p>Are you sure you want to delete <strong>{{ item_name }}</strong>? You can undo this afterwards with the Undo button.</p>
+
+    {% if meetings %}
+    <p>This also removes its {{ meetings|length }} meeting{{ meetings|length|pluralize }}:</p>
+    <ul>{% for meeting in meetings %}<li>{{ meeting.summary }}</li>{% endfor %}</ul>
+    {% endif %}
+
+    {% if plan.effects %}
+    <div class="alert alert-warning" role="status">
+        <p><strong>Deleting this {{ kind_label }} also changes other records:</strong></p>
+        <ul>{% for line in plan.effects %}<li>{{ line }}</li>{% endfor %}</ul>
+        <p>All changes are validated together. If any of them fails, nothing is changed.</p>
+    </div>
+    {% elif plan.notes %}
+    <div class="alert alert-info" role="status">
+        {% for note in plan.notes %}<p>{{ note }}</p>{% endfor %}
+    </div>
+    {% endif %}
+    {% if plan.groups %}
+    <details class="usage">
+        <summary><span class="usage__end">Show every affected record{% include "gui/components/usage_icon.html" %}</span></summary>
+        {% for group in plan.groups %}
+        <p class="usage__group"><strong>{{ group.title }}</strong></p>
+        <ul>{% for name in group.names %}<li>{{ name }}</li>{% endfor %}</ul>
+        {% endfor %}
+    </details>
+    {% endif %}
+
+    <form method="post">
+        {% csrf_token %}
+        {% if item.course_id %}<input type="hidden" name="expected_course_id" value="{{ item.course_id }}">{% endif %}
+        <div class="form-actions">
+            <button type="submit" name="action" value="confirm" class="btn btn-danger">{% if plan.effects %}Delete {{ kind_label }} and update everything that uses it{% else %}Delete {{ kind_label }}{% endif %}</button>
+            <button type="submit" name="action" value="cancel" class="btn">Cancel</button>
+        </div>
+    </form>
+    {% endif %}
+</div>

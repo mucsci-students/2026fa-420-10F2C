@@ -24,7 +24,10 @@ def _render_settings(request, form=None):
         if form is None:
             form = GlobalSettingsForm(
                 flag_choices=data["flag_choices"],
-                initial={"limit": data["limit"], "optimizer_flags": data["enabled_flags"]},
+                initial={
+                    "limit": data["limit"],
+                    "optimizer_flags": data["enabled_flags"],
+                },
             )
         context["form"] = form
     return render(request, "gui/settings.html", context)

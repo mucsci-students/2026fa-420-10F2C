@@ -5,14 +5,30 @@ lived in one file. The small wrappers below also preserve the test seam that
 lets callers replace prompt helpers or scheduler model classes on this module.
 """
 
-from . import courses, faculty, labs, meetings, patterns, rooms, schedules, settings, timeslots
-from .common import DAY_LABELS as _DAY_LABELS
-from .common import TIME_RANGE_RE as _TIME_RANGE_RE
-from .common import VALID_DAYS as _VALID_DAYS
-from .common import VALID_OPTIMIZER_FLAGS as _VALID_OPTIMIZER_FLAGS
-from .common import apply_session_edit as _apply_edit
-from .common import field_value as _field
-from .configuration import load_config, new_config, print_config, save_config, validate_config
+from . import (
+    courses,
+    faculty,
+    labs,
+    meetings,
+    patterns,
+    rooms,
+    schedules,
+    settings,
+    timeslots,
+)
+from .common import DAY_LABELS as _DAY_LABELS  # noqa: F401
+from .common import TIME_RANGE_RE as _TIME_RANGE_RE  # noqa: F401
+from .common import VALID_DAYS as _VALID_DAYS  # noqa: F401
+from .common import VALID_OPTIMIZER_FLAGS as _VALID_OPTIMIZER_FLAGS  # noqa: F401
+from .common import apply_session_edit as _apply_edit  # noqa: F401
+from .common import field_value as _field  # noqa: F401
+from .configuration import (
+    load_config,
+    new_config,
+    print_config,
+    save_config,
+    validate_config,
+)
 
 FacultyConfig = faculty.FacultyConfig
 CourseConfig = courses.CourseConfig
@@ -252,15 +268,44 @@ def export_schedule(session, fmt, path, index=None, overwrite=False):
 
 
 __all__ = [
-    "add_course", "add_faculty", "add_lab", "add_meeting", "add_pattern",
-    "add_room", "add_timeslot", "clear_schedules", "delete_course",
-    "delete_faculty", "delete_lab", "delete_meeting", "delete_pattern",
-    "delete_room", "delete_timeslot", "disable_optimizer_flag",
-    "enable_optimizer_flag", "export_schedule", "generate_schedule",
-    "load_config", "modify_course", "modify_faculty", "modify_lab",
-    "modify_meeting", "modify_pattern", "modify_room", "modify_timeslot",
-    "modify_timing_options", "new_config", "print_config",
-    "reset_generation_limit", "save_config", "schedule_summary",
-    "set_generation_limit", "validate_config", "view_course", "view_faculty",
-    "view_lab", "view_room", "view_schedule",
+    "add_course",
+    "add_faculty",
+    "add_lab",
+    "add_meeting",
+    "add_pattern",
+    "add_room",
+    "add_timeslot",
+    "clear_schedules",
+    "delete_course",
+    "delete_faculty",
+    "delete_lab",
+    "delete_meeting",
+    "delete_pattern",
+    "delete_room",
+    "delete_timeslot",
+    "disable_optimizer_flag",
+    "enable_optimizer_flag",
+    "export_schedule",
+    "generate_schedule",
+    "load_config",
+    "modify_course",
+    "modify_faculty",
+    "modify_lab",
+    "modify_meeting",
+    "modify_pattern",
+    "modify_room",
+    "modify_timeslot",
+    "modify_timing_options",
+    "new_config",
+    "print_config",
+    "reset_generation_limit",
+    "save_config",
+    "schedule_summary",
+    "set_generation_limit",
+    "validate_config",
+    "view_course",
+    "view_faculty",
+    "view_lab",
+    "view_room",
+    "view_schedule",
 ]

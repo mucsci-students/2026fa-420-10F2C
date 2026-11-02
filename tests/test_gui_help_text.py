@@ -32,9 +32,13 @@ def page(response) -> str:
 
 def checkbox(html: str, flag: str) -> str:
     """The <input> tag of one optimizer-flag checkbox."""
-    match = re.search(rf'<input[^>]*name="optimizer_flags"[^>]*value="{flag}"[^>]*>', html)
+    match = re.search(
+        rf'<input[^>]*name="optimizer_flags"[^>]*value="{flag}"[^>]*>', html
+    )
     if match is None:  # attribute order can differ
-        match = re.search(rf'<input[^>]*value="{flag}"[^>]*name="optimizer_flags"[^>]*>', html)
+        match = re.search(
+            rf'<input[^>]*value="{flag}"[^>]*name="optimizer_flags"[^>]*>', html
+        )
     assert match, f"no checkbox for {flag}"
     return match.group(0)
 
@@ -52,7 +56,9 @@ def test_every_optimizer_flag_has_a_description():
 def test_descriptions_are_plain_language():
     for text in OPTIMIZER_FLAG_HELP.values():
         assert "_" not in text  # no code names like pack_rooms inside the explanation
-        assert '"' not in text and "'" not in text  # safe inside a title="..." attribute
+        assert (
+            '"' not in text and "'" not in text
+        )  # safe inside a title="..." attribute
 
 
 # ---------------------------------------------------------------------- #
@@ -60,11 +66,16 @@ def test_descriptions_are_plain_language():
 # ---------------------------------------------------------------------- #
 def test_widget_adds_tooltip_and_link_to_the_description():
     widget = OptimizerFlagsWidget(choices=[("pack_rooms", "pack_rooms")])
-    html = widget.render("optimizer_flags", ["pack_rooms"], attrs={"id": "id_optimizer_flags"})
+    html = widget.render(
+        "optimizer_flags", ["pack_rooms"], attrs={"id": "id_optimizer_flags"}
+    )
     text = OPTIMIZER_FLAG_HELP["pack_rooms"]
     assert f'title="{text}"' in html
     assert 'aria-describedby="id_optimizer_flags_0_help"' in html
-    assert f'<span class="option-help" id="id_optimizer_flags_0_help">{text}</span>' in html
+    assert (
+        f'<span class="option-help" id="id_optimizer_flags_0_help">{text}</span>'
+        in html
+    )
     assert "checked" in html  # still a normal checkbox
 
 
@@ -91,7 +102,7 @@ def test_story_53_pack_rooms_tooltip_in_global_settings(client):
     box = checkbox(html, "pack_rooms")
     assert f'title="{text}"' in box  # hover
     assert "aria-describedby=" in box  # keyboard focus + screen readers
-    assert f'class="option-help"' in html and text in html  # also visible
+    assert 'class="option-help"' in html and text in html  # also visible
 
 
 @pytest.mark.parametrize("flag", sorted(VALID_OPTIMIZER_FLAGS))

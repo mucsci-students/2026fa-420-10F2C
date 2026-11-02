@@ -34,9 +34,10 @@ from __future__ import annotations
 from scheduler.config import RoomConfig, ValidationError
 
 from app.commands.common import VALID_DAYS, apply_session_edit, field_value
-from app.crud import ReferenceError_, ValidationFailure, check_no_references
+from app.crud import ValidationFailure
 from app.session import ConfigError
 from gui.constants import DAY_NAMES
+from gui.controllers import dependencies as deps
 from gui.controllers.errors import (
     ControllerError,
     FieldError,
@@ -63,7 +64,9 @@ def _require_config(session):
 def _find_room(config, name):
     room = next((room for room in config.config.rooms if room.name == name), None)
     if room is None:
-        raise ControllerError(f"Room '{name}' no longer exists. Refresh the page and try again.")
+        raise ControllerError(
+            f"Room '{name}' no longer exists. Refresh the page and try again."
+        )
     return room
 
 
@@ -93,18 +96,26 @@ def _parse_times(raw, errors: list[FieldError]):
     if not raw:
         return None
     if not isinstance(raw, dict):
-        errors.append(FieldError("times", "Availability must be a set of weekday time ranges."))
+        errors.append(
+            FieldError("times", "Availability must be a set of weekday time ranges.")
+        )
         return None
     times = {}
     for day, blocks in raw.items():
         if day not in VALID_DAYS:
             errors.append(
-                FieldError("times", f"'{day}' is not a valid day. Choose from: {', '.join(VALID_DAYS)}.")
+                FieldError(
+                    "times",
+                    f"'{day}' is not a valid day. Choose from: {', '.join(VALID_DAYS)}.",
+                )
             )
             continue
         if not blocks:
             continue
-        times[day] = [{"start": field_value(b, "start"), "end": field_value(b, "end")} for b in blocks]
+        times[day] = [
+            {"start": field_value(b, "start"), "end": field_value(b, "end")}
+            for b in blocks
+        ]
     return times or None
 
 
@@ -123,7 +134,9 @@ def _room_fields(form_data) -> dict:
 
     capacity = form_data.get("capacity")
     if isinstance(capacity, bool) or not isinstance(capacity, int) or capacity <= 0:
-        errors.append(FieldError("capacity", "Capacity must be a positive whole number."))
+        errors.append(
+            FieldError("capacity", "Capacity must be a positive whole number.")
+        )
 
     features = _parse_features(form_data.get("features"))
     times = _parse_times(form_data.get("times"), errors)
@@ -141,21 +154,27 @@ def _build_room(fields) -> RoomConfig:
     try:
         return RoomConfig(**fields)
     except ValidationError as error:
-        raise ControllerError(translate_validation_error(error, form_fields=ROOM_FIELDS)) from error
+        raise ControllerError(
+            translate_validation_error(error, form_fields=ROOM_FIELDS)
+        ) from error
 
 
 def _prepared_update(config, room_name, form_data) -> tuple[dict, RoomConfig]:
     """Validate one RoomConfig replacement before an edit is committed."""
     _find_room(config, room_name)
     fields = _room_fields(form_data)
-    if fields["name"] != room_name and any(room.name == fields["name"] for room in config.config.rooms):
-        raise ControllerError([FieldError("name", f"A room named '{fields['name']}' already exists.")])
+    if fields["name"] != room_name and any(
+        room.name == fields["name"] for room in config.config.rooms
+    ):
+        raise ControllerError(
+            [FieldError("name", f"A room named '{fields['name']}' already exists.")]
+        )
     return fields, _build_room(fields)
 
 
-def _apply(session, config, mutate) -> None:
+def _apply(session, config, mutate, label=None) -> None:
     try:
-        apply_session_edit(session, config, "room", mutate)
+        apply_session_edit(session, config, "room", mutate, label=label)
     except ValidationFailure as error:
         raise to_controller_error(error, form_fields=ROOM_FIELDS) from error
 
@@ -169,7 +188,9 @@ def _availability(times) -> list[dict]:
         blocks = field_value(times, day)
         if not blocks:
             continue
-        ranges = ", ".join(f"{field_value(b, 'start')}-{field_value(b, 'end')}" for b in blocks)
+        ranges = ", ".join(
+            f"{field_value(b, 'start')}-{field_value(b, 'end')}" for b in blocks
+        )
         rows.append({"day": day, "name": DAY_NAMES[day], "ranges": ranges})
     return rows
 
@@ -199,6 +220,7 @@ def describe_rooms(request) -> dict:
                 "unrestricted": not room.times,
                 "referenced_by": references,
                 "can_delete": not references,
+                "usage": deps.usage(config, "room", room.name),
             }
         )
     return {"has_config": True, "rooms": rooms}
@@ -214,7 +236,10 @@ def get_room(request, room_name) -> dict:
         "capacity": room.capacity,
         "features": sorted(room.features or []),
         "times": {
-            day: [{"start": field_value(b, "start"), "end": field_value(b, "end")} for b in blocks]
+            day: [
+                {"start": field_value(b, "start"), "end": field_value(b, "end")}
+                for b in blocks
+            ]
             for day in VALID_DAYS
             if (blocks := field_value(room.times, day))
         }
@@ -223,6 +248,8 @@ def get_room(request, room_name) -> dict:
         "availability": _availability(room.times),
         "referenced_by": references,
         "can_delete": not references,
+        "usage": deps.usage(config, "room", room_name),
+        "plan": deps.plan(config, "room", room_name),
     }
 
 
@@ -235,13 +262,15 @@ def add_room(request, form_data) -> None:
     config = _require_config(session)
     fields = _room_fields(form_data)
     if any(room.name == fields["name"] for room in config.config.rooms):
-        raise ControllerError([FieldError("name", f"A room named '{fields['name']}' already exists.")])
+        raise ControllerError(
+            [FieldError("name", f"A room named '{fields['name']}' already exists.")]
+        )
     new_room = _build_room(fields)
 
     def mutate(draft):
         draft.config.rooms.append(new_room)
 
-    _apply(session, config, mutate)
+    _apply(session, config, mutate, label=f"Add room '{fields['name']}'")
 
 
 def update_room(request, room_name, form_data) -> list[str]:
@@ -261,14 +290,16 @@ def update_room(request, room_name, form_data) -> list[str]:
             # maps, so both dependent structures change in this same draft.
             for course in draft.config.courses:
                 if room_name in (course.room or []):
-                    course.room = [new_name if name == room_name else name for name in course.room]
+                    course.room = [
+                        new_name if name == room_name else name for name in course.room
+                    ]
             for person in draft.config.faculty:
                 preferences = dict(person.room_preferences or {})
                 if room_name in preferences:
                     preferences[new_name] = preferences.pop(room_name)
                     person.room_preferences = preferences
 
-    _apply(session, config, mutate)
+    _apply(session, config, mutate, label=f"Edit room '{room_name}'")
     return notices
 
 
@@ -276,30 +307,40 @@ def _rename_notices(config, old_name: str, new_name: str) -> list[str]:
     """Describe dependent records changed by a direct room-name update."""
     if old_name == new_name:
         return []
-    course_lists = sum(old_name in (course.room or []) for course in config.config.courses)
-    preferences = sum(old_name in (person.room_preferences or {}) for person in config.config.faculty)
+    course_lists = sum(
+        old_name in (course.room or []) for course in config.config.courses
+    )
+    preferences = sum(
+        old_name in (person.room_preferences or {}) for person in config.config.faculty
+    )
     parts = []
     if course_lists:
-        parts.append(f"{course_lists} course room list{'s' if course_lists != 1 else ''}")
+        parts.append(
+            f"{course_lists} course room list{'s' if course_lists != 1 else ''}"
+        )
     if preferences:
-        parts.append(f"{preferences} faculty room preference{'s' if preferences != 1 else ''}")
-    return [f"Renamed '{old_name}' to '{new_name}' in {' and '.join(parts)}."] if parts else []
+        parts.append(
+            f"{preferences} faculty room preference{'s' if preferences != 1 else ''}"
+        )
+    return (
+        [f"Renamed '{old_name}' to '{new_name}' in {' and '.join(parts)}."]
+        if parts
+        else []
+    )
 
 
-def delete_room(request, room_name) -> None:
-    """Delete a room unless a course or faculty member still references it."""
+def delete_room(request, room_name) -> list[str]:
+    """Delete a room and detach it from every course and faculty preference in
+    ONE validated edit (Section 12). If any part fails, nothing changes.
+
+    No other room takes its place. A course section that lists only this room
+    could not be scheduled any more, so it is deleted too.
+    Returns plain-language notices describing what changed (see gui/controllers/dependencies.py)."""
     session = get_session(request)
     config = _require_config(session)
     _find_room(config, room_name)
-    try:
-        check_no_references(room_name, _references(config, room_name))
-    except ReferenceError_ as error:
-        raise ControllerError(
-            f"{error}. Remove this room from those records first."
-        ) from error
-
-    def mutate(draft):
-        rooms = draft.config.rooms
-        del rooms[next(i for i, room in enumerate(rooms) if room.name == room_name)]
-
-    _apply(session, config, mutate)
+    the_plan = deps.plan(config, "room", room_name)
+    deps.resolve(the_plan)
+    mutate, notices = deps.build(config, "room", room_name, the_plan)
+    _apply(session, config, mutate, label=f"Delete room '{room_name}'")
+    return notices

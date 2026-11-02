@@ -24,13 +24,19 @@ def prompt_pattern_fields():
     start_time = input().strip() or None
     print("Should this pattern start disabled? (y/n, default n)")
     disabled = input().strip().lower() in ("y", "yes")
-    return {"credits": credits, "meetings": meetings, "start_time": start_time, "disabled": disabled}
+    return {
+        "credits": credits,
+        "meetings": meetings,
+        "start_time": start_time,
+        "disabled": disabled,
+    }
 
 
 def format_pattern(index, pattern):
     """Format an indexed class pattern for terminal display."""
     meeting_bits = ", ".join(
-        f"{DAY_LABELS.get(meeting.day, meeting.day)} {meeting.duration}min" + (" (lab)" if getattr(meeting, "lab", False) else "")
+        f"{DAY_LABELS.get(meeting.day, meeting.day)} {meeting.duration}min"
+        + (" (lab)" if getattr(meeting, "lab", False) else "")
         for meeting in pattern.meetings
     )
     extras = []

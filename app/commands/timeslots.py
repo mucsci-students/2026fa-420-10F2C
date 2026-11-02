@@ -46,7 +46,9 @@ def add_timeslot(session):
         return
 
     existing = config.time_slot_config.times.get(day, [])
-    conflict = next((block for block in existing if blocks_overlap(block, new_block)), None)
+    conflict = next(
+        (block for block in existing if blocks_overlap(block, new_block)), None
+    )
     if conflict:
         print(f"Time Conflict: overlaps existing block {conflict.start}-{conflict.end}")
         return
@@ -76,7 +78,7 @@ def modify_timeslot(session):
     try:
         index = int(input().strip())
         blocks[index]
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         print("Not a valid selection.")
         return
 
@@ -85,7 +87,11 @@ def modify_timeslot(session):
     if new_block is None:
         return
     conflict = next(
-        (block for other_index, block in enumerate(blocks) if other_index != index and blocks_overlap(block, new_block)),
+        (
+            block
+            for other_index, block in enumerate(blocks)
+            if other_index != index and blocks_overlap(block, new_block)
+        ),
         None,
     )
     if conflict:
@@ -112,7 +118,9 @@ def delete_timeslot(session):
         print(f"No time slots defined for {day}.")
         return
     if len(blocks) == 1:
-        print(f"Can't delete the only time block on {day} -- every weekday needs at least one.")
+        print(
+            f"Can't delete the only time block on {day} -- every weekday needs at least one."
+        )
         return
     for index, block in enumerate(blocks):
         print(f"  [{index}] {block.start}-{block.end} (spacing {block.spacing}m)")
@@ -120,7 +128,7 @@ def delete_timeslot(session):
     try:
         index = int(input().strip())
         blocks[index]
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         print("Not a valid selection.")
         return
     print("Are you sure? Type confirm or cancel")

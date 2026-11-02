@@ -7,25 +7,5 @@
         <h1>Delete class pattern</h1>
     </div>
 </div>
-<div class="card">
-    <p>
-        Are you sure you want to delete <strong>pattern {{ pattern.index }}</strong>
-        ({{ pattern.credits }} credits{% if not pattern.enabled %}, disabled{% endif %})?
-        This also removes its {{ pattern.meetings|length }} meeting{{ pattern.meetings|length|pluralize }}:
-    </p>
-    <ul>
-        {% for meeting in pattern.meetings %}<li>{{ meeting.summary }}</li>{% endfor %}
-    </ul>
-    <p>
-        This cannot be undone. If a course needs this pattern and has no other that fits, the scheduler
-        will refuse the change and nothing is removed.
-    </p>
-    <form method="post">
-        {% csrf_token %}
-        <div class="form-actions">
-            <button type="submit" name="action" value="confirm" class="btn btn-danger">Delete class pattern</button>
-            <button type="submit" name="action" value="cancel" class="btn">Cancel</button>
-        </div>
-    </form>
-</div>
+{% include "gui/components/cascade_delete.html" with kind_label="class pattern" plural_label="class patterns" list_url="gui:patterns" item=pattern item_name=plan.name meetings=pattern.meetings %}
 {% endblock %}

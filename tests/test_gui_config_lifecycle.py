@@ -90,7 +90,9 @@ class TestLoad:
         assert "JSON object" in message_of(info.value)
         assert session.config is before
 
-    def test_a_file_that_fails_validation_is_rejected_and_the_current_config_kept(self, session):
+    def test_a_file_that_fails_validation_is_rejected_and_the_current_config_kept(
+        self, session
+    ):
         data = json.loads(example_bytes())
         data["config"]["rooms"] = []
         before = session.config
@@ -124,7 +126,9 @@ class TestNew:
 
 
 class TestSave:
-    def test_returns_json_named_after_the_loaded_file_and_clears_the_flag(self, session):
+    def test_returns_json_named_after_the_loaded_file_and_clears_the_flag(
+        self, session
+    ):
         session.config_name = "fall.json"
         session.dirty = True
         filename, content = ctrl.save_configuration(None)
@@ -216,9 +220,23 @@ def test_editor_page_shows_the_actions_and_every_area(client):
     response = client.get(EDITOR_URL)
     assert response.status_code == 200
     text = page(response)
-    for label in ("Save configuration", "Validate configuration", "Start new configuration", "Load configuration"):
+    for label in (
+        "Save configuration",
+        "Validate configuration",
+        "Start new configuration",
+        "Load configuration",
+    ):
         assert label in text
-    for area in ("Time Slots", "Rooms", "Labs", "Courses", "Faculty", "Class Patterns", "Meetings", "Global Settings"):
+    for area in (
+        "Time Slots",
+        "Rooms",
+        "Labs",
+        "Courses",
+        "Faculty",
+        "Class Patterns",
+        "Meetings",
+        "Global Settings",
+    ):
         assert area in text
 
 
@@ -231,7 +249,9 @@ def test_editor_page_shows_the_empty_state_when_nothing_is_loaded(client, monkey
 
 def test_loading_a_valid_file_confirms_and_replaces_the_configuration(client):
     client.get(EDITOR_URL)
-    response = client.post(LOAD_URL, {"load-config_file": upload(example_bytes())}, follow=True)
+    response = client.post(
+        LOAD_URL, {"load-config_file": upload(example_bytes())}, follow=True
+    )
     assert "Loaded and validated fall.json" in page(response)
     assert browser_session().config_name == "fall.json"
 
@@ -248,7 +268,9 @@ def test_loading_over_unsaved_changes_needs_confirmation(client):
     assert browser_session().dirty is True
 
     accepted = client.post(
-        LOAD_URL, {"load-config_file": upload(example_bytes()), "load-confirm_replace": "on"}, follow=True
+        LOAD_URL,
+        {"load-config_file": upload(example_bytes()), "load-confirm_replace": "on"},
+        follow=True,
     )
     assert "Loaded and validated fall.json" in page(accepted)
     assert browser_session().dirty is False
@@ -280,7 +302,9 @@ def test_starting_a_new_configuration_over_unsaved_changes_needs_confirmation(cl
     assert browser_session().config_name is None
 
 
-def test_starting_a_new_configuration_with_nothing_to_lose_needs_no_confirmation(client):
+def test_starting_a_new_configuration_with_nothing_to_lose_needs_no_confirmation(
+    client,
+):
     client.get(EDITOR_URL)
     response = client.post(NEW_URL, {}, follow=True)
     assert "Started a new configuration" in page(response)

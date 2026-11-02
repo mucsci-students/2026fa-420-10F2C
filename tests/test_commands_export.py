@@ -47,7 +47,10 @@ def test_export_with_no_schedules_prints_guard_message(empty_session, tmp_path, 
     commands.export_schedule(empty_session, "json", str(target))
 
     captured = capsys.readouterr()
-    assert "No generated schedules to export. Run 'schedule generate' first." in captured.out
+    assert (
+        "No generated schedules to export. Run 'schedule generate' first."
+        in captured.out
+    )
     assert not target.exists()
 
 
@@ -87,12 +90,16 @@ def test_export_rejects_out_of_range_index(session_with_schedules, tmp_path, cap
     assert not target.exists()  # never even reached schedule_ops
 
 
-def test_export_refuses_existing_file_without_overwrite(session_with_schedules, tmp_path, capsys):
+def test_export_refuses_existing_file_without_overwrite(
+    session_with_schedules, tmp_path, capsys
+):
     """Verify that export refuses existing file without overwrite."""
     target = tmp_path / "out.csv"
     target.write_text("pre-existing", encoding="utf-8")
 
-    commands.export_schedule(session_with_schedules, "csv", str(target), overwrite=False)
+    commands.export_schedule(
+        session_with_schedules, "csv", str(target), overwrite=False
+    )
 
     captured = capsys.readouterr()
     assert "already exists" in captured.out

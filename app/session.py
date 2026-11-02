@@ -38,11 +38,13 @@ from __future__ import annotations
 
 import json
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from scheduler import load_config_from_file
 from scheduler.config import CombinedConfig, ValidationError
+
+from app.history import ConfigHistory
 
 
 class ConfigError(Exception):
@@ -107,6 +109,39 @@ _MINIMAL_SEED_TIME_SLOT_CONFIG = {
     ],
 }
 
+_WEEKDAYS = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
+
+
+def _ordered_weekdays(value):
+    """Sort weekday-name lists in JSON emitted from set-backed model fields."""
+    if isinstance(value, dict):
+        return {key: _ordered_weekdays(item) for key, item in value.items()}
+    if isinstance(value, list):
+        items = [_ordered_weekdays(item) for item in value]
+        if items and all(isinstance(item, str) and item in _WEEKDAYS for item in items):
+            return sorted(items, key=_WEEKDAYS.index)
+        return items
+    return value
+
+
+def _config_json(config: CombinedConfig, indent: int = 2) -> str:
+    """Serialize a config with set-backed weekday fields in stable order."""
+    data = json.loads(config.model_dump_json(indent=indent))
+    return json.dumps(_ordered_weekdays(data), indent=indent, ensure_ascii=False)
+
+
+@dataclass
+class PreviousConfig:
+    """Everything needed to bring back a configuration that New / Load replaced."""
+
+    config: CombinedConfig
+    config_path: Path | None
+    config_name: str | None
+    dirty: bool
+    schedules: list
+    schedules_version: int | None
+    history: ConfigHistory
+
 
 class Session:
     """One instance of this lives inside SchedulerShell for the whole run.
@@ -114,12 +149,12 @@ class Session:
     instead of doing its own file I/O."""
 
     def __init__(self) -> None:
-        self.config: Optional[CombinedConfig] = None
-        self.config_path: Optional[Path] = None
+        self.config: CombinedConfig | None = None
+        self.config_path: Path | None = None
         # Display name of the file the config was last loaded from or saved as
         # (the web GUI has no real path for an upload, only a name). Used to
         # name the Save download. None for a new, never-saved configuration.
-        self.config_name: Optional[str] = None
+        self.config_name: str | None = None
         # Each generated schedule is whatever Scheduler.get_models() yields
         # (a list of CourseInstance, per the library's Python API docs).
         # Kept as a plain list so "schedule summary/view/clear" (Req #9)
@@ -139,12 +174,101 @@ class Session:
         # snapshots rather than model instances makes switching atomic and
         # reuses the same validation path as loading an uploaded file.
         self.saved_configs: dict[str, str] = {}
+        # Undo / redo for configuration edits (app/history.py). Cleared whenever
+        # a different configuration replaces the current one.
+        self.history = ConfigHistory()
+        # The configuration version the generated schedules came from (see
+        # app/history.py "VERSIONS"). None when there are no schedules.
+        self.schedules_version: int | None = None
+        # The configuration that New / Load / Switch replaced, kept so the user
+        # can bring it back (restore_previous). One level deep, and swapped on
+        # restore so the restore itself can be reversed.
+        self.previous: PreviousConfig | None = None
 
-    def remember_config(self, name: str, content: Optional[str] = None) -> None:
+    # ---------------------------------------------------------------- #
+    #  Schedules vs. configuration versions                            #
+    # ---------------------------------------------------------------- #
+    def set_schedules(
+        self, schedules: list, version: int | None = None, tracked: bool = True
+    ) -> None:
+        """Store schedules and remember which configuration version they describe
+        (default: the configuration as it is right now). Pass tracked=False for
+        schedules of unknown origin, such as an imported file: they are never
+        reported as out of date."""
+        self.schedules = schedules
+        if not schedules or not tracked:
+            self.schedules_version = None
+        else:
+            self.schedules_version = (
+                self.history.version if version is None else version
+            )
+
+    @property
+    def schedules_stale(self) -> bool:
+        """True when schedules exist but the configuration has changed since
+        they were generated (undoing back to that version makes it False again)."""
+        return (
+            bool(self.schedules)
+            and self.schedules_version is not None
+            and self.schedules_version != self.history.version
+        )
+
+    # ---------------------------------------------------------------- #
+    #  Bringing back what New / Load / Switch replaced                 #
+    # ---------------------------------------------------------------- #
+    def _stash_current(self) -> None:
+        """Called just BEFORE a different configuration replaces this one."""
+        if self.config is None:
+            return
+        self.previous = self._snapshot_current()
+
+    def _snapshot_current(self) -> PreviousConfig:
+        return PreviousConfig(
+            config=self.require_config(),
+            config_path=self.config_path,
+            config_name=self.config_name,
+            dirty=self.dirty,
+            schedules=self.schedules,
+            schedules_version=self.schedules_version,
+            history=self.history,
+        )
+
+    def previous_info(self) -> dict | None:
+        """Plain data about the stashed configuration, or None."""
+        if self.previous is None:
+            return None
+        previous = self.previous
+        return {
+            "name": previous.config_name or "an unnamed configuration",
+            "dirty": previous.dirty,
+            "schedule_count": len(previous.schedules),
+            "change_count": previous.history.state()["undo_count"],
+        }
+
+    def restore_previous(self) -> str:
+        """Swap the previous configuration back in (and stash the current one,
+        so this can be reversed). Returns the name of the restored configuration."""
+        if self.previous is None:
+            raise ConfigError("There is no previous configuration to restore.")
+        outgoing = self._snapshot_current() if self.config is not None else None
+        incoming = self.previous
+        self.config = incoming.config
+        self.config_path = incoming.config_path
+        self.config_name = incoming.config_name
+        self.dirty = incoming.dirty
+        self.schedules = incoming.schedules
+        self.schedules_version = incoming.schedules_version
+        self.history = incoming.history
+        self.previous = outgoing
+        return incoming.config_name or "an unnamed configuration"
+
+    def remember_config(self, name: str, content: str | None = None) -> None:
         """Store the current valid configuration as a selectable snapshot."""
         if not name:
             return
-        self.saved_configs[Path(name).name] = content if content is not None else self.dumps()
+        self.saved_configs[Path(name).name] = (
+            content if content is not None else self.dumps()
+        )
 
     def saved_config_names(self) -> list[str]:
         """Return selectable saved configuration names in stable order."""
@@ -167,17 +291,21 @@ class Session:
         course/faculty/class-pattern the user is expected to edit or
         delete via CRUD once real data exists."""
         try:
-            self.config = CombinedConfig(
-                config=_MINIMAL_SEED_CONFIG,
-                time_slot_config=_MINIMAL_SEED_TIME_SLOT_CONFIG,
+            fresh = CombinedConfig(
+                config=_MINIMAL_SEED_CONFIG,  # ty: ignore[invalid-argument-type]
+                time_slot_config=_MINIMAL_SEED_TIME_SLOT_CONFIG,  # ty: ignore[invalid-argument-type]
             )
         except ValidationError as e:
             raise ConfigError(f"Could not create new configuration: {e}") from e
 
+        self._stash_current()
+        self.config = fresh
         self.config_path = None
         self.config_name = None
         self.schedules = []
+        self.schedules_version = None
         self.dirty = False
+        self.history = ConfigHistory()
 
     def load(self, path: str) -> None:
         """Load + validate a configuration file through the library
@@ -200,28 +328,36 @@ class Session:
             raise ConfigError(f"Could not read '{p}': {e}") from e
 
         # Only swap state in after a fully successful load+validate.
+        self._stash_current()
         self.config = new_config
         self.config_path = p
         self.config_name = p.name
         self.schedules = []
+        self.schedules_version = None
         self.dirty = False
+        self.history = ConfigHistory()
 
-    def save(self, path: Optional[str] = None) -> Path:
+    def save(self, path: str | None = None) -> Path:
         """Serialize the in-memory config through Pydantic (Req #4: 'saved
         configurations must serialize through the library's supported
         Pydantic serialization mechanism'). Reuses the last load/save path
         if the user just types 'config save' with nothing else."""
         if self.config is None:
-            raise ConfigError("No configuration loaded. Try 'config new' or 'config load <path>'.")
+            raise ConfigError(
+                "No configuration loaded. Try 'config new' or 'config load <path>'."
+            )
 
         target = Path(path) if path else self.config_path
         if target is None:
-            raise ConfigError("No path given, and this config hasn't been saved/loaded from one yet.")
+            raise ConfigError(
+                "No path given, and this config hasn't been saved/loaded from one yet."
+            )
 
-        target.write_text(self.config.model_dump_json(indent=2), encoding="utf-8")
+        target.write_text(self.dumps(), encoding="utf-8")
         self.config_path = target
         self.config_name = target.name
         self.dirty = False
+        self.history.mark_saved()
         return target
 
     # ---------------------------------------------------------------- #
@@ -240,13 +376,17 @@ class Session:
         try:
             data = json.loads(raw)
         except UnicodeDecodeError as e:
-            raise ConfigError(f"'{name}' is not a text file (it is not valid UTF-8).") from e
+            raise ConfigError(
+                f"'{name}' is not a text file (it is not valid UTF-8)."
+            ) from e
         except json.JSONDecodeError as e:
             raise ConfigError(
                 f"'{name}' is not valid JSON: {e.msg} (line {e.lineno}, column {e.colno})."
             ) from e
         if not isinstance(data, dict):
-            raise ConfigError(f"'{name}' must contain a JSON object, like the files saved by this app.")
+            raise ConfigError(
+                f"'{name}' must contain a JSON object, like the files saved by this app."
+            )
 
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "configuration.json"
@@ -259,21 +399,25 @@ class Session:
                 raise ConfigError(f"Could not read '{name}': {e}") from e
 
         # Only swap state in after a fully successful load+validate.
+        self._stash_current()
         self.config = new_config
         self.config_path = None  # an upload has no path on this machine
         self.config_name = Path(name).name or None
         self.schedules = []
+        self.schedules_version = None
         self.dirty = False
+        self.history = ConfigHistory()
 
     def dumps(self) -> str:
         """The in-memory config as JSON text, through the library's own
         Pydantic serialization (the same text save() writes to disk)."""
-        return self.require_config().model_dump_json(indent=2)
+        return _config_json(self.require_config())
 
-    def mark_saved(self, name: Optional[str] = None) -> None:
+    def mark_saved(self, name: str | None = None) -> None:
         """Record that the current config was handed to the user as a file
         (the GUI's Save download): clears the unsaved-changes flag."""
         self.dirty = False
+        self.history.mark_saved()
         if name:
             self.config_name = name
 
@@ -281,5 +425,7 @@ class Session:
         """Every CRUD/schedule command should call this first instead of
         assuming self.config exists."""
         if self.config is None:
-            raise ConfigError("No configuration loaded. Try 'config new' or 'config load <path>'.")
+            raise ConfigError(
+                "No configuration loaded. Try 'config new' or 'config load <path>'."
+            )
         return self.config

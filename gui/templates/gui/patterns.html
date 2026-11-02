@@ -62,6 +62,7 @@
         <footer class="item-card__foot">
             <a class="btn" href="{% url 'gui:pattern_edit' pattern.index %}">Edit</a>
             <a class="btn btn-danger" href="{% url 'gui:pattern_delete' pattern.index %}">Delete</a>
+            {% include "gui/components/usage_summary.html" with usage=pattern.usage quiet=True %}
         </footer>
     </article>
     {% empty %}

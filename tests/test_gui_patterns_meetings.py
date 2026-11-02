@@ -69,7 +69,13 @@ def new_pattern(**overrides):
 
 
 def meeting_data(**overrides):
-    data = {"day": "THU", "duration": 50, "lab": False, "delivery": "in_person", "start_time": None}
+    data = {
+        "day": "THU",
+        "duration": 50,
+        "lab": False,
+        "delivery": "in_person",
+        "start_time": None,
+    }
     data.update(overrides)
     return data
 
@@ -97,7 +103,9 @@ def empty_session(monkeypatch):
 
 
 class TestPatternAdd:
-    def test_adds_a_pattern_with_its_first_meeting_and_marks_the_session_dirty(self, session):
+    def test_adds_a_pattern_with_its_first_meeting_and_marks_the_session_dirty(
+        self, session
+    ):
         before = len(classes(session))
         pattern_ctrl.add_pattern(None, new_pattern())
         assert len(classes(session)) == before + 1
@@ -120,7 +128,9 @@ class TestPatternAdd:
     def test_a_bad_first_meeting_is_rejected_and_the_config_is_untouched(self, session):
         before = all_shapes(session)
         with pytest.raises(ControllerError) as info:
-            pattern_ctrl.add_pattern(None, new_pattern(meeting_day="SUN", meeting_duration=0))
+            pattern_ctrl.add_pattern(
+                None, new_pattern(meeting_day="SUN", meeting_duration=0)
+            )
         fields = {item.field for item in info.value.errors}
         assert {"meeting_day", "meeting_duration"} <= fields
         assert all_shapes(session) == before
@@ -136,7 +146,9 @@ class TestPatternUpdate:
         pattern_ctrl.add_pattern(None, new_pattern())
         index = len(classes(session)) - 1
         meetings_before = shape(classes(session)[index])[2]
-        pattern_ctrl.update_pattern(None, index, {"credits": 4, "start_time": None, "enabled": True})
+        pattern_ctrl.update_pattern(
+            None, index, {"credits": 4, "start_time": None, "enabled": True}
+        )
         credits, disabled, meetings = shape(classes(session)[index])
         assert (credits, disabled) == (4, False)
         assert meetings == meetings_before
@@ -144,7 +156,9 @@ class TestPatternUpdate:
     def test_can_disable_a_pattern(self, session):
         pattern_ctrl.add_pattern(None, new_pattern())
         index = len(classes(session)) - 1
-        pattern_ctrl.update_pattern(None, index, {"credits": 3, "start_time": None, "enabled": False})
+        pattern_ctrl.update_pattern(
+            None, index, {"credits": 3, "start_time": None, "enabled": False}
+        )
         assert classes(session)[index].disabled is True
 
     def test_rejects_non_positive_credits_and_changes_nothing(self, session):
@@ -152,13 +166,17 @@ class TestPatternUpdate:
         index = len(classes(session)) - 1
         before = all_shapes(session)
         with pytest.raises(ControllerError) as info:
-            pattern_ctrl.update_pattern(None, index, {"credits": 0, "start_time": None, "enabled": True})
+            pattern_ctrl.update_pattern(
+                None, index, {"credits": 0, "start_time": None, "enabled": True}
+            )
         assert "Credits must be a positive integer." in info.value.message
         assert all_shapes(session) == before
 
     def test_a_stale_index_is_reported(self, session):
         with pytest.raises(ControllerError) as info:
-            pattern_ctrl.update_pattern(None, 999, {"credits": 3, "start_time": None, "enabled": True})
+            pattern_ctrl.update_pattern(
+                None, 999, {"credits": 3, "start_time": None, "enabled": True}
+            )
         assert "no longer exists" in info.value.message
 
 
@@ -196,12 +214,19 @@ class TestMeetings:
         return len(classes(session)) - 1
 
     def test_adds_a_meeting_to_a_pattern(self, session, index):
-        meeting_ctrl.add_meeting(None, index, meeting_data(day="THU", duration=75, lab=True))
-        assert shape(classes(session)[index])[2] == [("TUE", 50, False), ("THU", 75, True)]
+        meeting_ctrl.add_meeting(
+            None, index, meeting_data(day="THU", duration=75, lab=True)
+        )
+        assert shape(classes(session)[index])[2] == [
+            ("TUE", 50, False),
+            ("THU", 75, True),
+        ]
         assert session.dirty is True
 
     def test_updates_a_meeting(self, session, index):
-        meeting_ctrl.update_meeting(None, index, 0, meeting_data(day="WED", duration=60))
+        meeting_ctrl.update_meeting(
+            None, index, 0, meeting_data(day="WED", duration=60)
+        )
         assert shape(classes(session)[index])[2] == [("WED", 60, False)]
 
     def test_deletes_a_meeting_when_the_pattern_has_another(self, session, index):
@@ -218,9 +243,15 @@ class TestMeetings:
 
     @pytest.mark.parametrize(
         "bad, field",
-        [({"day": "SUN"}, "day"), ({"duration": 0}, "duration"), ({"duration": -10}, "duration")],
+        [
+            ({"day": "SUN"}, "day"),
+            ({"duration": 0}, "duration"),
+            ({"duration": -10}, "duration"),
+        ],
     )
-    def test_invalid_input_is_rejected_and_the_config_is_untouched(self, session, index, bad, field):
+    def test_invalid_input_is_rejected_and_the_config_is_untouched(
+        self, session, index, bad, field
+    ):
         before = all_shapes(session)
         with pytest.raises(ControllerError) as info:
             meeting_ctrl.add_meeting(None, index, meeting_data(**bad))
@@ -244,9 +275,13 @@ class TestMeetings:
                 call()
             assert "no longer exists" in info.value.message
 
-    def test_a_meeting_longer_than_every_time_block_warns_but_is_allowed(self, session, index):
+    def test_a_meeting_longer_than_every_time_block_warns_but_is_allowed(
+        self, session, index
+    ):
         # FRI's example blocks are 08:00-17:00, so a 600-minute meeting cannot fit.
-        warnings = meeting_ctrl.add_meeting(None, index, meeting_data(day="FRI", duration=600))
+        warnings = meeting_ctrl.add_meeting(
+            None, index, meeting_data(day="FRI", duration=600)
+        )
         assert any("do not fit" in w for w in warnings)
 
     def test_describe_marks_a_patterns_only_meeting(self, session, index):
@@ -322,7 +357,13 @@ def test_zero_credits_is_reported_on_the_form_and_nothing_is_added(client):
     before = all_shapes(browser_session())
     response = client.post(
         PATTERN_ADD_URL,
-        {"credits": "0", "enabled": "on", "meeting_day": "TUE", "meeting_duration": "50", "meeting_delivery": "in_person"},
+        {
+            "credits": "0",
+            "enabled": "on",
+            "meeting_day": "TUE",
+            "meeting_duration": "50",
+            "meeting_delivery": "in_person",
+        },
     )
     assert response.status_code == 200
     assert "Error:" in page(response)
@@ -357,7 +398,9 @@ def test_editing_a_pattern_applies_only_on_submit(client):
 def test_editing_with_bad_credits_shows_the_error_and_changes_nothing(client):
     client.get(PATTERNS_URL)
     index = add_pattern_via_page(client)
-    response = client.post(f"{PATTERNS_URL}{index}/edit/", {"credits": "0", "enabled": "on"})
+    response = client.post(
+        f"{PATTERNS_URL}{index}/edit/", {"credits": "0", "enabled": "on"}
+    )
     assert "Error:" in page(response)
     assert classes(browser_session())[index].credits == 3
 
@@ -382,7 +425,9 @@ def test_confirming_removes_the_pattern(client):
     client.get(PATTERNS_URL)
     index = add_pattern_via_page(client)
     before = len(classes(browser_session()))
-    response = client.post(f"{PATTERNS_URL}{index}/delete/", {"action": "confirm"}, follow=True)
+    response = client.post(
+        f"{PATTERNS_URL}{index}/delete/", {"action": "confirm"}, follow=True
+    )
     assert "Class pattern removed." in page(response)
     assert len(classes(browser_session())) == before - 1
 
@@ -404,7 +449,10 @@ def test_adding_a_meeting_from_the_page(client):
         follow=True,
     )
     assert "Meeting added." in page(response)
-    assert shape(classes(browser_session())[index])[2] == [("TUE", 50, False), ("THU", 75, False)]
+    assert shape(classes(browser_session())[index])[2] == [
+        ("TUE", 50, False),
+        ("THU", 75, False),
+    ]
 
 
 def test_a_bad_meeting_is_reported_on_the_form_and_changes_nothing(client):
@@ -412,7 +460,8 @@ def test_a_bad_meeting_is_reported_on_the_form_and_changes_nothing(client):
     index = add_pattern_via_page(client)
     before = all_shapes(browser_session())
     response = client.post(
-        MEETING_ADD_URL, {"pattern": str(index), "day": "THU", "duration": "0", "delivery": "online"}
+        MEETING_ADD_URL,
+        {"pattern": str(index), "day": "THU", "duration": "0", "delivery": "online"},
     )
     assert "Error:" in page(response)
     assert all_shapes(browser_session()) == before
@@ -425,7 +474,9 @@ def test_editing_a_meeting_applies_only_on_submit(client):
     assert "TUE 50 min" in page(client.get(url))
     assert shape(classes(browser_session())[index])[2] == [("TUE", 50, False)]
 
-    response = client.post(url, {"day": "WED", "duration": "50", "delivery": "in_person"}, follow=True)
+    response = client.post(
+        url, {"day": "WED", "duration": "50", "delivery": "in_person"}, follow=True
+    )
     assert "Meeting updated." in page(response)
     assert shape(classes(browser_session())[index])[2] == [("WED", 50, False)]
 
@@ -433,7 +484,15 @@ def test_editing_a_meeting_applies_only_on_submit(client):
 def test_deleting_a_meeting_asks_first_then_removes_it(client):
     client.get(PATTERNS_URL)
     index = add_pattern_via_page(client)
-    client.post(MEETING_ADD_URL, {"pattern": str(index), "day": "THU", "duration": "50", "delivery": "in_person"})
+    client.post(
+        MEETING_ADD_URL,
+        {
+            "pattern": str(index),
+            "day": "THU",
+            "duration": "50",
+            "delivery": "in_person",
+        },
+    )
     url = f"{MEETINGS_URL}{index}/0/delete/"
     assert "Are you sure" in page(client.get(url))
     assert "Cancelled." in page(client.post(url, {"action": "cancel"}, follow=True))

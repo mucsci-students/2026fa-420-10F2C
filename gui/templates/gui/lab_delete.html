@@ -7,30 +7,5 @@
         <h1>Delete lab</h1>
     </div>
 </div>
-<div class="card">
-    {% if not lab.can_delete %}
-    <div class="alert alert-error" role="alert">
-        <p><strong>Cannot delete:</strong> {{ lab.name }} is still used by:</p>
-        <ul>
-            {% for item in lab.referenced_by %}<li>{{ item }}</li>{% endfor %}
-        </ul>
-        <p>Remove this lab from those records first.</p>
-    </div>
-    <div class="form-actions">
-        <a class="btn" href="{% url 'gui:labs' %}">Back to labs</a>
-    </div>
-    {% else %}
-    <p>
-        Are you sure you want to delete <strong>{{ lab.name }}</strong> (capacity {{ lab.capacity }})?
-        This cannot be undone.
-    </p>
-    <form method="post">
-        {% csrf_token %}
-        <div class="form-actions">
-            <button type="submit" name="action" value="confirm" class="btn btn-danger">Delete lab</button>
-            <button type="submit" name="action" value="cancel" class="btn">Cancel</button>
-        </div>
-    </form>
-    {% endif %}
-</div>
+{% include "gui/components/cascade_delete.html" with kind_label="lab" plural_label="labs" list_url="gui:labs" item=lab item_name=plan.name %}
 {% endblock %}

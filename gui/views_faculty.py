@@ -11,6 +11,7 @@ from gui.controllers import faculty as faculty_controller
 from gui.controllers.errors import ControllerError
 from gui.forms import FacultyForm, availability_to_text
 from gui.views import _attach_errors, _flash_warnings
+from gui.views_delete import delete_page
 
 
 def _faculty_form(request, *args, **kwargs):
@@ -26,7 +27,11 @@ def _render_faculty(request):
 
 def _render_faculty_add(request, form=None):
     """Render the dedicated creation page, retaining a rejected bound form."""
-    return render(request, "gui/faculty_add.html", {"active": "config", "form": form or _faculty_form(request)})
+    return render(
+        request,
+        "gui/faculty_add.html",
+        {"active": "config", "form": form or _faculty_form(request)},
+    )
 
 
 def faculty(request):
@@ -52,7 +57,9 @@ def faculty_add(request):
         except ControllerError as error:
             _attach_errors(form, error)
         else:
-            messages.success(request, f"Faculty member '{form.cleaned_data['name']}' added.")
+            messages.success(
+                request, f"Faculty member '{form.cleaned_data['name']}' added."
+            )
             return redirect("gui:faculty")
     return _render_faculty_add(request, form=form)
 
@@ -69,11 +76,15 @@ def faculty_edit(request, faculty_name):
         form = _faculty_form(request, request.POST)
         if form.is_valid():
             try:
-                notices = faculty_controller.update_faculty(request, faculty_name, form.cleaned_data)
+                notices = faculty_controller.update_faculty(
+                    request, faculty_name, form.cleaned_data
+                )
             except ControllerError as error:
                 _attach_errors(form, error)
             else:
-                messages.success(request, f"Faculty member '{form.cleaned_data['name']}' updated.")
+                messages.success(
+                    request, f"Faculty member '{form.cleaned_data['name']}' updated."
+                )
                 _flash_warnings(request, notices)
                 return redirect("gui:faculty")
     else:
@@ -92,27 +103,29 @@ def faculty_edit(request, faculty_name):
                 "lab_preferences": person["lab_preferences"],
             },
         )
-    return render(request, "gui/faculty_edit.html", {"active": "config", "form": form, "faculty": person})
+    return render(
+        request,
+        "gui/faculty_edit.html",
+        {"active": "config", "form": form, "faculty": person},
+    )
 
 
 def faculty_delete(request, faculty_name):
-    """Show a delete confirmation or remove an unreferenced faculty member."""
+    """Review page (GET) and the confirm/cancel actions (POST).
+
+    Courses that assign this person are updated in the same step. Nobody is named in
+    their place; a section nobody else could teach is deleted too, and the page lists
+    it first (Section 12)."""
     try:
         person = faculty_controller.get_faculty(request, faculty_name)
     except ControllerError as error:
         messages.error(request, error.message)
         return redirect("gui:faculty")
-
-    if request.method == "POST":
-        if request.POST.get("action") != "confirm":
-            messages.info(request, "Cancelled.")
-            return redirect("gui:faculty")
-        try:
-            faculty_controller.delete_faculty(request, faculty_name)
-        except ControllerError as error:
-            messages.error(request, error.message)
-        else:
-            messages.success(request, f"Faculty member '{faculty_name}' deleted.")
-        return redirect("gui:faculty")
-
-    return render(request, "gui/faculty_delete.html", {"active": "config", "faculty": person})
+    return delete_page(
+        request,
+        template="gui/faculty_delete.html",
+        context={"active": "config", "faculty": person, "plan": person["plan"]},
+        list_url="gui:faculty",
+        done_text=f"Faculty member '{faculty_name}' deleted.",
+        delete=lambda: faculty_controller.delete_faculty(request, faculty_name),
+    )
