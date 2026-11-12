@@ -1,7 +1,7 @@
 """
 Views for the Rooms pages (Configuration Editor, Section 7, Rooms row).
 
-Same shape as the Time Slots views in gui/views.py: parse the request, call the
+Same shape as the Time Slots views in gui/views_timeslots.py: parse the request, call the
 controller (gui/controllers/rooms.py), then either redirect with a flash
 message (success) or re-render the same page with the errors on the form
 (failure), so the user's input is kept and the configuration is untouched.

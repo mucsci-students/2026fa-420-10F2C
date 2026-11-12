@@ -12,6 +12,7 @@ from . import (
     views_patterns,
     views_rooms,
     views_settings,
+    views_timeslots,
 )
 
 app_name = "gui"
@@ -34,19 +35,25 @@ urlpatterns = [
         views_history.restore_previous,
         name="restore_previous",
     ),
-    path("configuration/timeslots/", views.timeslots, name="timeslots"),
-    path("configuration/timeslots/add/", views.timeslot_add, name="timeslot_add"),
+    path("configuration/timeslots/", views_timeslots.timeslots, name="timeslots"),
     path(
-        "configuration/timeslots/options/", views.timing_options, name="timing_options"
+        "configuration/timeslots/add/",
+        views_timeslots.timeslot_add,
+        name="timeslot_add",
+    ),
+    path(
+        "configuration/timeslots/options/",
+        views_timeslots.timing_options,
+        name="timing_options",
     ),
     path(
         "configuration/timeslots/<str:day>/<int:index>/edit/",
-        views.timeslot_edit,
+        views_timeslots.timeslot_edit,
         name="timeslot_edit",
     ),
     path(
         "configuration/timeslots/<str:day>/<int:index>/delete/",
-        views.timeslot_delete,
+        views_timeslots.timeslot_delete,
         name="timeslot_delete",
     ),
     path("configuration/rooms/", views_rooms.rooms, name="rooms"),

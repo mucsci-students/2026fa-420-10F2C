@@ -5,34 +5,35 @@ request, call a controller, render a template with what the controller
 returns. Scheduler-domain logic and validation stay out of this file --
 see gui/controllers/ and app/.
 
-index/config_editor/schedule_generator/schedule_viewer below render real
-pages today (not stubs) so navigation (Section 4) works end to end; each
-non-home page's template lists what that mode still needs (see
-gui/templates/gui/*.html). As controllers/forms get implemented, these
-view functions will start calling them instead of just rendering a static
-template.
+This module has the welcome page, the Configuration Editor home and its
+lifecycle actions, the Schedule Generator form, the Schedule Viewer page with
+its import/export/clear actions, and the small helpers the other view modules
+share (form errors, flash warnings, file downloads). Each configuration area
+has its own gui/views_<area>.py.
+
+The Schedule Viewer's data is not built here: what a schedule contains and how
+it is grouped comes from app/schedule_view.py, and where each block sits on the
+weekly calendar from gui/calendar_layout.py. What stays here for the viewer is
+reading the address (?schedule=, ?view=, ?resource=, ?time=) and building the
+links that keep those choices.
 """
 
 import re
 from urllib.parse import quote
 
 from django.contrib import messages
-from django.http import Http404, HttpResponse
+from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 
 from app import schedule_ops
+from app.schedule_view import GROUPINGS
+from gui.calendar_layout import as_resources, schedule_grid
 from gui.constants import (
-    DAY_NAMES,
-    NO_FACULTY_LABEL,
-    NO_LOCATION_LABEL,
-    TIME_FORMAT_12,
     TIME_FORMAT_24,
     TIME_FORMAT_OPTIONS,
     VIEW_COURSES,
-    VIEW_FACULTY,
     VIEW_OPTIONS,
-    VIEW_ROOMS,
 )
 from gui.controllers import (
     config_controller,
@@ -41,10 +42,8 @@ from gui.controllers import (
 from gui.controllers import (
     settings as settings_controller,
 )
-from gui.controllers import timeslots as timeslot_controller
 from gui.controllers.errors import ControllerError
 from gui.forms import (
-    AddTimeBlockForm,
     ConfigLoadForm,
     ConfigNewForm,
     ConfigSaveForm,
@@ -52,11 +51,9 @@ from gui.forms import (
     SavedConfigSelectionForm,
     ScheduleExportForm,
     ScheduleImportForm,
-    TimeBlockFieldsForm,
-    TimingOptionsForm,
 )
 
-MINUTES_PER_HOUR = 60
+TIME_FORMAT_KEY = "viewer_time_format"  # where the session remembers the clock choice
 
 
 def index(request):
@@ -310,16 +307,15 @@ def schedule_viewer(request, import_form=None):
     count = schedule_controller.schedule_count(request)
     current = _current_schedule_number(request, count)
     view_mode = _current_view_mode(request)
+    grouping = GROUPINGS[view_mode]
     assignments = (
         schedule_controller.get_schedule(request, current - 1) if count else []
     )
-    resource_options = _resource_options(assignments, view_mode)
+    resource_options = grouping.options(assignments)
     resources = _current_resources(request, resource_options)
     time_format = _current_time_format(request)
-    schedule_grid = (
-        _schedule_grid(assignments, view_mode, resources, time_format)
-        if count
-        else None
+    grid = (
+        schedule_grid(assignments, view_mode, resources, time_format) if count else None
     )
     if import_form is None:
         import_form = ScheduleImportForm(schedule_count=count)
@@ -327,7 +323,6 @@ def schedule_viewer(request, import_form=None):
         schedule_count=count, initial={"schedule": current}
     )
     pager = _schedule_pager_context(current, count, view_mode, resources)
-    picker_label, picker_all = RESOURCE_PICKER_TEXT.get(view_mode, ("", ""))
     return render(
         request,
         "gui/schedule_viewer.html",
@@ -335,7 +330,7 @@ def schedule_viewer(request, import_form=None):
             "active": "viewer",
             "schedule_count": count,
             "current_schedule": current,
-            "schedule_grid": schedule_grid,
+            "schedule_grid": grid,
             "view_mode": view_mode,
             "view_label": VIEW_OPTIONS[view_mode],
             "view_options": VIEW_OPTIONS,
@@ -345,9 +340,9 @@ def schedule_viewer(request, import_form=None):
                 current, view_mode, resources, resource_options
             ),
             "resource_clear": _resource_href(current, view_mode, []),
-            "picker_label": picker_label,
-            "picker_all": picker_all,
-            "legend_noun": LEGEND_NOUN[view_mode],
+            "picker_label": grouping.noun.capitalize(),
+            "picker_all": f"All {grouping.plural}",
+            "legend_noun": grouping.noun,
             "time_format": time_format,
             "time_links": _time_links(current, view_mode, resources, time_format),
             **pager,
@@ -415,13 +410,6 @@ def _current_resources(request, options):
     ]
 
 
-def _as_resources(resources):
-    """One value (as a plain string) or several, as a list; an empty string means none."""
-    if isinstance(resources, str):
-        return [resources] if resources else []
-    return list(resources or [])
-
-
 def _resource_href(current, view_mode, resources):
     """Link to this schedule and view showing only `resources` (all of it when empty)."""
     return f"?schedule={current}{_view_query(view_mode, resources)}"
@@ -439,43 +427,6 @@ def _resource_chips(current, view_mode, resources, options):
         }
         for value in resources
     ]
-
-
-def _resource_options(assignments, view_mode):
-    """(value, label) choices for the picker above the calendar: the courses (Courses
-    view), rooms and labs (Rooms view) or faculty (Faculty view) in this schedule.
-
-    A course that has several sections also gets an "all sections" choice, e.g.
-    "CMSC 140" next to "CMSC 140.01" and "CMSC 140.02".
-    """
-    if view_mode == VIEW_COURSES:
-        sections = {assignment.course for assignment in assignments}
-        bases: dict[str, int] = {}
-        for course in sections:
-            if "." in course:
-                base = course.rsplit(".", 1)[0]
-                bases[base] = bases.get(base, 0) + 1
-        choices = {course: course for course in sections}
-        for base, how_many in bases.items():
-            if how_many > 1 and base not in choices:
-                choices[base] = f"{base} (all sections)"
-        return sorted(choices.items())
-    names = set()
-    for assignment in assignments:
-        if view_mode == VIEW_FACULTY:
-            if assignment.faculty:
-                names.add(assignment.faculty)
-            continue
-        for meeting in assignment.meetings:
-            place = assignment.lab if meeting.lab else assignment.room
-            if place:
-                names.add(place)
-    return [(name, name) for name in sorted(names)]
-
-
-def _course_matches(course, resource):
-    """A picked course matches that section, or every section when it names the whole course."""
-    return course == resource or course.startswith(f"{resource}.")
 
 
 def _current_time_format(request):
@@ -502,29 +453,6 @@ def _time_links(current, view_mode, resources, time_format):
     ]
 
 
-def _clock_text(value, time_format=TIME_FORMAT_24):
-    """A clock time as shown on screen: 13:05 stays 13:05 in 24-hour, becomes 1:05 PM in 12-hour."""
-    if time_format != TIME_FORMAT_12:
-        return value
-    hour, minute = divmod(_clock_minutes(value), MINUTES_PER_HOUR)
-    return f"{hour % 12 or 12}:{minute:02d} {'AM' if hour < 12 else 'PM'}"
-
-
-def _range_text(start, end, time_format=TIME_FORMAT_24):
-    """A start-end range: 09:00-09:50, or in 12-hour 9:00-9:50 AM (AM/PM written once when both share it)."""
-    first, last = _clock_text(start, time_format), _clock_text(end, time_format)
-    if time_format == TIME_FORMAT_12 and first[-2:] == last[-2:]:
-        first = first[:-3]
-    return f"{first}\u2013{last}"
-
-
-def _hour_label(hour, time_format=TIME_FORMAT_24):
-    """Label of one hour mark on the time axis."""
-    if time_format == TIME_FORMAT_12:
-        return f"{hour % 12 or 12} {'AM' if hour < 12 else 'PM'}"
-    return f"{hour:02d}:00"
-
-
 def _schedule_pager_context(
     current: int, count: int, view_mode: str = VIEW_COURSES, resources=()
 ) -> dict[str, int | bool | str | None]:
@@ -548,277 +476,9 @@ def _schedule_pager_context(
 
 def _view_query(view_mode, resources=()):
     query = "" if view_mode == VIEW_COURSES else f"&view={view_mode}"
-    for resource in _as_resources(resources):
+    for resource in as_resources(resources):
         query += f"&resource={quote(resource, safe='')}"
     return query
-
-
-def _block_label(view_mode, course, location, faculty):
-    """Text on a grid block: the course, its room/lab, or its faculty member."""
-    if view_mode == VIEW_ROOMS:
-        return location or NO_LOCATION_LABEL
-    if view_mode == VIEW_FACULTY:
-        return faculty or NO_FACULTY_LABEL
-    return course
-
-
-def _schedule_rows(
-    assignments, view_mode=VIEW_COURSES, resources="", time_format=TIME_FORMAT_24
-):
-    """Expand a selected schedule into chronological, human-readable meeting rows.
-
-    `resources` (one value or several) keeps only those meetings: the picked courses
-    (or all sections of a course) in the Courses view, the picked rooms/labs in the
-    Rooms view, the picked faculty in the Faculty view.
-    Every block says the same three things, filtered or not: the view's own item
-    first (course, room/lab or faculty), then the other two.
-    `time_format` decides how the on-screen times are written (the start, end and
-    sorting stay 24-hour).
-    """
-    day_order = {day: index for index, day in enumerate(DAY_NAMES)}
-    chosen = _as_resources(resources)
-    filtering = bool(chosen) and view_mode in (VIEW_ROOMS, VIEW_FACULTY)
-    rows = []
-    for assignment in assignments:
-        if (
-            chosen
-            and view_mode == VIEW_COURSES
-            and not any(_course_matches(assignment.course, item) for item in chosen)
-        ):
-            continue
-        for meeting in assignment.meetings:
-            is_lab = meeting.lab
-            location = assignment.lab if is_lab else assignment.room
-            if filtering:
-                owner = location if view_mode == VIEW_ROOMS else assignment.faculty
-                if owner not in chosen:
-                    continue
-            rows.append(
-                {
-                    "day": meeting.day,
-                    "day_name": DAY_NAMES.get(meeting.day, meeting.day),
-                    "start": meeting.start,
-                    "end": meeting.end,
-                    "start_text": _clock_text(meeting.start, time_format),
-                    "end_text": _clock_text(meeting.end, time_format),
-                    "range_text": _range_text(meeting.start, meeting.end, time_format),
-                    "title_range": _range_text(
-                        meeting.start, meeting.end, time_format
-                    ).replace("\u2013", "-"),
-                    "course": assignment.course,
-                    "faculty": assignment.faculty,
-                    "meeting_type": "Lab" if is_lab else "Class",
-                    "location": location,
-                    "label": _block_label(
-                        view_mode, assignment.course, location, assignment.faculty
-                    ),
-                    "sort_key": (
-                        day_order.get(meeting.day, len(day_order)),
-                        meeting.start,
-                        assignment.course,
-                    ),
-                    "duration": meeting.duration,
-                    "detail": _block_detail(
-                        view_mode, assignment.course, location, assignment.faculty
-                    ),
-                    "details": _block_details(
-                        view_mode, assignment.course, location, assignment.faculty
-                    ),
-                }
-            )
-    return sorted(rows, key=lambda row: row["sort_key"])
-
-
-def _schedule_grid(
-    assignments, view_mode=VIEW_COURSES, resources="", time_format=TIME_FORMAT_24
-):
-    assignments = list(assignments)
-    rows = _schedule_rows(assignments, view_mode, resources, time_format)
-    # The time axis and the colors come from the whole schedule, so neither
-    # shifts when the picker narrows the calendar to some rooms or people.
-    everything = _schedule_rows(assignments, view_mode)
-    minutes = [
-        v
-        for row in everything
-        for v in (_clock_minutes(row["start"]), _clock_minutes(row["end"]))
-    ]
-    axis_start, axis_end = _schedule_axis_bounds(minutes)
-    span = axis_end - axis_start
-
-    # One color per distinct label, so overlapping blocks always differ.
-    color_of = {
-        key: i % PALETTE_SIZE
-        for i, key in enumerate(sorted({r["label"] for r in everything}))
-    }
-    shown_labels = {r["label"] for r in rows}
-
-    meetings_by_day = {day: [] for day in DAY_NAMES}
-    for row in rows:
-        start, end = _clock_minutes(row["start"]), _clock_minutes(row["end"])
-        meetings_by_day[row["day"]].append(
-            {
-                **row,
-                "color": color_of[row["label"]],
-                "top": f"{(start - axis_start) / span * 100:.2f}",
-                "height": f"{(end - start) / span * 100:.2f}",
-                "compact": (end - start) / MINUTES_PER_HOUR * HOUR_HEIGHT_REM
-                < COMPACT_BELOW_REM,
-            }
-        )
-
-    days, day_lanes = [], []
-    for day in DAY_NAMES:
-        meetings = meetings_by_day[day]
-        _assign_meeting_lanes(meetings)
-        day_lanes.append(max((m["lane_count"] for m in meetings), default=1))
-        days.append({"day": day, "name": DAY_NAMES[day], "meetings": meetings})
-
-    # The days share whatever width the window gives the calendar, so there is no
-    # sideways scrolling. A busy day (more overlapping blocks side by side) gets a
-    # wider column, so lanes stay about the same width.
-    columns = f"{TIME_AXIS_REM:g}rem " + " ".join(
-        f"minmax(0, {n + LANE_PADDING_FR:g}fr)" for n in day_lanes
-    )
-
-    return {
-        "days": days,
-        "hours": [
-            {
-                "label": _hour_label(m // MINUTES_PER_HOUR, time_format),
-                "top": f"{(m - axis_start) / span * 100:.2f}",
-            }
-            for m in range(axis_start, axis_end + 1, MINUTES_PER_HOUR)
-        ],
-        "legend": [
-            {"label": key, "color": color}
-            for key, color in color_of.items()
-            if key in shown_labels
-        ],
-        # The empty state: how many blocks are drawn, and which sections have no
-        # meeting times at all (for example an online section).
-        "meeting_count": len(rows),
-        "without_meetings": sorted(
-            {assignment.course for assignment in assignments if not assignment.meetings}
-        ),
-        "hour_pct": f"{MINUTES_PER_HOUR / span * 100:.3f}",
-        "height_rem": f"{span / MINUTES_PER_HOUR * HOUR_HEIGHT_REM:g}",
-        "columns": columns,
-        "day_lanes": day_lanes,
-    }
-
-
-# Picker text per view: (label, "everything" option).
-TIME_FORMAT_KEY = "viewer_time_format"  # where the session remembers the clock choice
-RESOURCE_PICKER_TEXT = {
-    VIEW_COURSES: ("Course", "All courses"),
-    VIEW_ROOMS: ("Room or lab", "All rooms and labs"),
-    VIEW_FACULTY: ("Faculty member", "All faculty"),
-}
-LEGEND_NOUN = {
-    VIEW_COURSES: "course",
-    VIEW_ROOMS: "room or lab",
-    VIEW_FACULTY: "faculty member",
-}
-TIME_AXIS_REM = 3.5  # width of the hour labels on the left
-LANE_PADDING_FR = 0.5  # extra share per day, so a one-lane day is not squeezed
-PALETTE_SIZE = 12  # matches .schedule-color-0..11 in style.css
-HOUR_HEIGHT_REM = (
-    5.5  # every hour of the calendar is this tall, so a 50-minute class fits 4 lines
-)
-COMPACT_BELOW_REM = (
-    3.0  # only blocks shorter than this (about 30 minutes) drop the detail lines
-)
-
-
-def _block_details(view_mode, course, location, faculty):
-    """The two facts under a block's main label, always both: a missing room or
-    faculty member is written out ("No room assigned") instead of silently left off."""
-    where = location or NO_LOCATION_LABEL
-    who = faculty or NO_FACULTY_LABEL
-    return {
-        VIEW_ROOMS: [course, who],
-        VIEW_FACULTY: [course, where],
-    }.get(view_mode, [where, who])
-
-
-def _block_detail(view_mode, course, location, faculty):
-    """Second line of a block: the facts the label doesn't already show."""
-    parts = {
-        VIEW_ROOMS: (course, faculty),
-        VIEW_FACULTY: (course, location),
-    }.get(view_mode, (location, faculty))
-    return " · ".join(part for part in parts if part)
-
-
-def _assign_meeting_lanes(meetings):
-    """Give overlapping meetings separate horizontal lanes in a day column.
-
-    A connected overlap group shares its widest lane count so adjacent blocks
-    never jump between widths while one course remains in progress.
-    """
-    meetings.sort(
-        key=lambda meeting: (meeting["start"], meeting["end"], meeting["course"])
-    )
-    group = []
-    latest_end = None
-    cluster_id = 0
-
-    for meeting in meetings:
-        start = _clock_minutes(meeting["start"])
-        end = _clock_minutes(meeting["end"])
-        if group and latest_end is not None and start >= latest_end:
-            _layout_overlap_group(group, cluster_id)
-            cluster_id += 1
-            group = []
-            latest_end = None
-        group.append(meeting)
-        latest_end = end if latest_end is None else max(latest_end, end)
-
-    if group:
-        _layout_overlap_group(group, cluster_id)
-
-
-def _layout_overlap_group(meetings, cluster_id):
-    """Set zero-based lane position and width for one connected overlap group."""
-    lane_end_times = []
-    for meeting in meetings:
-        start = _clock_minutes(meeting["start"])
-        end = _clock_minutes(meeting["end"])
-        lane = next(
-            (
-                index
-                for index, lane_end in enumerate(lane_end_times)
-                if lane_end <= start
-            ),
-            len(lane_end_times),
-        )
-        if lane == len(lane_end_times):
-            lane_end_times.append(end)
-        else:
-            lane_end_times[lane] = end
-        meeting["lane"] = lane
-
-    lane_count = len(lane_end_times)
-    for meeting in meetings:
-        meeting["cluster"] = cluster_id
-        meeting["lane_count"] = lane_count
-        meeting["left"] = f"{meeting['lane'] / lane_count * 100:.2f}"
-        meeting["width"] = f"{100 / lane_count:.2f}"
-
-
-def _schedule_axis_bounds(minutes):
-    """Return whole-hour bounds that contain every meeting in the grid."""
-    if not minutes:
-        return 8 * MINUTES_PER_HOUR, 17 * MINUTES_PER_HOUR
-    earliest = min(minutes) // MINUTES_PER_HOUR * MINUTES_PER_HOUR
-    latest = -(-max(minutes) // MINUTES_PER_HOUR) * MINUTES_PER_HOUR
-    return earliest, max(latest, earliest + MINUTES_PER_HOUR)
-
-
-def _clock_minutes(value: str) -> int:
-    """Convert a validated 24-hour clock string into minutes after midnight."""
-    hour, minute = value.split(":", 1)
-    return int(hour) * MINUTES_PER_HOUR + int(minute)
 
 
 def schedule_import(request):
@@ -882,13 +542,7 @@ def schedule_export(request):
 
 
 # ---------------------------------------------------------------------- #
-#  Time Slots (Configuration Editor, Section 7). This is the first finished
-#  editing area, so its shape is the pattern for the others:
-#    GET  list page  -> render controller data + blank forms
-#    POST form       -> validate the form, call the controller, then either
-#                       redirect with a flash message (success) or re-render
-#                       the same page with errors on the form (failure) so
-#                       the user's input is kept (Sections 10, 11).
+#  Helpers shared with the other view modules (gui/views_*.py).
 # ---------------------------------------------------------------------- #
 def _attach_errors(form, error):
     """Show a controller's errors on the matching form fields (or on the form)."""
@@ -941,129 +595,3 @@ def download_response(
 def _flash_warnings(request, warnings):
     for warning in warnings:
         messages.warning(request, warning)
-
-
-def _require_valid_day(day):
-    if day not in DAY_NAMES:
-        raise Http404("Unknown weekday")
-
-
-def _render_timeslots(request, add_form=None, options_form=None):
-    data = timeslot_controller.describe_timeslots(request)
-    context = {"active": "config", "data": data}
-    if data["has_config"]:
-        if add_form is None:
-            add_form = AddTimeBlockForm(initial={"spacing": 60})
-        if options_form is None:
-            options_form = TimingOptionsForm(
-                initial={
-                    "max_time_gap": data["max_time_gap"],
-                    "min_time_overlap": data["min_time_overlap"],
-                }
-            )
-        context["add_form"] = add_form
-        context["options_form"] = options_form
-    return render(request, "gui/timeslots.html", context)
-
-
-def timeslots(request):
-    """Time Slots page: weekly overview, blocks by day, add form, timing options."""
-    return _render_timeslots(request)
-
-
-def timeslot_add(request):
-    if request.method != "POST":
-        return redirect("gui:timeslots")
-    form = AddTimeBlockForm(request.POST)
-    if form.is_valid():
-        try:
-            warnings = timeslot_controller.add_timeslot(
-                request, form.cleaned_data["day"], form.cleaned_data
-            )
-        except ControllerError as error:
-            _attach_errors(form, error)
-        else:
-            messages.success(request, "Time Slot Added Successfully")
-            _flash_warnings(request, warnings)
-            return redirect("gui:timeslots")
-    return _render_timeslots(request, add_form=form)
-
-
-def timeslot_edit(request, day, index):
-    _require_valid_day(day)
-    try:
-        block = timeslot_controller.get_timeslot(request, day, index)
-    except ControllerError as error:
-        messages.error(request, error.message)
-        return redirect("gui:timeslots")
-
-    if request.method == "POST":
-        form = TimeBlockFieldsForm(request.POST)
-        if form.is_valid():
-            try:
-                warnings = timeslot_controller.update_timeslot(
-                    request, day, index, form.cleaned_data
-                )
-            except ControllerError as error:
-                _attach_errors(form, error)
-            else:
-                messages.success(request, "Time Changed Successfully")
-                _flash_warnings(request, warnings)
-                return redirect("gui:timeslots")
-    else:
-        form = TimeBlockFieldsForm(
-            initial={
-                "start": block["start"],
-                "end": block["end"],
-                "spacing": block["spacing"],
-            }
-        )
-    return render(
-        request,
-        "gui/timeslot_edit.html",
-        {"active": "config", "form": form, "slot": block, "day_name": DAY_NAMES[day]},
-    )
-
-
-def timeslot_delete(request, day, index):
-    """Confirmation page (GET) and the confirm/cancel actions (POST)."""
-    _require_valid_day(day)
-    try:
-        block = timeslot_controller.get_timeslot(request, day, index)
-    except ControllerError as error:
-        messages.error(request, error.message)
-        return redirect("gui:timeslots")
-
-    if request.method == "POST":
-        if request.POST.get("action") != "confirm":
-            messages.info(request, "Cancelled.")
-            return redirect("gui:timeslots")
-        try:
-            warnings = timeslot_controller.delete_timeslot(request, day, index)
-        except ControllerError as error:
-            messages.error(request, error.message)
-        else:
-            messages.success(request, "Time slot deleted.")
-            _flash_warnings(request, warnings)
-        return redirect("gui:timeslots")
-
-    return render(
-        request,
-        "gui/timeslot_delete.html",
-        {"active": "config", "slot": block, "day_name": DAY_NAMES[day]},
-    )
-
-
-def timing_options(request):
-    if request.method != "POST":
-        return redirect("gui:timeslots")
-    form = TimingOptionsForm(request.POST)
-    if form.is_valid():
-        try:
-            timeslot_controller.update_timing_options(request, form.cleaned_data)
-        except ControllerError as error:
-            _attach_errors(form, error)
-        else:
-            messages.success(request, "Timing options updated.")
-            return redirect("gui:timeslots")
-    return _render_timeslots(request, options_form=form)

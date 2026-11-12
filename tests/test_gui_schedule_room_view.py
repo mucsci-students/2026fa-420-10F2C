@@ -13,9 +13,19 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 
 from app import schedule_io
 from app.schedule_io import Assignment, MeetingTime
-from gui.constants import (
+from app.schedule_view import (
+    GROUPINGS,
     NO_FACULTY_LABEL,
     NO_LOCATION_LABEL,
+    meeting_blocks,
+)
+from gui.calendar_layout import (
+    HOUR_HEIGHT_REM,
+    clock_text,
+    range_text,
+    schedule_grid,
+)
+from gui.constants import (
     TIME_FORMAT_12,
     TIME_FORMAT_24,
     VIEW_COURSES,
@@ -23,12 +33,7 @@ from gui.constants import (
     VIEW_ROOMS,
 )
 from gui.views import (
-    _block_detail,
-    _clock_text,
-    _range_text,
     _resource_chips,
-    _resource_options,
-    _schedule_grid,
     _view_query,
 )
 
@@ -76,8 +81,8 @@ def load(client, *schedules):
 #  Grid labels (pure function, no Django)
 # ---------------------------------------------------------------------- #
 def test_courses_view_labels_blocks_with_course_names():
-    monday = _schedule_grid(sample_schedule(), VIEW_COURSES)["days"][0]["meetings"]
-    assert [row["label"] for row in monday] == [
+    monday = schedule_grid(sample_schedule(), VIEW_COURSES).days[0].meetings
+    assert [row.label for row in monday] == [
         "CMSC 140.01",
         "CMSC 162.01",
         "CMSC 201.01",
@@ -85,29 +90,29 @@ def test_courses_view_labels_blocks_with_course_names():
 
 
 def test_rooms_view_labels_blocks_with_room_or_lab_names():
-    monday = _schedule_grid(sample_schedule(), VIEW_ROOMS)["days"][0]["meetings"]
-    assert [row["label"] for row in monday] == ["Roddy 136", "Roddy 147", "Roddy 140"]
+    monday = schedule_grid(sample_schedule(), VIEW_ROOMS).days[0].meetings
+    assert [row.label for row in monday] == ["Roddy 136", "Roddy 147", "Roddy 140"]
 
 
 def test_rooms_view_uses_the_lab_for_lab_meetings_and_keeps_the_course_as_data():
-    monday = _schedule_grid(sample_schedule(), VIEW_ROOMS)["days"][0]["meetings"]
+    monday = schedule_grid(sample_schedule(), VIEW_ROOMS).days[0].meetings
     lab_row = monday[1]
-    assert lab_row["meeting_type"] == "Lab"
-    assert lab_row["label"] == "Roddy 147"
-    assert lab_row["course"] == "CMSC 162.01"
+    assert lab_row.meeting_type == "Lab"
+    assert lab_row.label == "Roddy 147"
+    assert lab_row.course == "CMSC 162.01"
 
 
 def test_rooms_view_labels_meetings_without_a_location():
     assignments = [
         Assignment("CMSC 390.01", meetings=(MeetingTime("MON", "09:00", "09:50", 50),))
     ]
-    monday = _schedule_grid(assignments, VIEW_ROOMS)["days"][0]["meetings"]
-    assert monday[0]["label"] == NO_LOCATION_LABEL
+    monday = schedule_grid(assignments, VIEW_ROOMS).days[0].meetings
+    assert monday[0].label == NO_LOCATION_LABEL
 
 
 def test_faculty_view_labels_blocks_with_faculty_names():
-    monday = _schedule_grid(sample_schedule(), VIEW_FACULTY)["days"][0]["meetings"]
-    assert [row["label"] for row in monday] == ["Hogg", "Killen", "Zoppetti"]
+    monday = schedule_grid(sample_schedule(), VIEW_FACULTY).days[0].meetings
+    assert [row.label for row in monday] == ["Hogg", "Killen", "Zoppetti"]
 
 
 def test_faculty_view_labels_meetings_without_a_faculty_member():
@@ -118,8 +123,8 @@ def test_faculty_view_labels_meetings_without_a_faculty_member():
             meetings=(MeetingTime("MON", "09:00", "09:50", 50),),
         )
     ]
-    monday = _schedule_grid(assignments, VIEW_FACULTY)["days"][0]["meetings"]
-    assert monday[0]["label"] == NO_FACULTY_LABEL
+    monday = schedule_grid(assignments, VIEW_FACULTY).days[0].meetings
+    assert monday[0].label == NO_FACULTY_LABEL
 
 
 def test_rooms_view_keeps_dense_overlaps_as_separate_blocks_labelled_by_room():
@@ -141,10 +146,10 @@ def test_rooms_view_keeps_dense_overlaps_as_separate_blocks_labelled_by_room():
         ),
     ]
 
-    monday = _schedule_grid(assignments, VIEW_ROOMS)["days"][0]["meetings"]
+    monday = schedule_grid(assignments, VIEW_ROOMS).days[0].meetings
 
-    assert [m["label"] for m in monday] == ["Roddy 136", "Roddy 140", "Roddy 144"]
-    assert len({m["color"] for m in monday}) == 3  # color follows the room here
+    assert [m.label for m in monday] == ["Roddy 136", "Roddy 140", "Roddy 144"]
+    assert len({m.color for m in monday}) == 3  # color follows the room here
 
 
 # ---------------------------------------------------------------------- #
@@ -222,42 +227,58 @@ def test_pager_links_stay_plain_in_the_courses_view(client):
     assert 'href="?schedule=1">Previous</a>' in html
 
 
+def block_detail(view, course, room, faculty):
+    """The one-line detail of a single meeting of `course` in this view."""
+    [block] = meeting_blocks(
+        [
+            Assignment(
+                course, faculty, room, None, (MeetingTime("MON", "09:00", "09:50", 50),)
+            )
+        ]
+    )
+    return GROUPINGS[view].detail(block)
+
+
 def test_block_detail_shows_the_facts_the_label_does_not():
     assert (
-        _block_detail(VIEW_COURSES, "CMSC 140.01", "Roddy 136", "Hogg")
+        block_detail(VIEW_COURSES, "CMSC 140.01", "Roddy 136", "Hogg")
         == "Roddy 136 · Hogg"
     )
     assert (
-        _block_detail(VIEW_ROOMS, "CMSC 140.01", "Roddy 136", "Hogg")
+        block_detail(VIEW_ROOMS, "CMSC 140.01", "Roddy 136", "Hogg")
         == "CMSC 140.01 · Hogg"
     )
     assert (
-        _block_detail(VIEW_FACULTY, "CMSC 140.01", "Roddy 136", "Hogg")
+        block_detail(VIEW_FACULTY, "CMSC 140.01", "Roddy 136", "Hogg")
         == "CMSC 140.01 · Roddy 136"
     )
 
 
 def test_block_detail_skips_missing_values():
-    assert _block_detail(VIEW_COURSES, "CMSC 390.01", None, "Hogg") == "Hogg"
-    assert _block_detail(VIEW_ROOMS, "CMSC 390.01", None, None) == "CMSC 390.01"
-    assert _block_detail(VIEW_FACULTY, "CMSC 390.01", None, None) == "CMSC 390.01"
+    assert block_detail(VIEW_COURSES, "CMSC 390.01", None, "Hogg") == "Hogg"
+    assert block_detail(VIEW_ROOMS, "CMSC 390.01", None, None) == "CMSC 390.01"
+    assert block_detail(VIEW_FACULTY, "CMSC 390.01", None, None) == "CMSC 390.01"
 
 
 def test_rows_expose_duration_and_detail():
-    [row] = _schedule_grid(
-        [
-            Assignment(
-                "CMSC 140.01",
-                "Hogg",
-                "Roddy 136",
-                None,
-                (MeetingTime("MON", "09:00", "09:50", 50),),
-            )
-        ],
-        VIEW_FACULTY,
-    )["days"][0]["meetings"]
-    assert row["duration"] == 50
-    assert row["detail"] == "CMSC 140.01 · Roddy 136"
+    [row] = (
+        schedule_grid(
+            [
+                Assignment(
+                    "CMSC 140.01",
+                    "Hogg",
+                    "Roddy 136",
+                    None,
+                    (MeetingTime("MON", "09:00", "09:50", 50),),
+                )
+            ],
+            VIEW_FACULTY,
+        )
+        .days[0]
+        .meetings
+    )
+    assert row.duration == 50
+    assert row.detail == "CMSC 140.01 · Roddy 136"
 
 
 def test_color_follows_the_active_view_label():
@@ -276,8 +297,8 @@ def test_color_follows_the_active_view_label():
     ]
 
     def colors(view):
-        days = _schedule_grid(assignments, view)["days"]
-        return {m["color"] for d in days for m in d["meetings"]}
+        days = schedule_grid(assignments, view).days
+        return {m.color for d in days for m in d.meetings}
 
     assert len(colors(VIEW_COURSES)) == 1
     assert len(colors(VIEW_ROOMS)) == 2
@@ -288,9 +309,7 @@ def test_color_follows_the_active_view_label():
 # ---------------------------------------------------------------------- #
 def block_titles(grid):
     return [
-        (day["day"], row["label"], row["detail"])
-        for day in grid["days"]
-        for row in day["meetings"]
+        (day.day, row.label, row.detail) for day in grid.days for row in day.meetings
     ]
 
 
@@ -326,19 +345,19 @@ def pairs(*names):
 
 def test_picker_options_are_the_courses_rooms_and_labs_or_faculty_with_meetings():
     schedule = sample_schedule()
-    assert _resource_options(schedule, VIEW_COURSES) == pairs(
+    assert GROUPINGS[VIEW_COURSES].options(schedule) == pairs(
         "CMSC 140.01", "CMSC 162.01", "CMSC 201.01"
     )
-    assert _resource_options(schedule, VIEW_ROOMS) == pairs(
+    assert GROUPINGS[VIEW_ROOMS].options(schedule) == pairs(
         "Roddy 136", "Roddy 140", "Roddy 147"
     )
-    assert _resource_options(schedule, VIEW_FACULTY) == pairs(
+    assert GROUPINGS[VIEW_FACULTY].options(schedule) == pairs(
         "Hogg", "Killen", "Zoppetti"
     )
 
 
 def test_a_course_with_several_sections_also_gets_an_all_sections_choice():
-    assert _resource_options(two_sections(), VIEW_COURSES) == [
+    assert GROUPINGS[VIEW_COURSES].options(two_sections()) == [
         ("CMSC 140", "CMSC 140 (all sections)"),
         ("CMSC 140.01", "CMSC 140.01"),
         ("CMSC 140.02", "CMSC 140.02"),
@@ -347,15 +366,13 @@ def test_a_course_with_several_sections_also_gets_an_all_sections_choice():
 
 
 def test_picking_one_section_keeps_only_that_section():
-    grid = _schedule_grid(two_sections(), VIEW_COURSES, "CMSC 140.02")
-    assert [row["course"] for day in grid["days"] for row in day["meetings"]] == [
-        "CMSC 140.02"
-    ]
+    grid = schedule_grid(two_sections(), VIEW_COURSES, "CMSC 140.02")
+    assert [row.course for day in grid.days for row in day.meetings] == ["CMSC 140.02"]
 
 
 def test_picking_a_whole_course_keeps_every_section_of_it():
-    grid = _schedule_grid(two_sections(), VIEW_COURSES, "CMSC 140")
-    assert [row["course"] for day in grid["days"] for row in day["meetings"]] == [
+    grid = schedule_grid(two_sections(), VIEW_COURSES, "CMSC 140")
+    assert [row.course for day in grid.days for row in day.meetings] == [
         "CMSC 140.01",
         "CMSC 140.02",
     ]
@@ -365,33 +382,33 @@ def test_picking_a_course_does_not_match_a_longer_course_number():
     schedule = two_sections() + [
         Assignment("CMSC 1400.01", meetings=(MeetingTime("FRI", "09:00", "09:50", 50),))
     ]
-    grid = _schedule_grid(schedule, VIEW_COURSES, "CMSC 140")
+    grid = schedule_grid(schedule, VIEW_COURSES, "CMSC 140")
     assert "CMSC 1400.01" not in [
-        row["course"] for day in grid["days"] for row in day["meetings"]
+        row.course for day in grid.days for row in day.meetings
     ]
 
 
 def test_picking_a_faculty_member_keeps_only_their_meetings_and_still_names_them():
-    grid = _schedule_grid(sample_schedule(), VIEW_FACULTY, "Hogg")
+    grid = schedule_grid(sample_schedule(), VIEW_FACULTY, "Hogg")
     assert block_titles(grid) == [("MON", "Hogg", "CMSC 140.01 · Roddy 136")]
 
 
 def test_picking_a_lab_keeps_only_the_meetings_held_there():
-    grid = _schedule_grid(sample_schedule(), VIEW_ROOMS, "Roddy 147")
+    grid = schedule_grid(sample_schedule(), VIEW_ROOMS, "Roddy 147")
     assert block_titles(grid) == [("MON", "Roddy 147", "CMSC 162.01 · Killen")]
 
 
 def test_picking_a_resource_does_not_move_the_time_axis():
-    everything = _schedule_grid(sample_schedule(), VIEW_FACULTY)
-    one_person = _schedule_grid(sample_schedule(), VIEW_FACULTY, "Hogg")
-    assert one_person["hours"] == everything["hours"]
-    assert one_person["hour_pct"] == everything["hour_pct"]
+    everything = schedule_grid(sample_schedule(), VIEW_FACULTY)
+    one_person = schedule_grid(sample_schedule(), VIEW_FACULTY, "Hogg")
+    assert one_person.hours == everything.hours
+    assert one_person.hour_pct == everything.hour_pct
 
 
 def test_the_color_key_lists_each_label_once_with_its_color():
-    legend = _schedule_grid(sample_schedule(), VIEW_FACULTY)["legend"]
-    assert [item["label"] for item in legend] == ["Hogg", "Killen", "Zoppetti"]
-    assert len({item["color"] for item in legend}) == 3
+    legend = schedule_grid(sample_schedule(), VIEW_FACULTY).legend
+    assert [item.label for item in legend] == ["Hogg", "Killen", "Zoppetti"]
+    assert len({item.color for item in legend}) == 3
 
 
 def test_the_picker_is_shown_in_every_view(client):
@@ -482,13 +499,13 @@ def test_the_toolbar_names_the_schedule_the_view_and_has_a_color_key(client):
         ("23:45", "11:45 PM"),
     ],
 )
-def test_twelve_hour_clock_text(value, expected):
-    assert _clock_text(value, TIME_FORMAT_12) == expected
+def test_twelve_hourclock_text(value, expected):
+    assert clock_text(value, TIME_FORMAT_12) == expected
 
 
 def test_twenty_four_hour_clock_text_is_unchanged():
-    assert _clock_text("13:10", TIME_FORMAT_24) == "13:10"
-    assert _clock_text("09:05") == "09:05"
+    assert clock_text("13:10", TIME_FORMAT_24) == "13:10"
+    assert clock_text("09:05") == "09:05"
 
 
 @pytest.mark.parametrize(
@@ -500,11 +517,11 @@ def test_twenty_four_hour_clock_text_is_unchanged():
     ],
 )
 def test_twelve_hour_ranges_write_am_pm_once_when_it_is_shared(start, end, expected):
-    assert _range_text(start, end, TIME_FORMAT_12) == expected
+    assert range_text(start, end, TIME_FORMAT_12) == expected
 
 
 def test_twenty_four_hour_range_is_start_dash_end():
-    assert _range_text("09:00", "09:50") == "09:00\u201309:50"
+    assert range_text("09:00", "09:50") == "09:00\u201309:50"
 
 
 def test_the_grid_axis_and_blocks_follow_the_time_format():
@@ -512,25 +529,23 @@ def test_the_grid_axis_and_blocks_follow_the_time_format():
         Assignment("A", meetings=(MeetingTime("MON", "11:00", "12:50", 110),)),
         Assignment("B", meetings=(MeetingTime("MON", "14:00", "14:50", 50),)),
     ]
-    plain = _schedule_grid(schedule)
-    assert [hour["label"] for hour in plain["hours"]][:2] == ["11:00", "12:00"]
-    twelve = _schedule_grid(schedule, time_format=TIME_FORMAT_12)
-    assert [hour["label"] for hour in twelve["hours"]] == [
+    plain = schedule_grid(schedule)
+    assert [hour.label for hour in plain.hours][:2] == ["11:00", "12:00"]
+    twelve = schedule_grid(schedule, time_format=TIME_FORMAT_12)
+    assert [hour.label for hour in twelve.hours] == [
         "11 AM",
         "12 PM",
         "1 PM",
         "2 PM",
         "3 PM",
     ]
-    monday = twelve["days"][0]["meetings"]
-    assert [row["range_text"] for row in monday] == [
+    monday = twelve.days[0].meetings
+    assert [row.range_text for row in monday] == [
         "11:00 AM\u201312:50 PM",
         "2:00\u20132:50 PM",
     ]
     # Position and size still come from the real 24-hour times.
-    assert [row["top"] for row in monday] == [
-        row["top"] for row in plain["days"][0]["meetings"]
-    ]
+    assert [row.top for row in monday] == [row.top for row in plain.days[0].meetings]
 
 
 def test_the_time_toggle_marks_the_active_format_and_keeps_the_view(client):
@@ -576,34 +591,32 @@ def test_an_unknown_time_format_is_ignored(client):
 #  Picking several items at once
 # ---------------------------------------------------------------------- #
 def shown(grid):
-    return [
-        (row["day"], row["label"]) for day in grid["days"] for row in day["meetings"]
-    ]
+    return [(row.day, row.label) for day in grid.days for row in day.meetings]
 
 
 def test_several_faculty_keep_the_faculty_names_as_labels():
-    grid = _schedule_grid(sample_schedule(), VIEW_FACULTY, ["Hogg", "Killen"])
+    grid = schedule_grid(sample_schedule(), VIEW_FACULTY, ["Hogg", "Killen"])
     assert shown(grid) == [("MON", "Hogg"), ("MON", "Killen")]
 
 
 def test_several_rooms_and_labs_keep_the_meetings_held_in_any_of_them():
-    grid = _schedule_grid(sample_schedule(), VIEW_ROOMS, ["Roddy 136", "Roddy 147"])
+    grid = schedule_grid(sample_schedule(), VIEW_ROOMS, ["Roddy 136", "Roddy 147"])
     assert shown(grid) == [("MON", "Roddy 136"), ("MON", "Roddy 147")]
 
 
 def test_several_courses_keep_any_of_them():
-    grid = _schedule_grid(two_sections(), VIEW_COURSES, ["CMSC 140.02", "CMSC 201.01"])
+    grid = schedule_grid(two_sections(), VIEW_COURSES, ["CMSC 140.02", "CMSC 201.01"])
     assert shown(grid) == [("TUE", "CMSC 140.02"), ("WED", "CMSC 201.01")]
 
 
 def test_a_course_and_one_of_its_sections_do_not_show_a_meeting_twice():
-    grid = _schedule_grid(two_sections(), VIEW_COURSES, ["CMSC 140", "CMSC 140.01"])
+    grid = schedule_grid(two_sections(), VIEW_COURSES, ["CMSC 140", "CMSC 140.01"])
     assert shown(grid) == [("MON", "CMSC 140.01"), ("TUE", "CMSC 140.02")]
 
 
 def test_one_picked_item_reads_the_same_as_several_and_a_plain_string_still_works():
-    as_list = _schedule_grid(sample_schedule(), VIEW_FACULTY, ["Hogg"])
-    as_text = _schedule_grid(sample_schedule(), VIEW_FACULTY, "Hogg")
+    as_list = schedule_grid(sample_schedule(), VIEW_FACULTY, ["Hogg"])
+    as_text = schedule_grid(sample_schedule(), VIEW_FACULTY, "Hogg")
     assert shown(as_list) == shown(as_text) == [("MON", "Hogg")]
 
 
@@ -617,7 +630,7 @@ def test_view_query_repeats_resource_for_each_picked_item():
 
 
 def test_each_chip_links_to_the_view_without_that_item():
-    options = _resource_options(sample_schedule(), VIEW_FACULTY)
+    options = GROUPINGS[VIEW_FACULTY].options(sample_schedule())
     chips = _resource_chips(1, VIEW_FACULTY, ["Hogg", "Killen"], options)
     assert chips == [
         {"label": "Hogg", "href": "?schedule=1&view=faculty&resource=Killen"},
@@ -626,13 +639,13 @@ def test_each_chip_links_to_the_view_without_that_item():
 
 
 def test_removing_the_last_chip_goes_back_to_showing_everything():
-    options = _resource_options(sample_schedule(), VIEW_COURSES)
+    options = GROUPINGS[VIEW_COURSES].options(sample_schedule())
     chips = _resource_chips(2, VIEW_COURSES, ["CMSC 162.01"], options)
     assert chips == [{"label": "CMSC 162.01", "href": "?schedule=2"}]
 
 
 def test_the_all_sections_chip_uses_its_readable_label():
-    options = _resource_options(two_sections(), VIEW_COURSES)
+    options = GROUPINGS[VIEW_COURSES].options(two_sections())
     chips = _resource_chips(1, VIEW_COURSES, ["CMSC 140"], options)
     assert chips[0]["label"] == "CMSC 140 (all sections)"
 
@@ -695,7 +708,7 @@ def test_unknown_and_repeated_items_are_dropped(client):
 #  Every block says the same three things
 # ---------------------------------------------------------------------- #
 def all_rows(grid):
-    return [row for day in grid["days"] for row in day["meetings"]]
+    return [row for day in grid.days for row in day.meetings]
 
 
 def test_every_block_leads_with_the_views_own_item_and_lists_the_other_two():
@@ -705,8 +718,8 @@ def test_every_block_leads_with_the_views_own_item_and_lists_the_other_two():
         VIEW_FACULTY: ("Hogg", ["CMSC 140.01", "Roddy 136"]),
     }
     for view, (label, details) in expected.items():
-        row = all_rows(_schedule_grid(sample_schedule(), view))[0]
-        assert (row["label"], row["details"]) == (label, details), view
+        row = all_rows(schedule_grid(sample_schedule(), view))[0]
+        assert (row.label, row.details) == (label, details), view
 
 
 def test_a_missing_room_or_faculty_member_is_written_out_not_left_off():
@@ -715,15 +728,15 @@ def test_a_missing_room_or_faculty_member_is_written_out_not_left_off():
             "CMSC 390.01", None, None, None, (MeetingTime("MON", "09:00", "09:50", 50),)
         )
     ]
-    assert all_rows(_schedule_grid(schedule, VIEW_COURSES))[0]["details"] == [
+    assert all_rows(schedule_grid(schedule, VIEW_COURSES))[0].details == [
         NO_LOCATION_LABEL,
         NO_FACULTY_LABEL,
     ]
-    assert all_rows(_schedule_grid(schedule, VIEW_ROOMS))[0]["details"] == [
+    assert all_rows(schedule_grid(schedule, VIEW_ROOMS))[0].details == [
         "CMSC 390.01",
         NO_FACULTY_LABEL,
     ]
-    assert all_rows(_schedule_grid(schedule, VIEW_FACULTY))[0]["details"] == [
+    assert all_rows(schedule_grid(schedule, VIEW_FACULTY))[0].details == [
         "CMSC 390.01",
         NO_LOCATION_LABEL,
     ]
@@ -754,9 +767,9 @@ def test_short_classes_keep_their_details_and_only_tiny_blocks_drop_them():
             (MeetingTime("FRI", "17:00", "18:00", 60),),
         ),
     ]
-    rows = {row["course"]: row for row in all_rows(_schedule_grid(schedule))}
-    assert rows["A"]["compact"] is False  # a 50-minute class keeps both details
-    assert rows["B"]["compact"] is True  # a 15-minute block has no room for them
+    rows = {row.course: row for row in all_rows(schedule_grid(schedule))}
+    assert rows["A"].compact is False  # a 50-minute class keeps both details
+    assert rows["B"].compact is True  # a 15-minute block has no room for them
 
 
 def test_the_page_writes_each_block_with_both_details(client):
@@ -781,8 +794,6 @@ def test_every_block_is_laid_out_the_same_whatever_its_size():
 
 
 def test_each_hour_is_tall_enough_for_a_50_minute_class_to_hold_four_lines(client):
-    from gui.views import HOUR_HEIGHT_REM
-
     # name 0.75rem*1.15 + time 0.68*1.2 + two facts 0.68*1.25 each + padding, for 50 of 60 minutes
     assert HOUR_HEIGHT_REM * 50 / 60 >= 3.6
     load(client, sample_schedule())
@@ -813,10 +824,10 @@ def online_only():
 
 
 def test_a_schedule_without_meetings_has_nothing_to_draw_and_names_the_sections():
-    grid = _schedule_grid(online_only(), VIEW_COURSES)
-    assert grid["meeting_count"] == 0
-    assert grid["without_meetings"] == ["CMSC 999.01"]
-    assert grid["legend"] == []
+    grid = schedule_grid(online_only(), VIEW_COURSES)
+    assert grid.meeting_count == 0
+    assert grid.without_meetings == ["CMSC 999.01"]
+    assert grid.legend == []
 
 
 def test_the_page_explains_a_schedule_with_no_meetings(client):
@@ -847,14 +858,14 @@ def test_a_schedule_with_meetings_shows_the_grid_not_the_empty_state(client):
 
 def test_picking_items_keeps_each_items_color():
     def colors(grid):
-        return {m["label"]: m["color"] for d in grid["days"] for m in d["meetings"]}
+        return {m.label: m.color for d in grid.days for m in d.meetings}
 
-    everything = colors(_schedule_grid(sample_schedule(), VIEW_ROOMS))
-    picked = colors(_schedule_grid(sample_schedule(), VIEW_ROOMS, "Roddy 147"))
+    everything = colors(schedule_grid(sample_schedule(), VIEW_ROOMS))
+    picked = colors(schedule_grid(sample_schedule(), VIEW_ROOMS, "Roddy 147"))
     assert picked == {"Roddy 147": everything["Roddy 147"]}
 
 
 def test_the_color_key_lists_only_the_picked_items_with_their_usual_colors():
-    full = _schedule_grid(sample_schedule(), VIEW_FACULTY)["legend"]
-    picked = _schedule_grid(sample_schedule(), VIEW_FACULTY, ["Killen"])["legend"]
-    assert picked == [item for item in full if item["label"] == "Killen"]
+    full = schedule_grid(sample_schedule(), VIEW_FACULTY).legend
+    picked = schedule_grid(sample_schedule(), VIEW_FACULTY, ["Killen"]).legend
+    assert picked == [item for item in full if item.label == "Killen"]
