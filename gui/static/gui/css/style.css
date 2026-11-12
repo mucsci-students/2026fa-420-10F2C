@@ -2490,3 +2490,71 @@ html[data-theme="dark"] .chat-form { border-top-color: #3f3f46; }
 html[data-theme="dark"] .chat-form textarea { background: #18181b; color: #f3f4f6; border-color: #52525b; }
 
 @media print { .chat-widget { display: none; } }
+
+/* ------------------------------------------------------------------ *
+ * Locked sections (selective regeneration)                            *
+ * The padlock on a calendar block, the "Keep sections you like" card  *
+ * and the banner. A locked section is marked by an icon AND by words  *
+ * ("Locked", the button's label), never by color alone.               *
+ * ------------------------------------------------------------------ */
+.lock-btn {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    padding: 0;
+    font-size: 0.75rem;
+    line-height: 1;
+    color: #111827;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(0, 0, 0, 0.45);
+    border-radius: 4px;
+    cursor: pointer;
+    opacity: 0.6;
+}
+
+.schedule-grid__meeting:hover .lock-btn,
+.schedule-grid__meeting:focus-within .lock-btn,
+.lock-btn:focus-visible {
+    opacity: 1;
+}
+
+.lock-btn:hover { background: #ffffff; }
+.lock-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.lock-btn--on { opacity: 1; background: #fef3c7; border-color: #92400e; }
+.lock-btn--different { opacity: 1; background: #ffedd5; border-style: dashed; border-color: #9a3412; }
+
+/* Make room for the padlock beside the block's name. */
+.schedule-grid__meeting .schedule-grid__header { padding-right: 1.5rem; }
+
+/* A locked block gets a light frame inside its edge, a dashed one when its lock is a different placement. */
+.week-grid__block.schedule-grid__meeting--locked:not(:focus-visible) {
+    outline: 2px solid #fde68a;
+    outline-offset: -3px;
+}
+
+.week-grid__block.schedule-grid__meeting--different:not(:focus-visible) {
+    outline: 2px dashed #fdba74;
+    outline-offset: -3px;
+}
+
+.lock-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; }
+.lock-banner p { margin: 0; }
+.lock-banner__actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+.lock-card { margin-top: 1rem; }
+.lock-table th[scope="row"] { font-weight: 600; white-space: nowrap; }
+.lock-table .lock-group th { background: var(--surface-alt); text-align: left; }
+.lock-group__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.4rem 1rem; }
+.lock-group__count { font-weight: 400; color: var(--muted); }
+.lock-group__tools { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.lock-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.lock-actions .help { flex: 1 0 100%; margin: 0; }
+.lock-row--locked th[scope="row"],
+.lock-row--different th[scope="row"] { box-shadow: inset 3px 0 0 var(--warn); }
+.lock-note { margin-top: 0.25rem; }

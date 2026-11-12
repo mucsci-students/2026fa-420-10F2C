@@ -28,6 +28,8 @@
 {% endif %}
 
 {% if data.has_config %}
+{% include "gui/components/lock_panel.html" %}
+
 <form method="post" class="edit-form" data-loading="Generating schedules" data-generation-form data-start-url="{% url 'gui:generation_start' %}" {% if generating %}aria-busy="true"{% endif %}>
     {% csrf_token %}
     <div id="generation-errors" class="alert alert-error" role="alert" hidden></div>
@@ -35,6 +37,7 @@
     {% include "gui/components/field.html" with field=form.limit %}
     {% include "gui/components/field.html" with field=form.optimizer_flags %}
     <p class="help">Saved generation limit: <strong>{{ data.limit }}</strong>. Saved optimizer flags are unchanged by this page.</p>
+    {% if locked_total %}<p class="help lock-note"><span aria-hidden="true">&#128274;</span> {{ locked_total }} locked section{{ locked_total|pluralize }} will be kept exactly as {{ locked_total|pluralize:"it is,they are" }}. Everything else is regenerated.</p>{% endif %}
     <button type="submit" class="btn btn-primary" {% if generating %}disabled aria-disabled="true"{% endif %}>Generate schedules</button>
 </form>
 {% endif %}

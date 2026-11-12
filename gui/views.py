@@ -38,6 +38,7 @@ from gui.controllers import (
     config_controller,
     schedule_controller,
 )
+from gui.controllers import locks as lock_controller
 from gui.controllers import (
     settings as settings_controller,
 )
@@ -215,6 +216,15 @@ def _render_schedule_generator(request, form=None, result=None, config_form=None
         "result": result,
         "config_choices": config_choices,
     }
+    # The sections locked in the Schedule Viewer, which this run will keep.
+    time_format = _current_time_format(request)
+    lock_rows = [
+        _lock_row(assignment, lock_controller.LOCKED, time_format)
+        for assignment in lock_controller.locked_assignments(request)
+    ]
+    context["locked_total"] = len(lock_rows)
+    context["lock_rows"] = lock_rows
+    context["lock_next"] = request.get_full_path()
     if config_form is None:
         config_form = (
             SavedConfigSelectionForm(
@@ -289,6 +299,8 @@ def schedule_generator(request):
             request,
             "No feasible schedule was found. Check the configuration and try again.",
         )
+    elif result.outcome == schedule_ops.GenerationOutcome.LOCK_CONFLICT:
+        messages.error(request, result.message)
     elif result.outcome == schedule_ops.GenerationOutcome.INVALID_CONFIG:
         messages.error(request, f"The configuration is invalid: {result.message}")
     else:
@@ -327,6 +339,18 @@ def schedule_viewer(request, import_form=None):
         schedule_count=count, initial={"schedule": current}
     )
     pager = _schedule_pager_context(current, count, view_mode, resources)
+    # Locked sections: the banner, the padlocks on the blocks and the "Keep sections you like" card.
+    lock_context = {
+        "locked_total": lock_controller.lock_count(request),
+        # Come back to this schedule and view, keeping only picked items that exist.
+        "lock_next": f"{request.path}?schedule={current}{_view_query(view_mode, resources)}",
+    }
+    if schedule_grid is not None:
+        lock_context.update(
+            _lock_viewer_context(
+                request, current, assignments, schedule_grid, resources, time_format
+            )
+        )
     picker_label, picker_all = RESOURCE_PICKER_TEXT.get(view_mode, ("", ""))
     return render(
         request,
@@ -353,6 +377,7 @@ def schedule_viewer(request, import_form=None):
             **pager,
             "import_form": import_form,
             "export_form": export_form,
+            **lock_context,
         },
     )
 
@@ -389,6 +414,60 @@ def schedule_clear(request):
         "gui/schedules_clear.html",
         {"active": "viewer", "schedule_count": count},
     )
+
+
+def _when_text(assignment, time_format):
+    """'Mon 09:00-09:50, Wed 09:00-09:50' for a section, or why it has no times."""
+    if not assignment.meetings:
+        return "No meeting times"
+    return ", ".join(
+        f"{DAY_NAMES.get(meeting.day, meeting.day)[:3]} {_range_text(meeting.start, meeting.end, time_format)}"
+        for meeting in assignment.meetings
+    )
+
+
+def _where_text(assignment):
+    parts = [place for place in (assignment.room, assignment.lab) if place]
+    return ", ".join(parts) if parts else NO_LOCATION_LABEL
+
+
+def _lock_row(assignment, state, time_format):
+    """One section as the lock tables show it."""
+    return {
+        "section": assignment.course,
+        "faculty": assignment.faculty or NO_FACULTY_LABEL,
+        "location": _where_text(assignment),
+        "when": _when_text(assignment, time_format),
+        "state": state,
+    }
+
+
+def _lock_viewer_context(
+    request, current, assignments, schedule_grid, resources, time_format
+):
+    """What the viewer needs to show locks: each calendar block says whether its section is
+    locked, and the card lists the sections the calendar is showing, grouped by instructor.
+    (Changing the grid dictionaries in place is fine: they were just built for this page.)"""
+    states = lock_controller.section_states(request, assignments)
+    shown = set() if resources else set(schedule_grid["without_meetings"])
+    for day in schedule_grid["days"]:
+        for meeting in day["meetings"]:
+            meeting["lock"] = states.get(meeting["course"], lock_controller.FREE)
+            shown.add(meeting["course"])
+    groups = [
+        {
+            "name": group.faculty or NO_FACULTY_LABEL,
+            "faculty": group.faculty,
+            "in_schedule": group.in_schedule,
+            "to_lock": group.to_lock,
+            "locked_now": group.locked_now,
+            "rows": [
+                _lock_row(row.assignment, row.state, time_format) for row in group.rows
+            ],
+        }
+        for group in lock_controller.faculty_groups(request, assignments, shown)
+    ]
+    return {"lock_groups": groups, "lock_schedule": current}
 
 
 def _current_schedule_number(request, count):

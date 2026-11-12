@@ -40,6 +40,9 @@ from scheduler import Scheduler
 from scheduler.config import OptimizerFlags
 from scheduler.writers import CSVWriter, JSONWriter
 
+from app import lock_solver
+from app.locks import find_conflicts
+
 DEFAULT_EXPORT_DIR = Path.cwd() / "exports"
 
 
@@ -52,6 +55,10 @@ class GenerationOutcome:
     INVALID_CONFIG = "invalid_config"
     RUNTIME_ERROR = "runtime_error"
     CANCELLED = "cancelled"  # the user stopped a run in progress; nothing is stored
+    # Locked sections cannot all be kept (a clash between locks, a lock that no
+    # longer fits the configuration, or no schedule that keeps them all).
+    # Nothing is stored and earlier schedules are left alone.
+    LOCK_CONFLICT = "lock_conflict"
 
 
 @dataclass
@@ -59,6 +66,8 @@ class GenerationResult:
     outcome: str
     message: str
     schedules: list  # list of (list of CourseInstance); empty unless outcome == SUCCESS
+    # The locked sections this run kept in place (SUCCESS only; empty when nothing was locked).
+    kept: tuple[str, ...] = ()
 
 
 def generate_schedules(
@@ -67,11 +76,25 @@ def generate_schedules(
     optimizer_overrides=None,
     on_progress=None,
     should_cancel=None,
+    locks=None,
 ) -> GenerationResult:
     """Runs the scheduler's public API and reports one of the four outcomes
     Req #8 requires. Does not mutate session state -- the caller (a
     commands.py function) decides whether/how to store the result, e.g.
     `session.schedules = result.schedules`."""
+
+    # Locked sections (a list of Assignment records, see app/locks.py). Clashes
+    # between locks need no solver, so they are caught first.
+    lock_list = list(locks) if locks else []
+    conflicts = find_conflicts(lock_list)
+    if conflicts:
+        return GenerationResult(
+            GenerationOutcome.LOCK_CONFLICT,
+            " ".join(conflict.message for conflict in conflicts)
+            + " Unlock one of them and try again. Nothing was generated; "
+            "your schedules and configuration are unchanged.",
+            [],
+        )
 
     # "Require a valid complete configuration" -- if construction itself is
     # what validates completeness, this try/except covers it. If not, add
@@ -88,6 +111,26 @@ def generate_schedules(
         engine = Scheduler(run_config)
     except Exception as e:  # noqa: BLE001 -- narrow once the real exception type is known
         return GenerationResult(GenerationOutcome.INVALID_CONFIG, str(e), [])
+
+    # Turn the locks into extra rules for the solver (app/lock_solver.py).
+    if lock_list:
+        try:
+            plan = lock_solver.plan_locks(engine, lock_list)
+            if plan.problems:
+                return GenerationResult(
+                    GenerationOutcome.LOCK_CONFLICT,
+                    " ".join(plan.problems)
+                    + " Unlock those sections and try again. Nothing was "
+                    "generated; your schedules and configuration are unchanged.",
+                    [],
+                )
+            lock_solver.apply_plan(engine, plan)
+        except Exception as e:  # noqa: BLE001 -- the library's private parts changed
+            return GenerationResult(
+                GenerationOutcome.RUNTIME_ERROR,
+                f"Could not apply the locked sections: {e}",
+                [],
+            )
 
     limit = (
         limit_override
@@ -126,16 +169,57 @@ def generate_schedules(
         return GenerationResult(GenerationOutcome.RUNTIME_ERROR, str(e), [])
 
     if not schedules:
+        if lock_list:
+            return GenerationResult(
+                GenerationOutcome.LOCK_CONFLICT, _locks_cannot_hold(lock_list), []
+            )
         return GenerationResult(
             GenerationOutcome.NO_FEASIBLE_SCHEDULE,
             "The solver found no schedule satisfying every hard constraint.",
             [],
         )
 
+    message = f"Generated {len(schedules)} schedule(s)."
+    if lock_list:
+        # Safety net: the rules should make this impossible, but never hand
+        # back a schedule that does not keep a lock.
+        try:
+            for schedule in schedules:
+                broken = lock_solver.unkept_locks(schedule, lock_list)
+                if broken:
+                    names = ", ".join(f'"{name}"' for name in broken)
+                    return GenerationResult(
+                        GenerationOutcome.RUNTIME_ERROR,
+                        f"A generated schedule did not keep the lock on {names}. "
+                        "Nothing was saved.",
+                        [],
+                    )
+        except Exception as e:  # noqa: BLE001 -- unreadable schedule: do not trust it
+            return GenerationResult(
+                GenerationOutcome.RUNTIME_ERROR,
+                f"Could not check the locked sections: {e}",
+                [],
+            )
+        message += f" Kept {len(lock_list)} locked section(s) in place."
+
     return GenerationResult(
         GenerationOutcome.SUCCESS,
-        f"Generated {len(schedules)} schedule(s).",
+        message,
         schedules,
+        tuple(lock.course for lock in lock_list),
+    )
+
+
+def _locks_cannot_hold(lock_list) -> str:
+    """The message for 'the solver found nothing, and there are locks'."""
+    names = [lock.course for lock in lock_list]
+    shown = ", ".join(f'"{name}"' for name in names[:6])
+    if len(names) > 6:
+        shown += f" and {len(names) - 6} more"
+    return (
+        f"No schedule can keep all {len(names)} locked section(s) in place "
+        f"({shown}). Unlock one or more of them and try again. Nothing was "
+        "generated; your schedules and configuration are unchanged."
     )
 
 

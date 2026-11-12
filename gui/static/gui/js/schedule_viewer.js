@@ -24,7 +24,8 @@
       title.textContent = b.dataset.course;
       tip.appendChild(title);
       [["Faculty", b.dataset.faculty], ["Room / lab", b.dataset.location],
-       ["When", b.dataset.when], ["Type", b.dataset.type]].forEach(function (pair) {
+       ["When", b.dataset.when], ["Type", b.dataset.type], ["Lock", b.dataset.lock]].forEach(function (pair) {
+        if (!pair[1]) { return; }
         var line = document.createElement("div");
         var key = document.createElement("span");
         key.className = "schedule-tooltip__key";
@@ -67,8 +68,12 @@
       b.addEventListener("mouseleave", function () { hide(b); });
       b.addEventListener("focus", function () { show(b); });
       b.addEventListener("blur", function () { hide(b); });
-      b.addEventListener("click", function () { toggle(b); });
+      b.addEventListener("click", function (e) {
+        if (e.target.closest && e.target.closest(".lock-btn")) { return; } // the padlock is a button of its own
+        toggle(b);
+      });
       b.addEventListener("keydown", function (e) {
+        if (e.target !== b) { return; } // Enter or Space on the padlock presses the padlock
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(b); }
         if (e.key === "Escape") { hide(b); }
       });

@@ -1,0 +1,42 @@
+{% comment %}
+    The "Locked sections" card on the Schedule Generator: the same locks the Schedule Viewer shows, listed so
+    the user can see what the next run will keep, and remove any of them.
+{% endcomment %}
+{% url 'gui:unlock' as unlock_url %}
+<section class="card lock-card" id="locked-sections" aria-labelledby="locked-sections-title">
+    <h2 id="locked-sections-title" class="card__title">Locked sections <span class="count-chip">{{ locked_total }}</span></h2>
+    {% if lock_rows %}
+    {% include "gui/components/lock_form.html" %}
+    <p class="help">Generating keeps these sections exactly as they are (instructor, room, lab, days and times) and rearranges everything else. Lock or unlock sections in the <a href="{% url 'gui:schedule_viewer' %}">Schedule Viewer</a>, or remove them here.</p>
+    <div class="table-wrap">
+        <table class="data-table lock-table">
+            <caption class="visually-hidden">Sections that will be kept as they are the next time you generate schedules</caption>
+            <thead>
+                <tr>
+                    <th scope="col">Section</th>
+                    <th scope="col">Instructor</th>
+                    <th scope="col">Room or lab</th>
+                    <th scope="col">When</th>
+                    <th scope="col">Lock</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in lock_rows %}
+                <tr>
+                    <th scope="row">{{ row.section }}</th>
+                    <td>{{ row.faculty }}</td>
+                    <td>{{ row.location }}</td>
+                    <td>{{ row.when }}</td>
+                    <td class="actions"><button type="submit" form="lock-form" formaction="{{ unlock_url }}" name="section" value="{{ row.section }}" class="btn btn-small" aria-label="Unlock {{ row.section }}">Unlock</button></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="button-row">
+        <a class="btn btn-danger" href="{% url 'gui:locks_clear' %}?next={{ lock_next|urlencode }}">Unlock all</a>
+    </div>
+    {% else %}
+    <p class="help">Nothing is locked, so generating can change every section. To keep part of a schedule, open it in the <a href="{% url 'gui:schedule_viewer' %}">Schedule Viewer</a> and lock the sections you like.</p>
+    {% endif %}
+</section>

@@ -1,0 +1,16 @@
+{% comment %}
+    Shown on the Schedule Viewer while any section is locked: what it means, and the two things to do next.
+{% endcomment %}
+{% if locked_total %}
+<div class="alert alert-info lock-banner" role="status">
+    <p>
+        <strong><span aria-hidden="true">&#128274;</span> {{ locked_total }} section{{ locked_total|pluralize }} locked.</strong>
+        When you generate again, {% if locked_total == 1 %}it stays{% else %}they stay{% endif %} exactly as
+        {% if locked_total == 1 %}it is{% else %}they are{% endif %} and everything else is rearranged.
+    </p>
+    <p class="lock-banner__actions">
+        <a class="btn btn-small btn-primary" href="{% url 'gui:schedule_generator' %}">Generate again</a>
+        <a class="btn btn-small" href="{% url 'gui:locks_clear' %}?next={{ lock_next|urlencode }}">Unlock all</a>
+    </p>
+</div>
+{% endif %}

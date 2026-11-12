@@ -1,0 +1,71 @@
+{% comment %}
+    The "Lock sections" card on the Schedule Viewer: every section the calendar is showing, grouped by
+    instructor, each with a Lock / Unlock button. The same buttons exist as a padlock on each calendar block.
+    Needs lock_groups, current_schedule and the hidden lock form (components/lock_form.html) on the page.
+{% endcomment %}
+{% url 'gui:lock' as lock_url %}
+{% url 'gui:unlock' as unlock_url %}
+<section class="card lock-card" id="lock-sections" aria-labelledby="lock-sections-title">
+    <h2 id="lock-sections-title" class="card__title">Keep sections you like</h2>
+    <p class="help">
+        Lock a section to keep it exactly as it is (instructor, room, lab, days and times). The next time you
+        generate schedules, locked sections stay put and everything else is rearranged around them.
+        You can also use the padlock on any block in the calendar.
+    </p>
+    {% if lock_groups %}
+    <div class="table-wrap">
+        <table class="data-table lock-table">
+            <caption class="visually-hidden">Sections in schedule {{ current_schedule }}, grouped by instructor, with buttons to lock or unlock them</caption>
+            <thead>
+                <tr>
+                    <th scope="col">Section</th>
+                    <th scope="col">Room or lab</th>
+                    <th scope="col">When</th>
+                    <th scope="col">Lock</th>
+                </tr>
+            </thead>
+            {% for group in lock_groups %}
+            <tbody>
+                <tr class="lock-group">
+                    <th colspan="4">
+                        <div class="lock-group__head">
+                            <span class="lock-group__name">{{ group.name }} <span class="lock-group__count">({{ group.in_schedule }} section{{ group.in_schedule|pluralize }})</span></span>
+                            {% if group.faculty and group.in_schedule > 1 %}
+                            <span class="lock-group__tools">
+                                {% if group.to_lock %}<button type="submit" form="lock-form" formaction="{{ lock_url }}" name="faculty" value="{{ group.faculty }}" class="btn btn-small" aria-label="Lock all {{ group.in_schedule }} sections taught by {{ group.faculty }} in this schedule">Lock all {{ group.in_schedule }}</button>{% endif %}
+                                {% if group.locked_now > 1 %}<button type="submit" form="lock-form" formaction="{{ unlock_url }}" name="faculty" value="{{ group.faculty }}" class="btn btn-small" aria-label="Unlock all {{ group.locked_now }} locked sections taught by {{ group.faculty }}">Unlock all {{ group.locked_now }}</button>{% endif %}
+                            </span>
+                            {% endif %}
+                        </div>
+                    </th>
+                </tr>
+                {% for row in group.rows %}
+                <tr class="lock-row lock-row--{{ row.state }}">
+                    <th scope="row">{{ row.section }}</th>
+                    <td>{{ row.location }}</td>
+                    <td>{{ row.when }}</td>
+                    <td class="actions">
+                        <div class="lock-actions">
+                        {% if row.state == "locked" %}
+                        <span class="chip chip--info"><span aria-hidden="true">&#128274;</span> Locked</span>
+                        <button type="submit" form="lock-form" formaction="{{ unlock_url }}" name="section" value="{{ row.section }}" class="btn btn-small" aria-label="Unlock {{ row.section }}">Unlock</button>
+                        {% elif row.state == "different" %}
+                        <span class="chip chip--warn"><span aria-hidden="true">&#128274;</span> Locked elsewhere</span>
+                        <button type="submit" form="lock-form" formaction="{{ lock_url }}" name="section" value="{{ row.section }}" class="btn btn-small" aria-label="Lock {{ row.section }} as it is in this schedule instead">Lock this one</button>
+                        <button type="submit" form="lock-form" formaction="{{ unlock_url }}" name="section" value="{{ row.section }}" class="btn btn-small" aria-label="Unlock {{ row.section }}">Unlock</button>
+                        <p class="help">Its lock is from another schedule, so new schedules will place it that way, not as shown here.</p>
+                        {% else %}
+                        <button type="submit" form="lock-form" formaction="{{ lock_url }}" name="section" value="{{ row.section }}" class="btn btn-small btn-primary" aria-label="Lock {{ row.section }}">Lock</button>
+                        {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            {% endfor %}
+        </table>
+    </div>
+    {% else %}
+    <p class="help">There are no sections to lock in this view.</p>
+    {% endif %}
+</section>

@@ -1,0 +1,14 @@
+{% comment %}
+    The one hidden form behind every lock button on the page. A button elsewhere on the page joins it with
+    form="lock-form" and says what to do with formaction (the lock or unlock address), name and value:
+
+        <button type="submit" form="lock-form" formaction="{% url 'gui:lock' %}" name="section" value="CMSC 141.01">
+
+    On the Schedule Viewer it also carries the schedule being looked at (lock_schedule), so a section is locked
+    exactly as that schedule places it. lock_next is where to come back to.
+{% endcomment %}
+<form id="lock-form" method="post" action="{% url 'gui:lock' %}" hidden>
+    {% csrf_token %}
+    {% if lock_schedule %}<input type="hidden" name="schedule" value="{{ lock_schedule }}">{% endif %}
+    <input type="hidden" name="next" value="{{ lock_next }}">
+</form>

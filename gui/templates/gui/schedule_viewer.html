@@ -10,6 +10,9 @@
 </div>
 
 {% include "gui/components/stale_schedules.html" with where="viewer" %}
+{% if schedule_count %}{% include "gui/components/lock_form.html" %}{% endif %}
+{% include "gui/components/lock_banner.html" %}
+{% url 'gui:lock' as lock_url %}{% url 'gui:unlock' as unlock_url %}
 {% if schedule_count %}
 <div class="status-card schedule-status-card">
     <p class="status-line" role="status"><strong>{{ schedule_count }}</strong> schedule{{ schedule_count|pluralize }} available.</p>
@@ -101,20 +104,28 @@
                 <div class="week-grid__day-name">{{ day.day }}</div>
                 <div class="week-grid__track">
                     {% for meeting in day.meetings %}
-                    <div class="week-grid__block schedule-grid__meeting schedule-color-{{ meeting.color }}" role="group" tabindex="0"
+                    <div class="week-grid__block schedule-grid__meeting schedule-color-{{ meeting.color }}{% if meeting.lock == 'locked' %} schedule-grid__meeting--locked{% elif meeting.lock == 'different' %} schedule-grid__meeting--different{% endif %}" role="group" tabindex="0"
                          style="top: {{ meeting.top }}%; height: calc({{ meeting.height }}% - 3px); left: calc(3px + {{ meeting.left }}%); width: calc({{ meeting.width }}% - 6px);"
                          title="{{ day.name }} {{ meeting.title_range }}: {{ meeting.label }}"
-                         aria-label="{{ meeting.course }}, {{ meeting.faculty|default:'no faculty assigned' }}, {{ meeting.location|default:'no room assigned' }}, {{ day.name }} {{ meeting.start_text }} to {{ meeting.end_text }}"
+                         aria-label="{{ meeting.course }}, {{ meeting.faculty|default:'no faculty assigned' }}, {{ meeting.location|default:'no room assigned' }}, {{ day.name }} {{ meeting.start_text }} to {{ meeting.end_text }}{% if meeting.lock == 'locked' %}, locked in place{% elif meeting.lock == 'different' %}, locked to a different placement{% endif %}"
                          data-key="{{ meeting.label }}"
                          data-course="{{ meeting.course }}"
                          data-faculty="{{ meeting.faculty|default:'No faculty assigned' }}"
                          data-location="{{ meeting.location|default:'No room assigned' }}"
                          data-type="{{ meeting.meeting_type }}"
-                         data-when="{{ day.name }} {{ meeting.range_text }} ({{ meeting.duration }} min)">
+                         data-when="{{ day.name }} {{ meeting.range_text }} ({{ meeting.duration }} min)"
+                         data-lock="{% if meeting.lock == 'locked' %}Locked in place{% elif meeting.lock == 'different' %}Locked to a different placement (from another schedule){% else %}Not locked{% endif %}">
                         <div class="schedule-grid__header">
                             <span class="week-grid__label">{{ meeting.label }}</span>
                             <span class="schedule-grid__time">{{ meeting.range_text }}</span>
                         </div>
+                        {% if meeting.lock == 'locked' %}
+                        <button type="submit" form="lock-form" formaction="{{ unlock_url }}" name="section" value="{{ meeting.course }}" class="lock-btn lock-btn--on" aria-label="Unlock {{ meeting.course }} (it is locked in place)" title="Locked in place. Click to unlock."><span aria-hidden="true">&#128274;</span></button>
+                        {% elif meeting.lock == 'different' %}
+                        <button type="submit" form="lock-form" formaction="{{ lock_url }}" name="section" value="{{ meeting.course }}" class="lock-btn lock-btn--different" aria-label="Lock {{ meeting.course }} as shown here instead (it is locked to a different placement)" title="Locked to a different placement. Click to lock it as shown here instead."><span aria-hidden="true">&#128274;</span></button>
+                        {% else %}
+                        <button type="submit" form="lock-form" formaction="{{ lock_url }}" name="section" value="{{ meeting.course }}" class="lock-btn" aria-label="Lock {{ meeting.course }} in place" title="Lock this section in place"><span aria-hidden="true">&#128275;</span></button>
+                        {% endif %}
                         {% if not meeting.compact %}<div class="schedule-grid__details">{% for part in meeting.details %}<span class="schedule-grid__detail">{{ part }}</span>{% endfor %}</div>{% endif %}
                     </div>
                     {% endfor %}
@@ -123,7 +134,7 @@
             {% endfor %}
         </div>
     </div>
-    <p class="help">Hover over or focus a block for full details. Click it (or press Enter) to highlight every meeting with the same label; click again to clear.</p>
+    <p class="help">Hover over or focus a block for full details. Click it (or press Enter) to highlight every meeting with the same label; click again to clear. The padlock on a block locks that section in place for the next time you generate.</p>
     {% endif %}
     {% if schedule_grid.legend %}
     <details class="schedule-legend">
@@ -135,6 +146,10 @@
     </details>
     {% endif %}
 </div>
+{% endif %}
+
+{% if schedule_count %}
+{% include "gui/components/lock_sections.html" %}
 {% endif %}
 
 <div class="split">

@@ -42,6 +42,9 @@ Design notes
     the original result.
   * The old on_finish=function argument still works: it subscribes an observer
     that calls the function.
+  * locks=[Assignment, ...] are the sections the user locked. They go to the runner
+    as locks=(...) so the new schedules keep them. A run with no locks calls the runner
+    exactly as before.
 """
 
 from __future__ import annotations
@@ -49,10 +52,12 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from copy import deepcopy
+from typing import Any
 
 from app import schedule_ops
+from app.schedule_io import Assignment
 from app.schedule_ops import GenerationOutcome, GenerationResult
 
 logger = logging.getLogger("app.generation_job")
@@ -136,8 +141,12 @@ class GenerationJob:
         *,
         on_finish: Callable[[GenerationJob, GenerationResult], None] | None = None,
         runner: Callable | None = None,
+        locks: Iterable[Assignment] | None = None,
     ) -> None:
         self._config = deepcopy(config)
+        # Sections locked when the run started. Assignments never change, so a copy of the
+        # list is enough: locking or unlocking while it runs cannot change a run in progress.
+        self._section_locks: tuple[Assignment, ...] = tuple(locks) if locks else ()
         self._limit_override = limit_override
         self._optimizer_overrides = (
             list(optimizer_overrides) if optimizer_overrides is not None else None
@@ -293,6 +302,11 @@ class GenerationJob:
 
     def _run(self) -> None:
         runner = self._runner or schedule_ops.generate_schedules
+        # Only pass the locks when there are some, so a runner that does not know about
+        # locks keeps working exactly as before.
+        extra: dict[str, Any] = {}
+        if self._section_locks:
+            extra["locks"] = self._section_locks
         try:
             result = runner(
                 self._config,
@@ -300,6 +314,7 @@ class GenerationJob:
                 self._optimizer_overrides,
                 on_progress=self._notify_progress,
                 should_cancel=self._cancel.is_set,
+                **extra,
             )
         except Exception as exc:  # noqa: BLE001 -- never let the worker die silently
             result = GenerationResult(GenerationOutcome.RUNTIME_ERROR, str(exc), [])
