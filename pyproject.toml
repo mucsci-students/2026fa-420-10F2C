@@ -26,6 +26,7 @@ source = [
     "app.memento",
     "app.schedule_io",
     "app.schedule_ops",
+    "app.schedule_view",
     "app.session",
 ]
 

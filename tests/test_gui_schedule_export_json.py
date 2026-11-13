@@ -20,9 +20,9 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from app import schedule_io
 from app.schedule_io import Assignment, MeetingTime
 from app.session import Session
+from gui.calendar_layout import schedule_grid
 from gui.controllers import schedule_controller as ctrl
 from gui.controllers.errors import ControllerError
-from gui.views import _schedule_grid
 
 VIEWER_URL = "/schedules/"
 IMPORT_URL = "/schedules/import/"
@@ -300,11 +300,9 @@ def test_schedule_grid_places_overlapping_meetings_in_separate_lanes():
         Assignment("CMSC 152.01", meetings=(MeetingTime("MON", "11:00", "11:50", 50),)),
     ]
 
-    monday = _schedule_grid(assignments)["days"][0]["meetings"]
+    monday = schedule_grid(assignments).days[0].meetings
 
-    assert [
-        (meeting["course"], meeting["left"], meeting["width"]) for meeting in monday
-    ] == [
+    assert [(meeting.course, meeting.left, meeting.width) for meeting in monday] == [
         ("CMSC 140.01", "0.00", "50.00"),
         ("CMSC 140.02", "50.00", "50.00"),
         ("CMSC 152.01", "0.00", "100.00"),
@@ -318,20 +316,20 @@ def test_dense_overlaps_stay_as_separate_blocks_in_side_by_side_lanes():
         Assignment("CMSC 140.03", meetings=(MeetingTime("MON", "09:30", "10:30", 60),)),
     ]
 
-    grid = _schedule_grid(assignments)
-    monday = grid["days"][0]["meetings"]
+    grid = schedule_grid(assignments)
+    monday = grid.days[0].meetings
 
-    assert [m["course"] for m in monday] == [
+    assert [m.course for m in monday] == [
         "CMSC 140.01",
         "CMSC 140.02",
         "CMSC 140.03",
     ]
-    assert [m["lane_count"] for m in monday] == [3, 3, 3]
-    assert [m["left"] for m in monday] == ["0.00", "33.33", "66.67"]
-    assert [m["width"] for m in monday] == ["33.33", "33.33", "33.33"]
-    assert "clusters" not in grid["days"][0]
+    assert [m.lane_count for m in monday] == [3, 3, 3]
+    assert [m.left for m in monday] == ["0.00", "33.33", "66.67"]
+    assert [m.width for m in monday] == ["33.33", "33.33", "33.33"]
+    assert not hasattr(grid.days[0], "clusters")
     # Monday needs 3 lanes, the other four days 1 each.
-    assert grid["day_lanes"] == [3, 1, 1, 1, 1]
+    assert grid.day_lanes == [3, 1, 1, 1, 1]
 
 
 def test_day_columns_share_the_window_width_in_proportion_to_their_lanes():
@@ -340,14 +338,14 @@ def test_day_columns_share_the_window_width_in_proportion_to_their_lanes():
         Assignment("CMSC 140.02", meetings=(MeetingTime("MON", "09:30", "10:30", 60),)),
     ]
 
-    grid = _schedule_grid(assignments)
+    grid = schedule_grid(assignments)
 
-    assert grid["columns"] == (
+    assert grid.columns == (
         "3.5rem minmax(0, 2.5fr) minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1.5fr)"
     )
     # No fixed minimum: the calendar must be able to shrink to the window.
-    assert "rem," not in grid["columns"].replace("3.5rem", "")
-    assert "min_width" not in grid
+    assert "rem," not in grid.columns.replace("3.5rem", "")
+    assert not hasattr(grid, "min_width")
 
 
 def test_single_schedule_pager_identifies_the_selection_and_disables_boundaries(client):
@@ -562,9 +560,9 @@ def test_overlapping_courses_get_different_colors():
         Assignment("CMSC 162.01", meetings=(MeetingTime("MON", "09:00", "10:00", 60),)),
     ]
 
-    monday = _schedule_grid(assignments)["days"][0]["meetings"]
+    monday = schedule_grid(assignments).days[0].meetings
 
-    assert monday[0]["color"] != monday[1]["color"]
+    assert monday[0].color != monday[1].color
 
 
 def test_meetings_of_the_same_course_share_a_color():
@@ -579,11 +577,11 @@ def test_meetings_of_the_same_course_share_a_color():
         Assignment("CMSC 152.01", meetings=(MeetingTime("MON", "11:00", "11:50", 50),)),
     ]
 
-    days = {d["day"]: d["meetings"] for d in _schedule_grid(assignments)["days"]}
-    wed_color = days["WED"][0]["color"]
+    days = {d.day: d.meetings for d in schedule_grid(assignments).days}
+    wed_color = days["WED"][0].color
 
-    assert days["MON"][0]["color"] == wed_color
-    assert days["MON"][1]["color"] != wed_color
+    assert days["MON"][0].color == wed_color
+    assert days["MON"][1].color != wed_color
 
 
 def test_colors_wrap_around_the_palette():
@@ -594,7 +592,7 @@ def test_colors_wrap_around_the_palette():
         for n in range(15)
     ]
 
-    colors = {m["color"] for m in _schedule_grid(assignments)["days"][0]["meetings"]}
+    colors = {m.color for m in schedule_grid(assignments).days[0].meetings}
 
     assert colors == set(range(12))  # PALETTE_SIZE; more labels than colors reuse them
 
