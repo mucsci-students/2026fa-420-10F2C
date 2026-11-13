@@ -478,7 +478,7 @@ MVC (above) is one of the patterns used. The others are described here as they a
   `gui/views.py` (`schedule_viewer`). Tests: `tests/test_schedule_view.py`.
 - **Participants.**
   - *Strategy*: the abstract `Grouping`. Its interface is `owner(block)` (the item a meeting is filed under),
-    `label(block)`, `details(block)` and `detail(block)` (the other two facts), `options(assignments)` (the picker's
+    `label(block)`, `details(block)` (the other two facts), `options(assignments)` (the picker's
     choices) and `select(blocks, chosen)` (the meetings a pick keeps), plus the words for its items (`noun`,
     `plural`).
   - *Concrete strategies*: `CourseGrouping` (picking a course name keeps all of its sections), `RoomLabGrouping` (a

@@ -162,21 +162,14 @@ class Grouping(ABC):
         """The block's main text: its owner, or words saying it has none."""
 
     @abstractmethod
-    def others(self, block: MeetingBlock) -> tuple[str | None, str | None]:
-        """The two facts the label does not show, in display order."""
-
-    @abstractmethod
     def details(self, block: MeetingBlock) -> list[str]:
-        """``others`` for display, always both: a missing room or faculty member
-        is written out ("No room assigned") instead of silently left off."""
+        """The two facts the label does not show, in display order. Always both:
+        a missing room or faculty member is written out ("No room assigned")
+        instead of silently left off."""
 
     @abstractmethod
     def options(self, assignments: Sequence[Assignment]) -> list[tuple[str, str]]:
         """(value, label) choices for narrowing a schedule to some of its items."""
-
-    def detail(self, block: MeetingBlock) -> str:
-        """``others`` on one line, leaving out whatever is missing."""
-        return " · ".join(part for part in self.others(block) if part)
 
     def matches(self, block: MeetingBlock, chosen: Sequence[str]) -> bool:
         """Whether a block belongs to one of the picked items."""
@@ -211,9 +204,6 @@ class CourseGrouping(Grouping):
 
     def label(self, block: MeetingBlock) -> str:
         return block.course
-
-    def others(self, block: MeetingBlock) -> tuple[str | None, str | None]:
-        return (block.location, block.faculty)
 
     def details(self, block: MeetingBlock) -> list[str]:
         return [_where(block), _who(block)]
@@ -250,9 +240,6 @@ class RoomLabGrouping(Grouping):
     def label(self, block: MeetingBlock) -> str:
         return _where(block)
 
-    def others(self, block: MeetingBlock) -> tuple[str | None, str | None]:
-        return (block.course, block.faculty)
-
     def details(self, block: MeetingBlock) -> list[str]:
         return [block.course, _who(block)]
 
@@ -277,9 +264,6 @@ class FacultyGrouping(Grouping):
 
     def label(self, block: MeetingBlock) -> str:
         return _who(block)
-
-    def others(self, block: MeetingBlock) -> tuple[str | None, str | None]:
-        return (block.course, block.location)
 
     def details(self, block: MeetingBlock) -> list[str]:
         return [block.course, _where(block)]

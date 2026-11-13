@@ -56,7 +56,6 @@ class PositionedBlock:
     block: MeetingBlock
     label: str  # the grouping's own item: course, room/lab, or faculty member
     details: list[str]  # the other two facts, always both
-    detail: str  # the same on one line, leaving out whatever is missing
     start_text: str
     end_text: str
     range_text: str
@@ -305,7 +304,6 @@ def _position(
         block=block,
         label=label,
         details=grouping.details(block),
-        detail=grouping.detail(block),
         start_text=clock_text(block.start, time_format),
         end_text=clock_text(block.end, time_format),
         range_text=times,

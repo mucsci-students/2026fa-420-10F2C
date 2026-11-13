@@ -276,9 +276,6 @@ def test_each_grouping_shows_the_other_two_facts():
     assert COURSES.details(only) == ["Roddy 136", "Hogg"]
     assert ROOMS.details(only) == ["CMSC 140.01", "Hogg"]
     assert FACULTY.details(only) == ["CMSC 140.01", "Roddy 136"]
-    assert COURSES.detail(only) == "Roddy 136 · Hogg"
-    assert ROOMS.detail(only) == "CMSC 140.01 · Hogg"
-    assert FACULTY.detail(only) == "CMSC 140.01 · Roddy 136"
 
 
 def test_a_missing_room_or_faculty_member_is_written_out_never_invented():
@@ -289,9 +286,6 @@ def test_a_missing_room_or_faculty_member_is_written_out_never_invented():
     assert COURSES.details(bare) == [NO_LOCATION_LABEL, NO_FACULTY_LABEL]
     assert ROOMS.details(bare) == ["CMSC 390.01", NO_FACULTY_LABEL]
     assert FACULTY.details(bare) == ["CMSC 390.01", NO_LOCATION_LABEL]
-    # the one-line form leaves the missing facts out instead
-    assert COURSES.detail(bare) == ""
-    assert ROOMS.detail(bare) == FACULTY.detail(bare) == "CMSC 390.01"
 
 
 def test_course_options_list_every_section_and_all_sections_of_a_repeated_course():

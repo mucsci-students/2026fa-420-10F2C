@@ -17,7 +17,6 @@ from app.schedule_view import (
     GROUPINGS,
     NO_FACULTY_LABEL,
     NO_LOCATION_LABEL,
-    meeting_blocks,
 )
 from gui.calendar_layout import (
     HOUR_HEIGHT_REM,
@@ -227,40 +226,7 @@ def test_pager_links_stay_plain_in_the_courses_view(client):
     assert 'href="?schedule=1">Previous</a>' in html
 
 
-def block_detail(view, course, room, faculty):
-    """The one-line detail of a single meeting of `course` in this view."""
-    [block] = meeting_blocks(
-        [
-            Assignment(
-                course, faculty, room, None, (MeetingTime("MON", "09:00", "09:50", 50),)
-            )
-        ]
-    )
-    return GROUPINGS[view].detail(block)
-
-
-def test_block_detail_shows_the_facts_the_label_does_not():
-    assert (
-        block_detail(VIEW_COURSES, "CMSC 140.01", "Roddy 136", "Hogg")
-        == "Roddy 136 · Hogg"
-    )
-    assert (
-        block_detail(VIEW_ROOMS, "CMSC 140.01", "Roddy 136", "Hogg")
-        == "CMSC 140.01 · Hogg"
-    )
-    assert (
-        block_detail(VIEW_FACULTY, "CMSC 140.01", "Roddy 136", "Hogg")
-        == "CMSC 140.01 · Roddy 136"
-    )
-
-
-def test_block_detail_skips_missing_values():
-    assert block_detail(VIEW_COURSES, "CMSC 390.01", None, "Hogg") == "Hogg"
-    assert block_detail(VIEW_ROOMS, "CMSC 390.01", None, None) == "CMSC 390.01"
-    assert block_detail(VIEW_FACULTY, "CMSC 390.01", None, None) == "CMSC 390.01"
-
-
-def test_rows_expose_duration_and_detail():
+def test_rows_expose_duration_and_details():
     [row] = (
         schedule_grid(
             [
@@ -278,7 +244,7 @@ def test_rows_expose_duration_and_detail():
         .meetings
     )
     assert row.duration == 50
-    assert row.detail == "CMSC 140.01 · Roddy 136"
+    assert row.details == ["CMSC 140.01", "Roddy 136"]
 
 
 def test_color_follows_the_active_view_label():
@@ -309,7 +275,9 @@ def test_color_follows_the_active_view_label():
 # ---------------------------------------------------------------------- #
 def block_titles(grid):
     return [
-        (day.day, row.label, row.detail) for day in grid.days for row in day.meetings
+        (day.day, row.label, " · ".join(row.details))
+        for day in grid.days
+        for row in day.meetings
     ]
 
 

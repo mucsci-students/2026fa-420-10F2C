@@ -14,8 +14,9 @@ them 15 minutes long), a room and a lab that share a name, a lab meeting with
 no lab, a section with no room, a section with no faculty member, and an online
 section with no meetings at all.
 
-Only fields the old code never rendered or read (`sort_key`, `day_name`) are
-left out of the snapshot.
+Only fields the old code built but the page never showed (`sort_key`,
+`day_name`, and `detail`, a one-line form of `details`) are left out of the
+snapshot.
 """
 
 import dataclasses
@@ -48,7 +49,6 @@ BLOCK_FIELDS = (
     "location",
     "label",
     "duration",
-    "detail",
     "details",
     "color",
     "top",
