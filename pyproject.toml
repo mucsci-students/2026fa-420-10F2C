@@ -21,6 +21,7 @@ DJANGO_SETTINGS_MODULE = "config.settings"
 source = [
     "app.commands.common",
     "app.crud",
+    "app.faculty_export",
     "app.generation_job",
     "app.history",
     "app.memento",
