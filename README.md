@@ -369,6 +369,7 @@ The GUI follows Model–View–Controller. User actions go through a controller;
 | | `app/generation_job.py` | One generation run on a background thread. `GenerationJob` is the subject of the Observer pattern: it notifies `GenerationObserver`s (`ProgressTracker` here, `ResultsStore` in the controller) of progress and of the result (see [Design patterns](#design-patterns)). |
 | | `app/schedule_io.py` | Neutral schedule records (`Assignment`, `MeetingTime`) used by both generated and loaded schedules; JSON/CSV reading, writing and validation. |
 | | `app/schedule_view.py` | One schedule as typed `MeetingBlock`s (course and section split apart, the room or lab kept with its kind), and the `Grouping` strategies that read it by course, by room or lab, or by faculty member (see [Design patterns](#design-patterns)). |
+| | `app/schedule_export.py` | One schedule arranged into sections for a printed export, by room or lab or by faculty member: `build_export` returns a `ScheduleExport` of `ExportSection`s and `ExportRow`s, built from schedule records alone so imported schedules work. It holds the content only; it has no PDF code, and the export page that will use it is not built yet. |
 | | `course-constraint-scheduler` | The configuration models, validation rules and Z3 solver. Validation is never reimplemented in this project. |
 | **Controller** | `gui/controllers/` | One module per area: `config_controller.py` (lifecycle), `timeslots.py`, `rooms.py`, `labs.py`, `courses.py`, `faculty.py`, `patterns.py`, `meetings.py`, `settings.py`, `schedule_controller.py` (generate, load, export, clear). `errors.py` defines `ControllerError` / `FieldError`; `uploads.py` reads uploaded files safely. Controllers return plain data and never touch templates or `HttpResponse`. |
 | **View** | `gui/views.py`, `gui/views_*.py` | Thin request handlers: call a controller, then redirect with a message or re-render the form with its errors. `views.py` has the home page, the configuration lifecycle, the generator form and the viewer page; each configuration area has its own `views_<area>.py` (`views_timeslots.py`, `views_rooms.py`, ...). `views_errors.py` renders the error pages. |
@@ -474,13 +475,15 @@ MVC (above) is one of the patterns used. The others are described here as they a
   branches repeated across five helper functions and two lookup tables in `gui/views.py`, so a change to one way of
   grouping meant editing every one of them, and nothing outside the viewer could reuse the rules.
 - **Where.** `app/schedule_view.py` (`Grouping`, `CourseGrouping`, `RoomLabGrouping`, `FacultyGrouping`, the
-  `GROUPINGS` registry and `grouping_for`). Used by `gui/calendar_layout.py` (`schedule_grid`, `layout_week`) and
-  `gui/views.py` (`schedule_viewer`). Tests: `tests/test_schedule_view.py`.
+  `GROUPINGS` registry and `grouping_for`). Used by `gui/calendar_layout.py` (`schedule_grid`, `layout_week`),
+  `gui/views.py` (`schedule_viewer`) and `app/schedule_export.py` (`build_export`). Tests:
+  `tests/test_schedule_view.py`, `tests/test_schedule_export_data.py`.
 - **Participants.**
-  - *Strategy*: the abstract `Grouping`. Its interface is `owner(block)` (the item a meeting is filed under),
-    `label(block)`, `details(block)` (the other two facts), `options(assignments)` (the picker's
-    choices) and `select(blocks, chosen)` (the meetings a pick keeps), plus the words for its items (`noun`,
-    `plural`).
+  - *Strategy*: the abstract `Grouping`. Each concrete grouping supplies `group_key(course, faculty, resource)` (the
+    item a meeting belongs to, with its kind), `details(block)` (the other two facts) and `options(assignments)` (the
+    picker's choices), plus the words for its items (`noun`, `plural`, `unassigned_label`). `owner(block)`,
+    `label(block)` and `select(blocks, chosen)` (the meetings a pick keeps) are written once on `Grouping` in terms
+    of those.
   - *Concrete strategies*: `CourseGrouping` (picking a course name keeps all of its sections), `RoomLabGrouping` (a
     lab meeting belongs to the lab, any other meeting to the room) and `FacultyGrouping`. A meeting with no room or
     no faculty member is labelled "No room assigned" / "No faculty assigned" by the strategy that would have shown
@@ -489,6 +492,10 @@ MVC (above) is one of the patterns used. The others are described here as they a
     label and details and for the colors' keys; it never checks which grouping it has.
   - *Client*: `schedule_viewer` in `gui/views.py` chooses the strategy from the `?view=` value
     (`GROUPINGS[view_mode]`) and uses the same object for the picker's choices and its wording.
+  - *Second context*: `build_export` in `app/schedule_export.py`. It is given an orientation (`"rooms"` or
+    `"faculty"`), takes that grouping, and asks it which section each meeting belongs to and what the section for
+    unassigned meetings is called. The same two strategy objects therefore decide what the calendar shows and what
+    an export contains, so the two cannot disagree about where a lab meeting goes or how a missing room is labelled.
 - **How they interact.** The view reads `?view=`, looks the grouping up, and asks it for the picker options.
   `schedule_grid` turns the schedule into `MeetingBlock`s, has the grouping `select` the picked ones, and passes the
   blocks and the grouping to `layout_week`, which positions them and asks the grouping what each one says.
@@ -544,7 +551,7 @@ uv run ty check
 uv run pytest --cov --cov-report=xml
 ```
 
-Coverage measures team-written code in `app/`: `app.commands.common`, `app.crud`, `app.generation_job`, `app.history`, `app.memento`, `app.schedule_io`, `app.schedule_ops`, `app.schedule_view`, and `app.session`. `app.commands.common` is included because its shared edit helper is used by both the CLI and GUI; its prompt helpers are included as part of that module. Third-party scheduler-library code is outside the target. Coverage is line coverage and fails below 80%; reproduce it locally with `uv run pytest --cov --cov-report=xml`. CI uploads the XML report to Codecov. No OpenAI secret is needed for routine tests. The tests live in `tests/`: `test_crud_*` and `test_schedule_*` cover the model and CLI layer, `test_gui_*` cover the controllers and pages through Django's test client.
+Coverage measures team-written code in `app/`: `app.commands.common`, `app.crud`, `app.generation_job`, `app.history`, `app.memento`, `app.schedule_io`, `app.schedule_export`, `app.schedule_ops`, `app.schedule_view`, and `app.session`. `app.commands.common` is included because its shared edit helper is used by both the CLI and GUI; its prompt helpers are included as part of that module. Third-party scheduler-library code is outside the target. Coverage is line coverage and fails below 80%; reproduce it locally with `uv run pytest --cov --cov-report=xml`. CI uploads the XML report to Codecov. No OpenAI secret is needed for routine tests. The tests live in `tests/`: `test_crud_*` and `test_schedule_*` cover the model and CLI layer, `test_gui_*` cover the controllers and pages through Django's test client.
 
 ## Command-line shell (Sprint 1)
 
@@ -567,6 +574,7 @@ Shared building blocks — use these instead of rewriting them per feature:
 | Write schedules as JSON / CSV | `schedules_to_json(...)`, `schedules_to_csv(...)` | same |
 | One schedule as meetings in calendar order (course, section, faculty, room or lab with its kind, day, times) | `meeting_blocks(assignments)` → `MeetingBlock`; `unscheduled_sections(assignments)`; `resources_in(blocks)` | `app/schedule_view.py` |
 | Read a schedule by course, room/lab or faculty (labels, picker choices, filtering) | `GROUPINGS[key]` or `grouping_for(key)` → `Grouping` | same |
+| Arrange a schedule into export sections, by room or lab or by faculty, for all groups or one | `build_export(assignments, orientation, selected=None)` → `ScheduleExport`; `available_groups(assignments, orientation)`; raises `ExportError` | `app/schedule_export.py` |
 | Lay a schedule out as the weekly calendar | `schedule_grid(assignments, view_mode, resources, time_format)` → `ScheduleGrid` | `gui/calendar_layout.py` |
 | Build a download (one schedule or all, JSON or CSV) | `export_schedules(request, index_or_None, "json"\|"csv")` → `ExportFile` | `gui/controllers/schedule_controller.py` |
 | Read an uploaded file (empty/unreadable/too large handled) | `read_upload(uploaded_file, "field_name")` | `gui/controllers/uploads.py` |

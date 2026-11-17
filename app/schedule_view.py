@@ -32,6 +32,8 @@ NO_FACULTY_LABEL = "No faculty assigned"
 
 ROOM = "room"
 LAB = "lab"
+FACULTY = "faculty"
+COURSE = "course"
 
 _DAY_ORDER = {day: index for index, day in enumerate(DAYS)}
 
@@ -41,6 +43,14 @@ class Resource(NamedTuple):
     share a name stay two different resources."""
 
     kind: str  # ROOM or LAB
+    name: str
+
+
+class GroupKey(NamedTuple):
+    """One item a schedule can be grouped under: a course section, a room, a
+    lab or a faculty member. The kind is part of the key."""
+
+    kind: str  # COURSE, ROOM, LAB or FACULTY
     name: str
 
 
@@ -152,14 +162,27 @@ class Grouping(ABC):
     key: str  # stable identifier, also the viewer's ?view= value
     noun: str  # one item, in a sentence: "room or lab"
     plural: str  # all of them, in a sentence: "rooms and labs"
+    unassigned_label: str  # what a meeting with no such item is filed under
 
     @abstractmethod
+    def group_key(
+        self, course: str, faculty: str | None, resource: Resource | None
+    ) -> GroupKey | None:
+        """The item a meeting with these facts is grouped under, with its kind;
+        None when it has none (no room or lab, or no faculty member).
+
+        Takes the facts, not a block, so a section with no meeting times can be
+        grouped too (app/schedule_export.py).
+        """
+
     def owner(self, block: MeetingBlock) -> str | None:
-        """The item this grouping files the block under (None when it has none)."""
+        """The name of the item this grouping files the block under (None when it has none)."""
+        key = self.group_key(block.course, block.faculty, block.resource)
+        return key.name if key else None
 
-    @abstractmethod
     def label(self, block: MeetingBlock) -> str:
         """The block's main text: its owner, or words saying it has none."""
+        return self.owner(block) or self.unassigned_label
 
     @abstractmethod
     def details(self, block: MeetingBlock) -> list[str]:
@@ -198,12 +221,12 @@ class CourseGrouping(Grouping):
     key = "courses"
     noun = "course"
     plural = "courses"
+    unassigned_label = ""  # every meeting has a course
 
-    def owner(self, block: MeetingBlock) -> str | None:
-        return block.course
-
-    def label(self, block: MeetingBlock) -> str:
-        return block.course
+    def group_key(
+        self, course: str, faculty: str | None, resource: Resource | None
+    ) -> GroupKey | None:
+        return GroupKey(COURSE, course)
 
     def details(self, block: MeetingBlock) -> list[str]:
         return [_where(block), _who(block)]
@@ -233,12 +256,12 @@ class RoomLabGrouping(Grouping):
     key = "rooms"
     noun = "room or lab"
     plural = "rooms and labs"
+    unassigned_label = NO_LOCATION_LABEL
 
-    def owner(self, block: MeetingBlock) -> str | None:
-        return block.location
-
-    def label(self, block: MeetingBlock) -> str:
-        return _where(block)
+    def group_key(
+        self, course: str, faculty: str | None, resource: Resource | None
+    ) -> GroupKey | None:
+        return GroupKey(resource.kind, resource.name) if resource else None
 
     def details(self, block: MeetingBlock) -> list[str]:
         return [block.course, _who(block)]
@@ -258,12 +281,12 @@ class FacultyGrouping(Grouping):
     key = "faculty"
     noun = "faculty member"
     plural = "faculty"
+    unassigned_label = NO_FACULTY_LABEL
 
-    def owner(self, block: MeetingBlock) -> str | None:
-        return block.faculty
-
-    def label(self, block: MeetingBlock) -> str:
-        return _who(block)
+    def group_key(
+        self, course: str, faculty: str | None, resource: Resource | None
+    ) -> GroupKey | None:
+        return GroupKey(FACULTY, faculty) if faculty else None
 
     def details(self, block: MeetingBlock) -> list[str]:
         return [block.course, _where(block)]

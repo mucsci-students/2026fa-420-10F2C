@@ -14,6 +14,7 @@ import pytest
 from app import schedule_io
 from app.schedule_io import Assignment, MeetingTime
 from app.schedule_view import (
+    COURSE,
     DEFAULT_GROUPING,
     GROUPINGS,
     LAB,
@@ -23,6 +24,7 @@ from app.schedule_view import (
     CourseGrouping,
     FacultyGrouping,
     Grouping,
+    GroupKey,
     MeetingBlock,
     Resource,
     RoomLabGrouping,
@@ -268,6 +270,30 @@ def test_each_grouping_files_a_block_under_its_own_item():
         "CMSC 140.01",
         "Roddy 136",
         "Hogg",
+    )
+
+
+def test_each_grouping_gives_the_item_a_meeting_belongs_to_with_its_kind():
+    facts = ("CMSC 162.01", "Killen", Resource(LAB, "Roddy 147"))
+    assert COURSES.group_key(*facts) == GroupKey(COURSE, "CMSC 162.01")
+    assert ROOMS.group_key(*facts) == GroupKey(LAB, "Roddy 147")
+    assert FACULTY.group_key(*facts) == GroupKey("faculty", "Killen")
+    # a room and a lab with the same name are different groups
+    assert ROOMS.group_key(
+        "X.01", None, Resource(ROOM, "Roddy 147")
+    ) != ROOMS.group_key(*facts)
+
+
+def test_a_meeting_with_no_room_or_faculty_member_has_no_group_there():
+    assert ROOMS.group_key("CMSC 390.01", "Hogg", None) is None
+    assert FACULTY.group_key("CMSC 390.01", None, None) is None
+    assert FACULTY.group_key("CMSC 390.01", "", None) is None
+    assert COURSES.group_key("CMSC 390.01", None, None) == GroupKey(
+        COURSE, "CMSC 390.01"
+    )
+    assert (ROOMS.unassigned_label, FACULTY.unassigned_label) == (
+        NO_LOCATION_LABEL,
+        NO_FACULTY_LABEL,
     )
 
 
