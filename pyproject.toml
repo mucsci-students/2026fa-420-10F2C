@@ -24,6 +24,8 @@ source = [
     "app.faculty_export",
     "app.generation_job",
     "app.history",
+    "app.lock_solver",
+    "app.locks",
     "app.memento",
     "app.schedule_io",
     "app.schedule_export",

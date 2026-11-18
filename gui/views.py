@@ -19,6 +19,7 @@ links that keep those choices.
 """
 
 import re
+from dataclasses import replace
 from urllib.parse import quote
 
 from django.contrib import messages
@@ -27,9 +28,10 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 
 from app import schedule_ops
-from app.schedule_view import GROUPINGS
-from gui.calendar_layout import as_resources, schedule_grid
+from app.schedule_view import GROUPINGS, NO_FACULTY_LABEL, NO_LOCATION_LABEL
+from gui.calendar_layout import as_resources, range_text, schedule_grid
 from gui.constants import (
+    DAY_NAMES,
     TIME_FORMAT_24,
     TIME_FORMAT_OPTIONS,
     VIEW_COURSES,
@@ -39,6 +41,7 @@ from gui.controllers import (
     config_controller,
     schedule_controller,
 )
+from gui.controllers import locks as lock_controller
 from gui.controllers import (
     settings as settings_controller,
 )
@@ -212,6 +215,15 @@ def _render_schedule_generator(request, form=None, result=None, config_form=None
         "result": result,
         "config_choices": config_choices,
     }
+    # The sections locked in the Schedule Viewer, which this run will keep.
+    time_format = _current_time_format(request)
+    lock_rows = [
+        _lock_row(assignment, lock_controller.LOCKED, time_format)
+        for assignment in lock_controller.locked_assignments(request)
+    ]
+    context["locked_total"] = len(lock_rows)
+    context["lock_rows"] = lock_rows
+    context["lock_next"] = request.get_full_path()
     if config_form is None:
         config_form = (
             SavedConfigSelectionForm(
@@ -286,6 +298,8 @@ def schedule_generator(request):
             request,
             "No feasible schedule was found. Check the configuration and try again.",
         )
+    elif result.outcome == schedule_ops.GenerationOutcome.LOCK_CONFLICT:
+        messages.error(request, result.message)
     elif result.outcome == schedule_ops.GenerationOutcome.INVALID_CONFIG:
         messages.error(request, f"The configuration is invalid: {result.message}")
     else:
@@ -323,6 +337,26 @@ def schedule_viewer(request, import_form=None):
         schedule_count=count, initial={"schedule": current}
     )
     pager = _schedule_pager_context(current, count, view_mode, resources)
+    # Locked sections: the banner, the padlocks on the blocks and the "Keep sections you like" card.
+    lock_context = {
+        "locked_total": lock_controller.lock_count(request),
+        # Come back to this schedule and view, keeping only picked items that exist.
+        "lock_next": f"{request.path}?schedule={current}{_view_query(view_mode, resources)}",
+        # A run is already going (started here, from the generator, or in another tab).
+        "job_active": schedule_controller.generation_job_active(request),
+        # Where a finished "Generate again" comes back to: schedule 1 of the new set, same view.
+        "regen_return": f"{request.path}?schedule=1{_view_query(view_mode, resources)}",
+    }
+    # "Generate again" starts from the saved limit and flags; its box can change the limit for one run.
+    saved = settings_controller.describe_settings(request)
+    if saved.get("has_config"):
+        lock_context["regen_limit"] = saved["limit"]
+        lock_context["regen_flags"] = saved["enabled_flags"]
+    if grid is not None:
+        grid, viewer_locks = _lock_viewer_context(
+            request, current, assignments, grid, resources, time_format
+        )
+        lock_context.update(viewer_locks)
     return render(
         request,
         "gui/schedule_viewer.html",
@@ -348,6 +382,7 @@ def schedule_viewer(request, import_form=None):
             **pager,
             "import_form": import_form,
             "export_form": export_form,
+            **lock_context,
         },
     )
 
@@ -384,6 +419,63 @@ def schedule_clear(request):
         "gui/schedules_clear.html",
         {"active": "viewer", "schedule_count": count},
     )
+
+
+def _when_text(assignment, time_format):
+    """'Mon 09:00-09:50, Wed 09:00-09:50' for a section, or why it has no times."""
+    if not assignment.meetings:
+        return "No meeting times"
+    return ", ".join(
+        f"{DAY_NAMES.get(meeting.day, meeting.day)[:3]} {range_text(meeting.start, meeting.end, time_format)}"
+        for meeting in assignment.meetings
+    )
+
+
+def _where_text(assignment):
+    parts = [place for place in (assignment.room, assignment.lab) if place]
+    return ", ".join(parts) if parts else NO_LOCATION_LABEL
+
+
+def _lock_row(assignment, state, time_format):
+    """One section as the lock tables show it."""
+    return {
+        "section": assignment.course,
+        "faculty": assignment.faculty or NO_FACULTY_LABEL,
+        "location": _where_text(assignment),
+        "when": _when_text(assignment, time_format),
+        "state": state,
+    }
+
+
+def _lock_viewer_context(request, current, assignments, grid, resources, time_format):
+    """What the viewer needs to show locks: the grid with each calendar block saying whether its
+    section is locked, and the card listing the sections the calendar is showing, grouped by
+    instructor. Returns (grid, context). The grid is a frozen dataclass, so it is rebuilt, not edited."""
+    states = lock_controller.section_states(request, assignments)
+    shown = set() if resources else set(grid.without_meetings)
+    days = []
+    for day in grid.days:
+        meetings = []
+        for meeting in day.meetings:
+            meetings.append(
+                replace(meeting, lock=states.get(meeting.course, lock_controller.FREE))
+            )
+            shown.add(meeting.course)
+        days.append(replace(day, meetings=meetings))
+    groups = [
+        {
+            "name": group.faculty or NO_FACULTY_LABEL,
+            "faculty": group.faculty,
+            "in_schedule": group.in_schedule,
+            "to_lock": group.to_lock,
+            "locked_now": group.locked_now,
+            "rows": [
+                _lock_row(row.assignment, row.state, time_format) for row in group.rows
+            ],
+        }
+        for group in lock_controller.faculty_groups(request, assignments, shown)
+    ]
+    return replace(grid, days=days), {"lock_groups": groups, "lock_schedule": current}
 
 
 def _current_schedule_number(request, count):

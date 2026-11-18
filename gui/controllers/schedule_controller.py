@@ -31,6 +31,7 @@ from __future__ import annotations
 import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
+from typing import Any
 
 from app import schedule_io, schedule_ops
 from app.commands.common import VALID_OPTIMIZER_FLAGS
@@ -114,6 +115,12 @@ def _as_records(schedule, number: int) -> list[Assignment]:
 # ---------------------------------------------------------------------- #
 #  Schedule Generator (Henry)
 # ---------------------------------------------------------------------- #
+def _lock_assignments(session) -> list[Assignment]:
+    """The sections the user has locked in this session (none if there are no locks)."""
+    locks = getattr(session, "locks", None)
+    return locks.assignments() if locks is not None else []
+
+
 def generate(request, limit_override=None, optimizer_overrides=None):
     """Generate schedules from the session's configuration (Sections 13-14).
 
@@ -130,15 +137,19 @@ def generate(request, limit_override=None, optimizer_overrides=None):
     # Remember which version of the configuration these schedules come from, so
     # the pages can say when the configuration has changed since (stale notice).
     started_from = session.history.version
+    # Locked sections are kept as they are. Without locks the call is exactly what it was.
+    locks = _lock_assignments(session)
+    extra: dict[str, Any] = {"locks": locks} if locks else {}
     with generation_in_progress(request):
         result = schedule_ops.generate_schedules(
-            config, limit_override, optimizer_overrides
+            config, limit_override, optimizer_overrides, **extra
         )
 
     if result.outcome == schedule_ops.GenerationOutcome.SUCCESS:
         replace_schedules(request, result.schedules, started_from)
     elif result.outcome == schedule_ops.GenerationOutcome.NO_FEASIBLE_SCHEDULE:
         replace_schedules(request, [])  # same as the CLI: don't leave stale results
+    # LOCK_CONFLICT (like a runtime error) leaves the schedules already in the viewer alone.
     return result
 
 
@@ -348,7 +359,7 @@ class ResultsStore(GenerationObserver):
                 _set_schedules(
                     self._session, []
                 )  # don't leave stale results, same as generate()
-            # invalid configuration, runtime error and cancel keep the previous results
+            # invalid configuration, lock conflict, runtime error and cancel keep the previous results
         finally:
             with _GENERATION_LOCK:
                 self._session.generating = False
@@ -369,7 +380,12 @@ def start_generation(request, limit_override=None, optimizer_overrides=None) -> 
         if session.generating:
             raise ControllerError(BUSY_MESSAGE)
         session.generating = True
-        job = GenerationJob(config, limit_override, optimizer_overrides)
+        job = GenerationJob(
+            config,
+            limit_override,
+            optimizer_overrides,
+            locks=_lock_assignments(session),
+        )
         job.subscribe(ResultsStore(session, started_from))
         session.generation_job = job
     try:
@@ -435,6 +451,9 @@ def describe_outcome(result) -> tuple[str, str]:
         )
     if result.outcome == outcome.CANCELLED:
         return "warning", result.message
+    if result.outcome == outcome.LOCK_CONFLICT:
+        # The message already says what clashed and that nothing was changed.
+        return "error", result.message
     if result.outcome == outcome.INVALID_CONFIG:
         return "error", f"The configuration is invalid: {result.message}"
     return "error", f"Schedule generation failed unexpectedly: {result.message}"

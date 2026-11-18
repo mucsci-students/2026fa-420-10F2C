@@ -69,6 +69,7 @@ class PositionedBlock:
     cluster: int  # which overlap group of the day it is in
     left: str
     width: str
+    lock: str = ""  # FREE, LOCKED or DIFFERENT; set by the viewer (gui/views.py)
 
     @property
     def course(self) -> str:

@@ -45,6 +45,7 @@ from scheduler import load_config_from_file
 from scheduler.config import CombinedConfig, ValidationError
 
 from app.history import ConfigHistory
+from app.locks import LockSet
 
 
 class ConfigError(Exception):
@@ -184,6 +185,12 @@ class Session:
         # can bring it back (restore_previous). One level deep, and swapped on
         # restore so the restore itself can be reversed.
         self.previous: PreviousConfig | None = None
+        # Section locks (app/locks.py): placements the next generation must
+        # keep. They belong to the session, not to the configuration, so
+        # locking never marks the configuration as changed and never enters
+        # the undo history. New and Restore-previous clear them; Load
+        # re-checks them (added in a later piece).
+        self.locks = LockSet()
 
     # ---------------------------------------------------------------- #
     #  Schedules vs. configuration versions                            #
@@ -259,6 +266,7 @@ class Session:
         self.schedules = incoming.schedules
         self.schedules_version = incoming.schedules_version
         self.history = incoming.history
+        self.locks.clear()
         self.previous = outgoing
         return incoming.config_name or "an unnamed configuration"
 
@@ -299,6 +307,7 @@ class Session:
             raise ConfigError(f"Could not create new configuration: {e}") from e
 
         self._stash_current()
+        self.locks.clear()
         self.config = fresh
         self.config_path = None
         self.config_name = None

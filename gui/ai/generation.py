@@ -32,6 +32,11 @@ Editor, which asks first.
 
 A failed run never shows a partial schedule: the controller only stores results when the run succeeded,
 and the reply explains what happened in the same words the Schedule Generator page uses.
+
+Locked sections (kept from the Schedule Viewer) are part of the review: the user is told which sections
+will stay exactly where they are. If the locks change between the review and the go-ahead, nothing is
+started and the user is asked to review again. The reply says which locks were kept, and a run that
+cannot keep them says so and leaves the schedules already in the viewer alone.
 """
 
 from __future__ import annotations
@@ -125,6 +130,7 @@ class _Plan:
     created: float
     version: int  # the configuration version they were checked against
     config: object  # the configuration they were checked against (a new/loaded one is a different object)
+    locks_version: int = 0  # which set of locked sections they were shown with
 
 
 # ---------------------------------------------------------------------- #
@@ -171,6 +177,18 @@ def _check_flags(wanted: list[str]) -> tuple[str, ...]:
             )
         found.append(flag)
     return _in_known_order(found)
+
+
+def _locked_sections(session) -> tuple[str, ...]:
+    """The names of the sections locked now, in order (none if the session has no locks)."""
+    locks = getattr(session, "locks", None)
+    return tuple(lock.section for lock in locks) if locks is not None else ()
+
+
+def _locks_version(session) -> int:
+    """Changes whenever a lock is added, replaced or removed."""
+    locks = getattr(session, "locks", None)
+    return locks.version if locks is not None else 0
 
 
 def _problems(problems: list[str]) -> str:
@@ -281,6 +299,7 @@ def prepare_schedule_generation(request, args: PrepareArgs) -> str:
             _now(),
             session.history.version,
             session.config,
+            _locks_version(session),
         ),
     )
 
@@ -303,6 +322,13 @@ def prepare_schedule_generation(request, args: PrepareArgs) -> str:
         f"- Optimizer flags: {_join(flags, 'none')} ({flags_note})",
         "These apply to this run only. Your saved settings and your configuration are not changed.",
     ]
+    locked = _locked_sections(session)
+    if locked:
+        lines.append(
+            f"{_plural(len(locked), 'locked section')} will be kept exactly where "
+            f"{'it is' if len(locked) == 1 else 'they are'} (instructor, room, lab, days and times): "
+            f"{_join(locked)}."
+        )
     if session.schedules:
         lines.append(
             f"{_plural(len(session.schedules), 'schedule')} loaded now will be replaced if this succeeds."
@@ -354,6 +380,11 @@ def confirm_schedule_generation(request, args: NoArgs) -> str:
             "The configuration changed after I showed you the generation settings, so I did not start. "
             "Ask me to generate again to review them."
         )
+    if plan.locks_version != _locks_version(session):
+        raise ControllerError(
+            "The locked sections changed after I showed you the generation settings, so I did not start. "
+            "Ask me to generate again to review them."
+        )
     _require_valid(request, "so I did not start. Nothing was generated:")
 
     before = schedule_controller.schedule_count(request)
@@ -390,6 +421,10 @@ def _report(request, *, before: int | None, limit: int | None) -> str:
                 f"The limit was {limit}, but the solver found only {count}: that is every schedule that "
                 "satisfies all the hard constraints."
             )
+        if result.kept:
+            lines.append(
+                f"Kept {_plural(len(result.kept), 'locked section')} in place: {_join(result.kept)}."
+            )
         lines.append("Your configuration and saved settings were not changed.")
         return " ".join(lines)
     if result.outcome == outcome.CANCELLED:
@@ -407,6 +442,9 @@ def _report(request, *, before: int | None, limit: int | None) -> str:
             *((UNDO_CHIP,) if recent_changes(request, 1) else ()),
         )
         raise error
+    if result.outcome == outcome.LOCK_CONFLICT:
+        # The message already says that nothing changed and what to do next.
+        raise ControllerError(_short(text))
     text += " Nothing was added to the Schedule Viewer, and your previous schedules were kept."
     raise ControllerError(_short(text))
 
