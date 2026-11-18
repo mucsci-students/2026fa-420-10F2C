@@ -12,6 +12,7 @@ dependencies = [
     "langchain>=1.4.5,<2",
     "langchain-openai>=1.7.1,<2",
     "langgraph>=1.2.15,<2",
+    "reportlab>=5.1.0",
 ]
 
 [tool.pytest.ini_options]
@@ -53,6 +54,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "pypdf>=7.1.1",
     "pytest>=9.1.1",
     "pytest-cov>=7.0.0",
     "pytest-django>=4.14.0",
