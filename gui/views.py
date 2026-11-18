@@ -342,6 +342,10 @@ def schedule_viewer(request, import_form=None):
         "locked_total": lock_controller.lock_count(request),
         # Come back to this schedule and view, keeping only picked items that exist.
         "lock_next": f"{request.path}?schedule={current}{_view_query(view_mode, resources)}",
+        # A run is already going (started here, from the generator, or in another tab).
+        "job_active": schedule_controller.generation_job_active(request),
+        # Where a finished "Generate again" comes back to: schedule 1 of the new set, same view.
+        "regen_return": f"{request.path}?schedule=1{_view_query(view_mode, resources)}",
     }
     if grid is not None:
         grid, viewer_locks = _lock_viewer_context(

@@ -2558,3 +2558,20 @@ html[data-theme="dark"] .chat-form textarea { background: #18181b; color: #f3f4f
 .lock-row--locked th[scope="row"],
 .lock-row--different th[scope="row"] { box-shadow: inset 3px 0 0 var(--warn); }
 .lock-note { margin-top: 0.25rem; }
+
+/* ------------------------------------------------------------------ *
+ * Generate again on the Schedule Viewer                               *
+ * The lock banner turns into the progress bar while a run is going    *
+ * (gui/js/generation_progress.js); the calendar is dimmed meanwhile.  *
+ * ------------------------------------------------------------------ */
+.lock-banner__idle { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; width: 100%; }
+.lock-banner__idle p { margin: 0; }
+.lock-banner .progress-panel { width: 100%; border: 0; background: transparent; box-shadow: none; padding: 0; margin: 0; }
+.lock-banner .progress-panel p { margin: 0.35rem 0 0; }
+.lock-banner .progress-panel .progress-bar { margin-top: 0.5rem; }
+.lock-banner #generation-errors { width: 100%; margin: 0 0 0.5rem; }
+.lock-banner [hidden], .lock-card [hidden] { display: none; }
+.regenerate-form { display: inline; margin: 0; }
+.lock-card__generate { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; margin: 0.75rem 0; }
+.lock-card__generate .help { margin: 0; }
+html.is-generating .week-grid { opacity: 0.55; }

@@ -1,16 +1,34 @@
 {% comment %}
-    Shown on the Schedule Viewer while any section is locked: what it means, and the two things to do next.
+    Shown on the Schedule Viewer while any section is locked: what it means, and what to do next.
+    "Generate again" starts a run right here. The same box then turns into a progress bar with a Cancel button
+    (gui/js/generation_progress.js), and the page reloads on schedule 1 of the new schedules when the run is over.
+    Needs locked_total, lock_next, regen_return (where the finished run comes back to) and job_active (a run is already going).
 {% endcomment %}
 {% if locked_total %}
-<div class="alert alert-info lock-banner" role="status">
-    <p>
-        <strong><span aria-hidden="true">&#128274;</span> {{ locked_total }} section{{ locked_total|pluralize }} locked.</strong>
-        When you generate again, {% if locked_total == 1 %}it stays{% else %}they stay{% endif %} exactly as
-        {% if locked_total == 1 %}it is{% else %}they are{% endif %} and everything else is rearranged.
-    </p>
-    <p class="lock-banner__actions">
-        <a class="btn btn-small btn-primary" href="{% url 'gui:schedule_generator' %}">Generate again</a>
-        <a class="btn btn-small" href="{% url 'gui:locks_clear' %}?next={{ lock_next|urlencode }}">Unlock all</a>
-    </p>
+<div class="alert alert-info lock-banner" id="lock-banner">
+    <div class="lock-banner__idle" role="status" data-hide-while-generating{% if job_active %} hidden{% endif %}>
+        <p>
+            <strong><span aria-hidden="true">&#128274;</span> {{ locked_total }} section{{ locked_total|pluralize }} locked.</strong>
+            When you generate again, {% if locked_total == 1 %}it stays{% else %}they stay{% endif %} exactly as
+            {% if locked_total == 1 %}it is{% else %}they are{% endif %} and everything else is rearranged.
+        </p>
+        <div class="lock-banner__actions">
+            {% include "gui/components/regenerate_form.html" %}
+            <a class="btn btn-small" href="{% url 'gui:schedule_generator' %}">Generation options</a>
+            <a class="btn btn-small" href="{% url 'gui:locks_clear' %}?next={{ lock_next|urlencode }}">Unlock all</a>
+        </div>
+    </div>
+    <div id="generation-errors" class="alert alert-error" role="alert" hidden></div>
+    <section id="generation-progress" class="progress-panel" aria-labelledby="generation-progress-title"
+             data-status-url="{% url 'gui:generation_status' %}" data-cancel-url="{% url 'gui:generation_cancel' %}"
+             data-return-url="{{ regen_return }}"
+             {% if job_active %}data-active="true"{% else %}hidden{% endif %}>
+        <p id="generation-progress-title"><strong>Generating schedules.</strong> Locked sections are kept as they are.</p>
+        <progress class="progress-bar" max="100" aria-labelledby="generation-progress-title"></progress>
+        <p class="progress-text" data-progress-text>Checking progress&hellip;</p>
+        <p class="visually-hidden" role="status" data-progress-announce></p>
+        <p class="lock-banner__actions"><button type="button" class="btn btn-small btn-danger" data-progress-cancel>Cancel generation</button></p>
+        <p class="help">Your current schedules are replaced when this finishes. Cancelling takes effect when the solver finishes the schedule it is working on, and your current schedules are kept.</p>
+    </section>
 </div>
 {% endif %}
