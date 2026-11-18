@@ -374,6 +374,7 @@ The GUI follows Model–View–Controller. User actions go through a controller;
 | **Controller** | `gui/controllers/` | One module per area: `config_controller.py` (lifecycle), `timeslots.py`, `rooms.py`, `labs.py`, `courses.py`, `faculty.py`, `patterns.py`, `meetings.py`, `settings.py`, `schedule_controller.py` (generate, load, export, clear). `errors.py` defines `ControllerError` / `FieldError`; `uploads.py` reads uploaded files safely. Controllers return plain data and never touch templates or `HttpResponse`. |
 | **View** | `gui/views.py`, `gui/views_*.py` | Thin request handlers: call a controller, then redirect with a message or re-render the form with its errors. `views.py` has the home page, the configuration lifecycle, the generator form and the viewer page; each configuration area has its own `views_<area>.py` (`views_timeslots.py`, `views_rooms.py`, ...). `views_errors.py` renders the error pages. |
 | | `gui/calendar_layout.py` | The Schedule Viewer's weekly calendar as presentation data (`ScheduleGrid`): where each block sits, how overlapping blocks share a day column, colors, and how times are written. No request handling and no Django imports. |
+| | `gui/schedule_pdf.py` | A schedule export as a print-friendly PDF: `render_pdf(export, schedule_label, time_format)` returns the bytes. US Letter, portrait, grayscale-safe, headings repeated on continuation pages. Presentation only; it writes no files and has no Django imports. Uses ReportLab. |
 | | `gui/templates/gui/` | Pages and shared components (`components/`), including `base.html` (navigation, status, loading banner). |
 | | `gui/forms.py` | Django forms: field types, labels, help text, confirmation checkboxes. |
 | | `gui/static/gui/` | CSS and JavaScript (`loading.js` for busy states, `theme.js` for dark mode). |
@@ -386,7 +387,7 @@ The Sprint 1 shell (`app/shell.py`, `app/commands/`) uses the same Model layer, 
 
 ### Design patterns
 
-MVC (above) is one of the patterns used. The others are described here as they are added: Memento, Observer, Adapter and, new in Sprint 4, Strategy.
+MVC (above) is one of the patterns used. The others are described here as they are added: Memento, Observer, Adapter and, new in Sprint 4, Strategy and Template Method.
 
 #### Memento (undo and redo)
 
@@ -503,6 +504,31 @@ MVC (above) is one of the patterns used. The others are described here as they a
   run time from the address. With the rules behind one interface the calendar code has no view-mode branches, each
   grouping can be tested on its own without a request or a template, and another way of reading a schedule is a new
   class and one registry entry, not an edit to every helper (open/closed).
+
+#### Template Method (schedule PDF documents) — new in Sprint 4
+
+- **Problem.** A room/lab export and a faculty export are the same kind of document: a title naming the schedule
+  and what is covered, one table per section with headings that repeat when it runs onto another page, a line
+  saying so when there is nothing to export, and a header and page number on every page. They differ only in what
+  the document is called, how a section is headed, and which columns its table has. Writing the two as separate
+  functions would duplicate the page setup, table styling and pagination rules, and the two would drift apart.
+- **Where.** `gui/schedule_pdf.py` (`ScheduleDocument`, `RoomLabDocument`, `FacultyDocument`, `DOCUMENTS`,
+  `render_pdf`). Tests: `tests/test_schedule_pdf.py`.
+- **Participants.**
+  - *Abstract class*: `ScheduleDocument`. Its template method is `build()`, which always runs the same steps in the
+    same order: `title_block()`, then `empty_block()` or one `section_block(section)` per section, then the page
+    setup with `page_furniture()` on every page. Those steps are written once on the base class.
+  - *Primitive operations*: `section_heading(section)` and `columns()`, both abstract, and the `name` attribute.
+    `section_block` calls them to head and fill each table; `title` uses `name`.
+  - *Concrete classes*: `RoomLabDocument` heads a section "Room: Roddy 136" or "Lab: Roddy 147" and shows a Faculty
+    column; `FacultyDocument` heads it "Faculty: Hogg" and shows a Room or lab column, which reads "No room
+    assigned" when a meeting has none. Neither overrides `build()` or any shared step.
+- **How they interact.** `render_pdf` looks the class up by the export's orientation (`DOCUMENTS`), constructs it
+  with the export, and calls `build()`. `build()` walks the export's sections and, for each one, asks the subclass
+  for the heading and the columns. The subclass never controls the order of the steps or the page layout.
+- **Why it fits.** The algorithm (the document's skeleton) is fixed and the variation is confined to a few steps,
+  which is the case Template Method is for. It is a different job from Strategy above: the `Grouping` strategies
+  decide which meetings go in which section; the document classes decide how a section is laid out on paper.
 
 ### Technical debt
 
