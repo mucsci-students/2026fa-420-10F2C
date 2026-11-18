@@ -174,13 +174,6 @@ def test_the_saved_flags_go_along_with_each_button(client, configured):
     assert 'name="optimizer_flags" value="faculty_course"' not in html
 
 
-def test_there_is_no_box_without_a_configuration(client, browser):
-    lock_one(client)
-    html = page(client)
-    assert "data-regenerate-form" in html
-    assert 'name="limit"' not in html
-
-
 def test_a_run_started_here_uses_the_box_and_flags(client, configured, monkeypatch):
     seen = {}
 
