@@ -2,10 +2,12 @@
     The "Generate again" button: starts a new run with the saved settings and keeps every locked section.
     With JavaScript (gui/js/generation_progress.js) the run starts in the background and its progress shows in the
     lock banner at the top of the Schedule Viewer. Without JavaScript the form posts to the Schedule Generator,
-    which runs the same generation and shows the result.
+    which runs the same generation and shows the result. data-loading (gui/js/loading.js) covers that case:
+    a "Generating schedules" banner, and a second click is ignored. The progress script stops that event, so with
+    JavaScript working the banner never shows.
     Optional: button_class.
 {% endcomment %}
-<form method="post" action="{% url 'gui:schedule_generator' %}" class="regenerate-form" data-regenerate-form data-start-url="{% url 'gui:generation_start' %}">
+<form method="post" action="{% url 'gui:schedule_generator' %}" class="regenerate-form" data-regenerate-form data-loading="Generating schedules" data-start-url="{% url 'gui:generation_start' %}">
     {% csrf_token %}
     <button type="submit" class="{{ button_class|default:'btn btn-small btn-primary' }}">Generate again</button>
 </form>

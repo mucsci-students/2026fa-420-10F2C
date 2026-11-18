@@ -1,5 +1,5 @@
 {% extends "gui/base.html" %}
-{% load static %}
+{% load static assets %}
 {% block title %}Scheduler — Schedule Viewer{% endblock %}
 {% block content %}
 <div class="page-header">
@@ -218,4 +218,4 @@
 {% endif %}
 </section>
 {% endblock %}
-{% block scripts %}<script src="{% static 'gui/js/generation_progress.js' %}" defer></script><script src="{% static 'gui/js/schedule_viewer.js' %}" defer></script>{% endblock %}
+{% block scripts %}<script src="{% versioned 'gui/js/generation_progress.js' %}" defer></script><script src="{% versioned 'gui/js/schedule_viewer.js' %}" defer></script>{% endblock %}

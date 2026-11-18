@@ -11,7 +11,11 @@ What is covered:
   * the finished run comes back to schedule 1 of the same view
   * a run that is already going is picked up when the page loads
   * the way to the Schedule Generator (for the limit and optimizer flags) is still there
+  * the scripts are loaded with a version, so a browser never keeps running an old copy after an update
+  * the button still shows it is working, and ignores a second click, if the progress script does not run
 """
+
+import re
 
 import pytest
 
@@ -114,3 +118,22 @@ def test_a_run_that_is_already_going_is_picked_up(client, browser):
     assert 'data-active="true"' in html
     # the banner text and the card button are both hidden
     assert html.count("data-hide-while-generating hidden") == 2
+
+
+def test_scripts_are_versioned_so_an_update_is_never_missed(client, browser):
+    # The development server sends no cache instructions, so a browser may keep an old script for days.
+    # An address that changes with the file (?v=<time>) makes it fetch the new one.
+    lock_one(client)
+    html = page(client)
+    assert re.search(r"generation_progress\.js\?v=\d+", html)
+    assert re.search(r"schedule_viewer\.js\?v=\d+", html)
+
+
+def test_generator_page_versions_its_progress_script(client):
+    assert re.search(r"generation_progress\.js\?v=\d+", page(client, "/generate/"))
+
+
+def test_buttons_show_busy_without_the_progress_script(client, browser):
+    lock_one(client)
+    # One for the banner, one for the lock card (gui/js/loading.js does the rest).
+    assert page(client).count('data-loading="Generating schedules"') == 2

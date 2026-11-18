@@ -1,5 +1,5 @@
 {% extends "gui/base.html" %}
-{% load static %}
+{% load static assets %}
 {% block title %}Scheduler — Schedule Generator{% endblock %}
 {% block content %}
 <h1>Schedule Generator</h1>
@@ -62,5 +62,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{% static 'gui/js/generation_progress.js' %}" defer></script>
+<script src="{% versioned 'gui/js/generation_progress.js' %}" defer></script>
 {% endblock %}
