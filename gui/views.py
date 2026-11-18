@@ -347,6 +347,11 @@ def schedule_viewer(request, import_form=None):
         # Where a finished "Generate again" comes back to: schedule 1 of the new set, same view.
         "regen_return": f"{request.path}?schedule=1{_view_query(view_mode, resources)}",
     }
+    # "Generate again" starts from the saved limit and flags; its box can change the limit for one run.
+    saved = settings_controller.describe_settings(request)
+    if saved.get("has_config"):
+        lock_context["regen_limit"] = saved["limit"]
+        lock_context["regen_flags"] = saved["enabled_flags"]
     if grid is not None:
         grid, viewer_locks = _lock_viewer_context(
             request, current, assignments, grid, resources, time_format

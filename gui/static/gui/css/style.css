@@ -2571,7 +2571,12 @@ html[data-theme="dark"] .chat-form textarea { background: #18181b; color: #f3f4f
 .lock-banner .progress-panel .progress-bar { margin-top: 0.5rem; }
 .lock-banner #generation-errors { width: 100%; margin: 0 0 0.5rem; }
 .lock-banner [hidden], .lock-card [hidden] { display: none; }
-.regenerate-form { display: inline; margin: 0; }
+.regenerate-form { margin: 0; }
 .lock-card__generate { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; margin: 0.75rem 0; }
 .lock-card__generate .help { margin: 0; }
 html.is-generating .week-grid { opacity: 0.55; }
+
+/* "Generate again": the number-of-schedules box sits in front of the button. */
+.regenerate-form { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; }
+.regenerate-form__limit { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.9rem; }
+.regenerate-form__input { width: 4.75rem; padding: 0.2rem 0.4rem; font: inherit; }

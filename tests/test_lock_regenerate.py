@@ -13,14 +13,18 @@ What is covered:
   * the way to the Schedule Generator (for the limit and optimizer flags) is still there
   * the scripts are loaded with a version, so a browser never keeps running an old copy after an update
   * the button still shows it is working, and ignores a second click, if the progress script does not run
+  * a box for the number of schedules, filled in with the saved limit, and the saved flags sent along
+  * a run started from the page uses the number in the box and leaves the saved limit alone
 """
 
 import re
 
 import pytest
+from django.urls import reverse
 
 from app.schedule_io import Assignment, MeetingTime
 from gui import session_store
+from tests.fakes import FakeConfig
 
 VIEWER = "/schedules/"
 LOCK = "/schedules/locks/lock/"
@@ -137,3 +141,67 @@ def test_buttons_show_busy_without_the_progress_script(client, browser):
     lock_one(client)
     # One for the banner, one for the lock card (gui/js/loading.js does the rest).
     assert page(client).count('data-loading="Generating schedules"') == 2
+
+
+@pytest.fixture
+def configured(browser):
+    """The same browser session, now with a configuration: saved limit 7, two saved flags."""
+    browser.config = FakeConfig(limit=7, optimizer_flags=["pack_rooms", "same_room"])
+    return browser
+
+
+def test_the_box_starts_at_the_saved_limit(client, configured):
+    lock_one(client)
+    html = page(client)
+    # one in the banner and one in the lock card
+    assert html.count('name="limit"') == 2
+    assert html.count('value="7"') == 2
+
+
+def test_each_box_has_its_own_label(client, configured):
+    lock_one(client)
+    html = page(client)
+    for box in ("banner-limit", "card-limit"):
+        assert f'for="{box}"' in html
+        assert f'id="{box}"' in html
+
+
+def test_the_saved_flags_go_along_with_each_button(client, configured):
+    lock_one(client)
+    html = page(client)
+    assert html.count('name="optimizer_flags" value="pack_rooms"') == 2
+    assert html.count('name="optimizer_flags" value="same_room"') == 2
+    assert 'name="optimizer_flags" value="faculty_course"' not in html
+
+
+def test_there_is_no_box_without_a_configuration(client, browser):
+    lock_one(client)
+    html = page(client)
+    assert "data-regenerate-form" in html
+    assert 'name="limit"' not in html
+
+
+def test_a_run_started_here_uses_the_box_and_flags(client, configured, monkeypatch):
+    seen = {}
+
+    def fake_start(request, limit_override=None, optimizer_overrides=None):
+        seen["limit"] = limit_override
+        seen["flags"] = optimizer_overrides
+        return {"state": "running"}
+
+    target = "gui.views_generation.schedule_controller.start_generation"
+    monkeypatch.setattr(target, fake_start)
+    response = client.post(
+        reverse("gui:generation_start"),
+        {"limit": "5", "optimizer_flags": ["pack_rooms", "same_room"]},
+    )
+    assert response.status_code == 200
+    assert seen == {"limit": 5, "flags": ["pack_rooms", "same_room"]}
+    # this run only: the saved limit is untouched
+    assert configured.config.limit == 7
+
+
+def test_a_limit_that_is_not_a_positive_number_is_refused(client, configured):
+    response = client.post(reverse("gui:generation_start"), {"limit": "0"})
+    assert response.status_code == 400
+    assert response.json()["started"] is False

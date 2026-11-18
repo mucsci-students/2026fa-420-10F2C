@@ -13,7 +13,7 @@
             {% if locked_total == 1 %}it is{% else %}they are{% endif %} and everything else is rearranged.
         </p>
         <div class="lock-banner__actions">
-            {% include "gui/components/regenerate_form.html" %}
+            {% include "gui/components/regenerate_form.html" with id_prefix="banner" %}
             <a class="btn btn-small" href="{% url 'gui:schedule_generator' %}">Generation options</a>
             <a class="btn btn-small" href="{% url 'gui:locks_clear' %}?next={{ lock_next|urlencode }}">Unlock all</a>
         </div>

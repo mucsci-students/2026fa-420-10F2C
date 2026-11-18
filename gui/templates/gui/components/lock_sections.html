@@ -14,7 +14,7 @@
     </p>
     {% if locked_total %}
     <div class="lock-card__generate" data-hide-while-generating{% if job_active %} hidden{% endif %}>
-        {% include "gui/components/regenerate_form.html" %}
+        {% include "gui/components/regenerate_form.html" with id_prefix="card" %}
         <span class="help">{{ locked_total }} section{{ locked_total|pluralize }} locked. Generating again keeps {{ locked_total|pluralize:"it,them" }} as {{ locked_total|pluralize:"it is,they are" }}.</span>
     </div>
     {% endif %}
