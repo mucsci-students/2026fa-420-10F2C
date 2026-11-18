@@ -1,6 +1,6 @@
 """
 Tests for the Time Slots feature: controller behavior (gui/controllers/timeslots.py)
-and the pages/forms built on it (gui/views.py, gui/forms.py).
+and the pages/forms built on it (gui/views_timeslots.py, gui/forms.py).
 
 Covers user stories 19-21 (add / modify / delete a time slot, including the
 overlap and "only block on a day" rules) and Sprint 2 Sections 10, 11, 12, 19

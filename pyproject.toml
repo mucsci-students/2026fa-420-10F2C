@@ -21,13 +21,16 @@ DJANGO_SETTINGS_MODULE = "config.settings"
 source = [
     "app.commands.common",
     "app.crud",
+    "app.faculty_export",
     "app.generation_job",
     "app.history",
     "app.lock_solver",
     "app.locks",
     "app.memento",
     "app.schedule_io",
+    "app.schedule_export",
     "app.schedule_ops",
+    "app.schedule_view",
     "app.session",
 ]
 
