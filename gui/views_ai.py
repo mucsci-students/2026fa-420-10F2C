@@ -23,12 +23,16 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_POST
 
 from gui.ai import chats, lifecycle, service
+from gui.ai import locks as ai_locks
 from gui.controllers import schedule_controller
 from gui.session_store import get_session
 
 
 @require_POST
 def assistant_ask(request):
+    # The schedule open in the Schedule Viewer (chat.js sends it), so "lock CMSC 141.01" means the
+    # section on screen. Empty on any other page.
+    ai_locks.note_viewed_schedule(request, request.POST.get("schedule", ""))
     reply = service.handle_request(request, request.POST.get("message", ""))
     count = schedule_controller.schedule_count(request)
     generated = bool(reply.ok and reply.schedules_changed and count)
