@@ -442,7 +442,7 @@ The GUI follows Model–View–Controller. User actions go through a controller;
 | | `gui/templates/gui/` | Pages and shared components (`components/`), including `base.html` (navigation, status, loading banner). |
 | | `gui/forms.py` | Django forms: field types, labels, help text, confirmation checkboxes. |
 | | `gui/static/gui/` | CSS and JavaScript (`loading.js` for busy states, `theme.js` for dark mode, `generation_progress.js` for the live progress bar, `schedule_viewer.js` for the calendar and picker, `history.js` for the undo and redo shortcuts, `chat.js` for the assistant). |
-| **AI** | `gui/ai/` | `tools.py`: the fixed tool set (each tool has a Pydantic argument schema and calls a controller); `generation.py`: validate, review settings, generate, load/new configuration; `undo.py`: undo, redo, change history; `locks.py`: lock, unlock and list sections, and the safety net for "lock and generate" requests; `changes.py`: the update and delete tools; `lifecycle.py`: save, new and load configuration; `clarify.py`: asking for missing details; `base.py`: what every tool shares; `diagnose.py`: why a run found nothing; `chats.py`: the saved chats; `service.py`: one request (duplicate guard, reply built from tool results); `runner.py`: the LangChain agent; `prompt.py`: base prompt. `gui/views_ai.py` has the endpoint the chat button posts to and a read-only progress endpoint; the button itself is `templates/gui/components/chat_widget.html` with `static/gui/js/chat.js`. |
+| **AI** | `gui/ai/` | `tools.py`: the fixed tool set (each tool has a Pydantic argument schema and calls a controller); `generation.py`: validate, review settings, generate, load/new configuration; `undo.py`: undo, redo, change history; `locks.py`: lock, unlock and list sections, and the safety net for "lock and generate" requests; `changes.py`: the update and delete tools; `lifecycle.py`: save, new and load configuration; `clarify.py`: asking for missing details; `pending.py`: the Command pattern behind describe-then-confirm steps (a delete, a generation review); `base.py`: what every tool shares; `diagnose.py`: why a run found nothing; `chats.py`: the saved chats; `service.py`: one request (duplicate guard, reply built from tool results); `runner.py`: the LangChain agent; `prompt.py`: base prompt. `gui/views_ai.py` has the endpoint the chat button posts to and a read-only progress endpoint; the button itself is `templates/gui/components/chat_widget.html` with `static/gui/js/chat.js`. |
 | **Glue** | `gui/session_store.py` | Gives each browser its own `Session` (keyed by an id in a signed-cookie session). |
 | | `gui/middleware.py` | Turns unexpected exceptions into the friendly error page and logs the traceback. |
 | | `config/` | Django settings and root URL configuration; `gui/urls.py` maps each URL to a view. |
@@ -451,7 +451,7 @@ The Sprint 1 shell (`app/shell.py`, `app/commands/`) uses the same Model layer, 
 
 ### Design patterns
 
-MVC (above) is one of the patterns used. The others are described here as they are added: Memento, Observer, Adapter and, new in Sprint 4, Strategy and Template Method.
+MVC (above) is one of the patterns used. The others are described here as they are added: Memento, Observer and Adapter (carried forward from Sprint 3) and, new in Sprint 4, Strategy, Template Method and Command. That is seven with MVC.
 
 #### Memento (undo and redo)
 
@@ -594,6 +594,48 @@ MVC (above) is one of the patterns used. The others are described here as they a
   which is the case Template Method is for. It is a different job from Strategy above: the `Grouping` strategies
   decide which meetings go in which section; the document classes decide how a section is laid out on paper.
 
+#### Command (pending actions) — new in Sprint 4
+
+- **Problem.** Some assistant actions must never happen in the same message that asked for them. The assistant first
+  *describes* what it would do (a delete and everything that goes with it, or the generation settings it would use),
+  remembers it, and only does it when the user confirms in a *later* message. That "describe, wait, confirm or
+  cancel" flow was written twice by hand, once for deletes and once for generation. Each copy had its own steps
+  (is anything waiting? was it asked in this very message? has it expired? is it still what was described?) and kept
+  its request in a raw string-keyed attribute on the session that was cleared by hand with `setattr(session, ..., None)`.
+  A third kind of waiting thing would have meant a third copy.
+- **Where.** `gui/ai/pending.py` (the pattern), `gui/ai/changes.py` (`PendingDelete`, `confirm_delete`,
+  `cancel_delete`), `gui/ai/generation.py` (`PendingGeneration`, `confirm_schedule_generation`,
+  `cancel_schedule_generation`). Tests: `tests/test_ai_pending.py`, and the existing `tests/test_ai_changes.py`,
+  `tests/test_ai_generation.py`, `tests/test_ai_clarify.py`, `tests/test_ai_chats.py`.
+- **Participants.**
+  - *Command*: the abstract `PendingAction`. It holds what is needed to carry an action out later, and offers
+    `execute(request)` plus what to say when it can no longer run (`same_request_message`, `expired_message`, and
+    optionally `blocked_message` and `stale_message`).
+  - *Concrete commands*: `PendingDelete` (a described delete: its label, the configuration version it described and
+    the work to do) and `PendingGeneration` (the reviewed limit and optimizer flags, the configuration and the locked
+    sections they were checked against).
+  - *Receivers*: the objects that do the real work, which the commands only call: the delete controllers
+    (`rooms.delete_room`, ...) for a delete, and `schedule_controller.start_generation` for a run.
+  - *Invoker*: the shared steps in `pending.py`: `stage` (remember a command), `confirm` (the one confirmation flow),
+    `take` (forget it and hand it back, for cancel) and `forget`. The `confirm_delete` and `confirm_schedule_generation`
+    tools call `confirm`; `cancel_delete` and `cancel_schedule_generation` call `take`.
+  - *Client*: the tools that describe the action (`delete_room`, ..., `prepare_schedule_generation`). They build the
+    command and stage it; they never run it.
+- **How they interact.** `delete_room` checks the delete, builds a `PendingDelete` and stages it in the session's
+  slot, then answers with the description. Nothing has been deleted. In a later message the AI calls `confirm_delete`,
+  which asks `pending.confirm` to run the same checks for every kind of command, in this order: something is
+  waiting; it was not staged by this very message; nothing blocks it (a command can say so); it is used up whatever
+  happens next; it has not expired; it is still what was described (the configuration, and for a run the locks, have
+  not changed). Only then is `execute` called, which runs the receiver's work. Each failed check ends with the
+  command's own sentence and nothing is changed. A generation review is the same with `PendingGeneration`; reviewing
+  the settings also drops a waiting delete, so only one thing waits for a "yes" at a time.
+- **Why it fits.** A request is turned into an object that is created now and run later, which is what Command is
+  for (the lecture's "queue, schedule or undo individual actions"). The code that confirms an action does not know
+  what the action is, and a new kind of waiting action is one new class, not another copy of the flow
+  (open/closed). The checks that decide whether it may still run are written once, so a delete and a run can no
+  longer drift apart. This is a different job from Memento above: Memento restores state that was saved before a
+  change, while a command is the change itself, kept until the user agrees.
+
 ### Technical debt
 
 Design problems found in review, and what was done about each. Each entry says what the problem was, why it
@@ -627,6 +669,25 @@ mattered, what changed, and what shows that behavior was preserved.
   (`tests/test_gui_schedule_room_view.py`, `tests/test_gui_schedule_export_json.py`, `tests/test_gui_timeslots.py`)
   are unchanged apart from where the helpers they call are imported from and reading typed records instead of
   dictionary keys. The schedule viewer template was not edited.
+
+#### 2. The assistant's confirm flows were written twice (Sprint 4)
+
+- **Problem.** `gui/ai/changes.py` (`_Pending`, `confirm_delete`, `cancel_delete`) and `gui/ai/generation.py` (`_Plan`,
+  `confirm_schedule_generation`, `cancel_schedule_generation`) each carried their own copy of the same flow: is
+  anything waiting, was it asked in this same message, has it expired, is it still what was described. Each kept its
+  request in a raw string-keyed attribute on the session and cleared it by hand, and `generation.py` imported a
+  private name from `changes.py` to share the request token.
+- **Why it mattered.** A change to the rules (for example how long a request may wait, or what makes it stale) had to
+  be made in two places, and the two could drift apart. The state lived in loose attributes, so nothing showed which
+  things could be waiting or how they were cleared.
+- **What changed.** The flow is written once in `gui/ai/pending.py` as the Command pattern (see
+  [Command](#command-pending-actions--new-in-sprint-4)). `PendingDelete` and `PendingGeneration` hold what differs (their
+  messages, what makes them stale, what running them does); `confirm`, `take`, `stage` and `forget` are the shared
+  steps. The request token moved there too, so neither module imports from the other for it.
+- **Evidence that behavior is preserved.** The messages, the order of the checks and the session slots are unchanged,
+  so `tests/test_ai_changes.py`, `tests/test_ai_generation.py`, `tests/test_ai_clarify.py`, `tests/test_ai_chats.py` and
+  `tests/test_ai_config_lifecycle.py`, which read those slots and age them with the modules' own clocks, were not edited.
+  `tests/test_ai_pending.py` adds tests for the shared flow and for both commands.
 
 ## Running the tests
 
