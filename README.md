@@ -2,6 +2,8 @@
 
 A web application for building, validating and solving university course-scheduling configurations, with a web GUI organized into three modes: **Configuration Editor**, **Schedule Generator** and **Schedule Viewer**. It is built on the [`course-constraint-scheduler`](https://github.com/mucsci/scheduler) library, which uses the Z3 solver to find schedules that satisfy every hard constraint (faculty availability, room and lab capacity, course conflicts, meeting patterns).
 
+Like part of a schedule but not all of it? **Lock** the sections you want to keep and generate again: the locked sections stay exactly where they are and everything else is rearranged around them (see [Locking sections](#locking-sections-selective-regeneration)). An **AI Assistant** chat does all of this, and more, in everyday language (see [AI Assistant](#ai-assistant)).
+
 The Sprint 1 command-line shell is still included and shares the same model code (see [Command-line shell](#command-line-shell-sprint-1)).
 
 **Contributors:** Calvin Becker, Alan Reider, Henry Malesker, Joseph Lucks, Samsong Tamang, James Liranzo, Agustin Espinoza-Ortiz
@@ -14,6 +16,7 @@ The Sprint 1 command-line shell is still included and shares the same model code
 - [Configuration Editor](#configuration-editor)
 - [Schedule Generator](#schedule-generator)
 - [Schedule Viewer](#schedule-viewer)
+- [Locking sections (selective regeneration)](#locking-sections-selective-regeneration)
 - [AI Assistant](#ai-assistant)
 - [Behavior shared by every page](#behavior-shared-by-every-page)
 - [Architecture (MVC)](#architecture-mvc)
@@ -45,13 +48,13 @@ Then open **http://127.0.0.1:8000/** in a browser. Run every command from the re
 
 ## The three modes
 
-Every page has the same navigation bar with links to **Home**, **Configuration Editor**, **Schedule Generator** and **Schedule Viewer**, a status indicator for the configuration (**none loaded**, **Unsaved changes**, or **no unsaved changes**), and a **Dark mode** toggle.
+Every page has the same navigation bar with links to **Home**, **Configuration Editor**, **Schedule Generator** and **Schedule Viewer**, a status indicator for the configuration (**none loaded**, **Unsaved changes**, or **no unsaved changes**), and a **Dark mode** toggle. The round chat button in the corner opens the [AI Assistant](#ai-assistant).
 
 | Mode | What it is for |
 |---|---|
 | **Configuration Editor** | Create, load, edit, validate and save a scheduler configuration. Eight areas: Time Slots, Rooms, Labs, Courses, Faculty, Class Patterns, Meetings, Global Settings. |
-| **Schedule Generator** | Pick a configuration, optionally override the limit or optimizer flags for one run, and generate schedules. |
-| **Schedule Viewer** | Browse generated or loaded schedules, load schedules from a file, export them as JSON or CSV, and clear them. |
+| **Schedule Generator** | Pick a configuration, optionally override the limit or optimizer flags for one run, see which locked sections the run will keep, and generate schedules. |
+| **Schedule Viewer** | Browse generated or loaded schedules, lock the sections you like and generate again, load schedules from a file, export them as JSON or CSV, and clear them. |
 
 ## Representative workflow
 
@@ -63,8 +66,10 @@ This walk-through touches all three modes, starting from a fresh browser session
 4. **Configuration Editor → Validate configuration.** "Configuration is valid" appears. Click **Save configuration**; the browser downloads the JSON file and the status returns to **no unsaved changes**.
 5. **Schedule Generator.** Leave the one-run fields alone (or change them — they never alter the saved configuration) and click **Generate schedules**. The button shows a busy state, and on success you land in the Schedule Viewer.
 6. **Schedule Viewer.** Step through the schedules with **Previous** / **Next**, and switch between the course, room and faculty views.
-7. **Schedule Viewer → Export → Export All Schedules (JSON).** The file downloads.
-8. **Schedule Viewer → Clear schedules**, confirm. Then **Load schedules from a file** with the JSON from step 7: the same schedules come back without running the solver again.
+7. **Keep what you like.** Click the padlock on a block in the calendar (or **Lock** in the **Keep sections you like** card). A banner says "1 section locked." Click **Generate again**: the locked section comes back exactly as it was and everything else is rearranged. The **Locked sections** card on the Schedule Generator lists the same section.
+8. **Schedule Viewer → Export → Export All Schedules (JSON).** The file downloads.
+9. **Schedule Viewer → Clear schedules**, confirm. Then **Load schedules from a file** with the JSON from step 8: the same schedules come back without running the solver again. (Clearing schedules does not remove locks.)
+10. **AI Assistant (optional, needs an OpenAI key).** Click the chat button and type "lock CMSC 140.01 and generate 5 new schedules". The assistant locks the section and shows the generation settings (with the locked section listed); reply "go ahead" to run it. See [AI Assistant](#ai-assistant).
 
 ## Configuration Editor
 
@@ -179,6 +184,7 @@ courses and faculty preferences.
 1. **Configuration to run.** Configurations you load or save in this browser session are kept as snapshots. Pick one from the selector to make it the active configuration. Switching clears schedules generated from the previous configuration, so save unsaved edits first.
 2. **One-run overrides (optional).** A generation limit and a set of optimizer flags that apply **to this run only**. They never change the saved configuration; to change the saved values, use **Configuration Editor → Global Settings**. The flag checkboxes start with the configuration's saved flags ticked.
 3. **Generate schedules.** Generation runs in the background and the page shows a **progress bar** with the number of schedules found out of the limit (for example "Found 3 of 10 schedules (30%) · 12s elapsed") and the elapsed time. The bar moves when a schedule is found, so it can stay empty while the solver works on the first one; with no limit it is indeterminate. **Cancel generation** stops the run once the solver finishes the schedule it is working on, and your previous schedules are kept. While a run is going the button is disabled and a second run in the same session is refused until the first finishes; if you reload the page the progress bar picks up where the run is. Without JavaScript the form still works: the page waits for the run to finish and then shows the result, without the progress bar.
+4. **Locked sections.** The **Locked sections** card lists every section you locked: instructor, room or lab, and when. A run keeps each one exactly as it is (instructor, room, lab, days and times) and rearranges everything else, and a note beside **Generate schedules** says so. Remove one with **Unlock**, or all of them with **Unlock all** (it asks first). With nothing locked the card says so. Lock sections in the Schedule Viewer or with the AI Assistant; see [Locking sections](#locking-sections-selective-regeneration).
 
 The result is always one of:
 
@@ -188,6 +194,7 @@ The result is always one of:
 | No feasible schedule | A warning that no schedule satisfies every hard constraint. Previous results are cleared. |
 | Invalid configuration | The library's reason the configuration can't be scheduled. Previous results are kept. |
 | Invalid override | The bad field (a limit that isn't a positive whole number, an unknown flag) is marked on the form. Nothing runs. |
+| Locks can't be kept | An error that names the sections: two locks clash (the same room, lab or instructor at overlapping times), a lock no longer fits the open configuration (its instructor, room, lab, section or meeting times are gone), or no schedule can keep every lock. Nothing is generated and the schedules already in the viewer are kept. Unlock the sections named and try again. |
 | Cancelled | "Generation was cancelled." Nothing is saved; previous results are kept. |
 | Unexpected error | "Schedule generation failed unexpectedly" with the reason. Previous results are kept. |
 
@@ -208,6 +215,7 @@ The viewer shows whatever schedules are currently available, whether generated o
 - **Clock.** **24-hour** or **12-hour (AM/PM)** buttons change every time on the page (axis, blocks, hover details). The choice is remembered for your browser session; `?time=12h` or `?time=24h` in the address sets it. It only changes how times are shown, never the schedule or the exported files.
 - **Color key.** A collapsible **Color key** under the calendar lists what each color stands for in the current view, and each item keeps its color when you pick items. Names are always written on the blocks too, so color is never the only cue.
 - **Nothing to show.** If a schedule has no meetings (for example only online sections), or nothing you picked meets in it, the calendar is replaced by a "No meetings to show" message that names any sections without meeting times and, after a pick, links back to **Show all**.
+- **Locks.** Every calendar block has a padlock, a **Keep sections you like** card under the calendar lists the sections shown, and a banner appears while anything is locked, with **Generate again**. See [Locking sections](#locking-sections-selective-regeneration).
 
 ### Loading schedules
 
@@ -231,6 +239,7 @@ The viewer shows whatever schedules are currently available, whether generated o
 - **CSV** is for spreadsheets: one row per meeting with the columns `schedule, course, faculty, room, lab, day, start, end, duration_minutes, lab_meeting`. A section with no meetings (for example an online course) gets one row with blank meeting columns. CSV can't be loaded back into the viewer; use JSON for that.
 - Export buttons are disabled until there are schedules. Exporting never changes the loaded schedules.
 - **Overwrite protection:** exports (and configuration saves) are browser downloads. The browser decides where the file goes and asks before replacing an existing file, or renames the new one. The application never writes to a path on your computer, so it cannot overwrite your files.
+- **PDF is not in the interface yet.** The pieces for a printable PDF of one schedule, by room or lab or by faculty member, are built and tested (`app/schedule_export.py`, `gui/controllers/pdf_export.py`, `gui/schedule_pdf.py`, which uses ReportLab), but no page or button uses them yet, so the Schedule Viewer offers JSON and CSV only.
 
 ### Clearing schedules
 
@@ -265,6 +274,46 @@ The viewer shows whatever schedules are currently available, whether generated o
 - Also accepted: a single schedule (just the list of assignments); a bare list of schedules, as written by the scheduler library's `JSONWriter` (where `meetings` may be called `times`); and meetings written as `"MON 09:00-09:50"`.
 - Rejected: a `version` newer than 1, a different `format` value, and files over 5 MB.
 
+## Locking sections (selective regeneration)
+
+A **lock** keeps one section of a schedule exactly as it is: the same instructor, room, lab, days and times. The next time you generate schedules, every locked section stays where it is and the solver rearranges everything else around it. Use it when a schedule is mostly right: lock the parts you like and generate again, instead of starting over.
+
+### Where to lock and unlock
+
+Every place below reads and writes the **same list of locks**, so they always agree with each other.
+
+- **Schedule Viewer, on the calendar.** Every block has a padlock. An open padlock means the section is free; click it to lock the section as this schedule places it. A closed padlock means it is locked in place; click it to unlock. A padlock whose tooltip says "Locked to a different placement" means the section is locked, but from a schedule that placed it somewhere else; click it to lock the section as shown here instead.
+- **Schedule Viewer, "Keep sections you like" card.** Lists every section the calendar is showing, grouped by instructor, with room or lab, times, and **Lock** / **Unlock** for each. An instructor with several sections also has **Lock all N** and **Unlock all N**.
+- **Schedule Viewer, banner.** While anything is locked, a banner says how many sections are locked and offers **Generate again** (with a box for how many schedules, filled in with the saved limit; it applies to this run only), **Generation options** and **Unlock all** (which asks first). With JavaScript the run starts in the background and the banner turns into a progress bar with a **Cancel generation** button; the page then reloads on schedule 1 of the new results. Without JavaScript the button posts to the Schedule Generator, which runs the same generation.
+- **Schedule Generator, "Locked sections" card.** Lists the locked sections (section, instructor, room or lab, when) with **Unlock** for each and **Unlock all**.
+- **AI Assistant.** "Lock CMSC 141.01", "Which sections are locked?", "Unlock everything". See [AI Assistant](#ai-assistant).
+
+After a lock or unlock you are sent back to the page you were on, with the same schedule, view and picks. The confirmation is an information message, not a green success one, because locking does not change the configuration and so has no Undo.
+
+### What a lock remembers
+
+The section's whole placement (instructor, room, lab and meetings) as it was in the schedule you locked it from; the lists say "locked from schedule 2". The lock holds its own copy, so it survives generating, loading or clearing schedules. Locking a section again from another schedule replaces the earlier lock. Locking a section that is already locked exactly like this changes nothing.
+
+### Rules
+
+- **Clashing locks are refused when you click.** Two sections locked into the same room, the same lab, or taught by the same instructor at overlapping times cannot both be kept, so the second lock is refused with a message naming both sections. Nothing is locked.
+- **The solver keeps them.** The scheduler library has no lock feature, so a lock becomes four extra hard rules for that section (the instructor, the room, the lab or "no lab", and the meeting times), added just before the solver runs. Every schedule it returns therefore keeps the locks; nothing is generated and thrown away. As a final safety net each result is checked again, and a schedule that does not keep a lock is never stored.
+- **A lock that cannot be kept stops the run.** If its instructor, room, lab, section or meeting times are no longer in the open configuration (for example after you loaded a different one), or no schedule can satisfy every lock, nothing is generated, the message names the sections, and the schedules already in the viewer are kept. This is different from plain "no feasible schedule", which clears them.
+- **Locks are not part of the configuration.** Locking and unlocking never change the configuration, never mark it as having unsaved changes, are not in the undo history and are not in a saved configuration file or an exported schedule. They live in the browser session, so restarting the server clears them.
+- **What clears locks.** **New configuration** and **Restore previous configuration** clear them. Loading a configuration or switching to a saved one keeps them, and they are checked when you generate (see above). Clearing schedules and generating new schedules leave them in place.
+- **Out of date locks.** A lock keeps the placement it was made with, even if you later edit the configuration. If the edit made it impossible, the next run says so and names the section.
+
+### How it is built (MVC)
+
+| Layer | Where |
+|---|---|
+| **Model** | `app/locks.py`: `Lock` (one locked placement), `LockSet` (the session's locks, with a `version` that goes up on every real change) and `find_conflicts` (clashes between locks, without the solver). `app/lock_solver.py`: turns locks into Z3 rules (`plan_locks`, `apply_plan`) and double-checks results (`unkept_locks`). It is the **only** module that reaches into the library's private solver parts, so a library update that changes them breaks one file, and `tests/test_locks_real_solver.py` fails to say so. `app/schedule_ops.py` and `app/generation_job.py` pass the locks to the run. `app/session.py` holds `Session.locks`. |
+| **Controller** | `gui/controllers/locks.py`: lock, unlock, lock or unlock one instructor's sections, clear all, and the all-or-nothing `lock_sections` / `unlock_sections` the assistant uses. Every refusal is a `ControllerError` with a plain sentence. |
+| **View** | `gui/views_locks.py` (POST-only; the "next" address is only trusted when it points at this site), the lock panels in `gui/views.py`, and the templates `components/lock_form.html` (the one hidden form behind every lock button), `lock_banner.html`, `lock_sections.html`, `lock_panel.html`, `regenerate_form.html` and `locks_clear.html`, with `static/gui/js/generation_progress.js`. |
+| **AI** | `gui/ai/locks.py` (see [AI Assistant](#ai-assistant)). |
+
+Tests: `tests/test_locks.py`, `test_lock_controller.py`, `test_lock_views.py`, `test_lock_solver.py`, `test_lock_regenerate.py`, `test_locks_real_solver.py` (runs the real solver), `test_schedule_ops_locks.py`, `test_session_locks.py`, `test_generation_locks.py` and, for the chat, `test_ai_locks.py`.
+
 ## AI Assistant
 
 Click the round chat button in the bottom-right corner of any page and type a request in everyday language. Hover the button and click the small arrow to slide it out of the way; a small tab at the screen edge brings it back. For example:
@@ -276,6 +325,7 @@ Click the round chat button in the bottom-right corner of any page and type a re
 - "Add a time slot on Friday from 17:00 to 19:00", "Add a class pattern for 3 credits meeting Monday for 150 minutes"
 - "Change the capacity of Roddy 140 to 40", "Give Hogg a maximum of 9 credits", "Disable class pattern 4", "Turn off the pack_rooms setting"
 - "Delete room Roddy 136" (see **Deleting** below)
+- "Lock CMSC 141.01", "Which sections are locked?", "Unlock everything", "Lock CMSC 152.01 and generate 5 new schedules" (see **Locking sections** below)
 
 **Setup.** Set `OPENAI_API_KEY` in your environment, or copy [`config/openai_api_key.example.txt`](config/openai_api_key.example.txt) to `config/openai_api_key.txt` and replace its contents with your OpenAI key. The local key file is ignored by Git; do not commit or share it. The environment variable takes precedence if both are set. The key is never shown on a page or written to a log. The model is `gpt-6-luna` unless `OPENAI_MODEL` is set:
 
@@ -298,6 +348,17 @@ While it works, the chat shows a progress line ("Generating schedules… found 3
 
 With no configuration open, the assistant says one must be created or loaded and offers both: `create_new_configuration` (then configure it in the chat, `validate_configuration`, and generate) or `load_saved_configuration` (saved configurations in this session; after loading and validating it carries on into the settings review), plus a **Load Configuration** link to the Configuration Editor's form for a JSON file on your computer. `load_saved_configuration` refuses when it would discard unsaved changes or loaded schedules. Quick replies ("Go ahead and generate", "Cancel", ...) appear as buttons under such messages and just send that text as an ordinary message.
 
+**Locking sections.** "Lock CMSC 141.01", "lock everything Hogg teaches", "lock the Monday classes in Roddy 136", "unlock CMSC 141.01", "unlock everything" and "which sections are locked?" all work. The tools are `lock_sections`, `unlock_sections`, `view_locked_sections`, `unlock_all_sections`, `lock_faculty_sections` and `unlock_faculty_sections`, plus `list_schedule_sections`, a lookup only the assistant reads, so it can find the exact sections you described before acting. They are in `gui/ai/locks.py` and call `gui/controllers/locks.py`, like the padlock buttons do. See [Locking sections](#locking-sections-selective-regeneration) for what a lock is.
+- **The same locks everywhere.** The chat, the padlocks and cards in the Schedule Viewer and the **Locked sections** card on the Schedule Generator read and write one list. A lock made in the chat appears on the page behind it at once (the page updates in place), and the chat lists exactly the sections the Generator lists: instructor, room or lab, days and times (in the clock the Schedule Viewer uses), and the schedule each was locked from.
+- **Not part of the configuration.** Locking and unlocking never change the configuration, never mark it as unsaved and are not in the undo history, so these replies never say "not yet saved to a file". Every reply says "The configuration was not changed."
+- **Which schedule.** The one open in the Schedule Viewer (the chat sends the page's schedule number). On any other page it uses schedule 1 and the reply says so; "lock it from schedule 3" picks one explicitly.
+- **Invalid requests change nothing.** A section that is not in that schedule gets "I couldn't find a section called ... in schedule N", with "Did you mean ...?" when something looks close. The same goes for an instructor who teaches nothing in it, a section that is not locked (when unlocking), a schedule number that does not exist, and no schedules at all. No lock is created or changed and the configuration is untouched.
+- **All or nothing.** One message can lock or unlock several sections in one call. If any name is unknown or ambiguous, or the locks would clash (the same room, lab or instructor at overlapping times), nothing changes. A name that fits two sections ("CMSC 141" when there is a .01 and a .02) is asked about, never guessed.
+- **At once.** Unlike deleting, locks take one message with no confirmation (they are cheap to undo), and they do not interrupt or drop a request that is waiting for details.
+- **Smarter requests.** `list_schedule_sections` lets the assistant read the schedule first ("lock the Monday classes in Roddy 136", "lock all of CMSC 141"). `lock_faculty_sections` and `unlock_faculty_sections` handle one instructor's sections, `unlock_all_sections` clears every lock, and `lock_sections` with `replace_existing_locks` makes the named sections the only locks ("lock only CMSC 141.01"). Several lock requests in one message are carried out in order ("unlock CMSC 141.01 and lock everything Barr teaches").
+- **Lock and generate in one message.** "Lock CMSC 152.01 and generate 5 new schedules" locks the section and then shows the generation settings, with the locked section listed and the limit you asked for. As everywhere, generating takes a second message: reply "go ahead". The assistant is told to make both calls in one go. Because a lock's reply is the application's own final answer, a safety net on the server (`finish_generation_request` in `gui/ai/locks.py`) shows the generation settings itself when the assistant locked or unlocked successfully, you clearly asked to generate, and the assistant did not call a generation tool. It stays out when you postpone or refuse ("lock it, I'll generate later", "don't generate yet") and when a lock fails.
+- **No locks.** Asking which sections are locked, with none locked, says "No sections are currently locked."
+
 **Saving.** "Save my configuration", "Download my config" or "Save as fall.json" (`save_configuration`) shows a file name box and a **Save JSON** button under the reply. The button posts to the Configuration Editor's own Save view (the Editor's Save form has the same optional file name box), so there is one export: the same validation and JSON, delivered as a normal browser download. Your browser decides where the file goes and what happens if a file with that name already exists; the app writes nothing to disk, so it can never overwrite a file. It cannot tell whether the download finished, so the assistant only says a download was requested, never that the file was saved. With no configuration open it explains there is nothing to save and offers Load and New; ask again afterwards.
 
 **Starting a new configuration** (`create_new_configuration`) happens at once only when there are no unsaved changes and no generated schedules. Otherwise the assistant warns about what would be discarded and shows **Save JSON**, **Discard and Continue** and **Cancel**. Nothing changes until you choose; Cancel (or a stale or reused warning) leaves the configuration, its changes and its schedules as they were, and after Discard and Continue the old configuration can be brought back with Restore previous configuration in the Configuration Editor.
@@ -306,7 +367,8 @@ With no configuration open, the assistant says one must be created or loaded and
 - *Part of a name is enough.* "Delete room 136" finds Roddy 136, "hog" finds Hogg, "cmsc 140" finds CMSC 140.01. When two items fit ("roddy"), it asks which you mean instead of guessing, and a near miss gets a "Did you mean ...?" with the real names.
 - *Undo and redo.* `undo_changes` takes back the newest change, the newest N, or a specific one by its words ("put the room we deleted back" undoes that delete, with everything that was removed with it, and any later changes, and says so). `redo_changes` brings changes back and `show_change_history` lists them. It is the same history as the Undo/Redo buttons and the History page, so the same 25 changes apply. Every real change offers an **Undo the last change** quick reply.
 - *Why generation found nothing.* When a run finds no feasible schedule, the reply says what is probably wrong (faculty minimum credits larger than the courses add up to, courses with more credits than the faculty can teach, a course nobody can teach, a course too big for its rooms) and lists your newest changes with a quick reply to undo them. `diagnose_configuration` ("check my configuration for problems") gives the same check on demand. These are likely causes, not proof: the solver has the final word.
-- *Several things in one message.* "Put the room back, then generate a single schedule" makes the assistant call every tool the message needs, in order. The two-step safeguards still apply: a delete is only described and generation only shows its settings, and you confirm in a new message.
+- *Several things in one message.* "Put the room back, then generate a single schedule" makes the assistant call every tool the message needs, in order. The two-step safeguards still apply: a delete is only described and generation only shows its settings, and you confirm in a new message. Locking works the same way: "lock CMSC 141.01 and generate 5 schedules" locks, then shows the generation settings with the locked section listed.
+- *Asking for what is missing.* A request that lacks a value ("Add a room named RODDY150" has no capacity) or names something that fits several items is not run. The assistant asks for everything that is missing in one message, and nothing changes while it waits. Answer in your own words ("it holds 35") and it finishes the original request through the same checks; a value you give again corrects the earlier one, and you can say "never mind" (`cancel_pending_request`) to drop it. A request waits for ten minutes and is forgotten when another chat opens or a different configuration replaces the open one. While it waits, tools that change the configuration are refused until it is finished or cancelled; reading, and locking, still work.
 
 **Chats.** The conversation is kept on the server for each browser, so it is still there after you change pages or reload (open the panel and it is drawn again; whether the panel is open is remembered for the tab). The button at the left of the panel header opens the **chat history**, a sidebar like the one in Claude: your chats newest first, grouped by day (Today, Yesterday, Previous 7 days, ...). Click a chat to open it, use **New chat** for a fresh one, and the bin that appears on a row deletes it (the row asks "Delete?" in place, no pop-up). The sidebar is open by default on a wide screen and remembered in the browser; on a phone it slides over the chat. Each chat has its own memory for the AI, and a new chat or a switch forgets anything that was waiting for a "yes" (a delete, generation settings). If a request is still running when the page changes, the panel shows it as working and draws the answer when it is done. The history is locked while a request runs. At most 20 chats of 200 lines are kept (the oldest chat is dropped). Chats live with the browser session like the configuration does, so restarting the server starts fresh.
 
@@ -320,7 +382,7 @@ With no configuration open, the assistant says one must be created or loaded and
 - The reply comes from what the application actually did. A change says **"applied but not yet saved to a file"**: it's in the open configuration and marked as unsaved changes, but it isn't written to disk until you save it.
 - AI service errors are retried at most twice, with a 60-second timeout. After that you get a "couldn't finish" message, and nothing is changed.
 
-Tests use a fake AI (`tests/test_ai_chat.py`, `tests/test_ai_tools.py`, `tests/test_ai_changes.py`, `tests/test_ai_generation.py`, `tests/test_ai_chats.py`, `tests/test_ai_smarter.py`) or a mocked OpenAI endpoint (`tests/test_ai_langchain.py`), so no key is needed and no API calls are made.
+Tests use a fake AI (`tests/test_ai_chat.py`, `tests/test_ai_tools.py`, `tests/test_ai_changes.py`, `tests/test_ai_generation.py`, `tests/test_ai_chats.py`, `tests/test_ai_smarter.py`, `tests/test_ai_locks.py`) or a mocked OpenAI endpoint (`tests/test_ai_langchain.py`), so no key is needed and no API calls are made.
 
 ## Behavior shared by every page
 
@@ -369,16 +431,18 @@ The GUI follows Model–View–Controller. User actions go through a controller;
 | | `app/generation_job.py` | One generation run on a background thread. `GenerationJob` is the subject of the Observer pattern: it notifies `GenerationObserver`s (`ProgressTracker` here, `ResultsStore` in the controller) of progress and of the result (see [Design patterns](#design-patterns)). |
 | | `app/schedule_io.py` | Neutral schedule records (`Assignment`, `MeetingTime`) used by both generated and loaded schedules; JSON/CSV reading, writing and validation. |
 | | `app/schedule_view.py` | One schedule as typed `MeetingBlock`s (course and section split apart, the room or lab kept with its kind), and the `Grouping` strategies that read it by course, by room or lab, or by faculty member (see [Design patterns](#design-patterns)). |
-| | `app/schedule_export.py` | One schedule arranged into sections for a printed export, by room or lab or by faculty member: `build_export` returns a `ScheduleExport` of `ExportSection`s and `ExportRow`s, built from schedule records alone so imported schedules work. It holds the content only; it has no PDF code, and the export page that will use it is not built yet. |
+| | `app/schedule_export.py` | One schedule arranged into sections for a printed export, by room or lab or by faculty member: `build_export` returns a `ScheduleExport` of `ExportSection`s and `ExportRow`s, built from schedule records alone so imported schedules work. It holds the content only; it has no PDF code, and no page or button uses it yet (see **PDF is not in the interface yet** under [Exporting schedules](#exporting-schedules)). |
+| | `app/locks.py`, `app/lock_solver.py` | Section locks (selective regeneration): `LockSet` holds the session's locks and spots clashes between them; `lock_solver` turns locks into extra solver rules and double-checks results. See [Locking sections](#locking-sections-selective-regeneration). |
+| | `app/faculty_export.py` | Faculty-oriented export data (one schedule read faculty member by faculty member, with no PDF code). Built and tested, but no page or controller uses it yet. |
 | | `course-constraint-scheduler` | The configuration models, validation rules and Z3 solver. Validation is never reimplemented in this project. |
-| **Controller** | `gui/controllers/` | One module per area: `config_controller.py` (lifecycle), `timeslots.py`, `rooms.py`, `labs.py`, `courses.py`, `faculty.py`, `patterns.py`, `meetings.py`, `settings.py`, `schedule_controller.py` (generate, load, export, clear). `errors.py` defines `ControllerError` / `FieldError`; `uploads.py` reads uploaded files safely. Controllers return plain data and never touch templates or `HttpResponse`. |
-| **View** | `gui/views.py`, `gui/views_*.py` | Thin request handlers: call a controller, then redirect with a message or re-render the form with its errors. `views.py` has the home page, the configuration lifecycle, the generator form and the viewer page; each configuration area has its own `views_<area>.py` (`views_timeslots.py`, `views_rooms.py`, ...). `views_errors.py` renders the error pages. |
+| **Controller** | `gui/controllers/` | One module per area: `config_controller.py` (lifecycle), `timeslots.py`, `rooms.py`, `labs.py`, `courses.py`, `faculty.py`, `patterns.py`, `meetings.py`, `settings.py`, `schedule_controller.py` (generate, load, export, clear), `locks.py` (lock and unlock sections), `history_controller.py` (undo, redo), `dependencies.py` (what each record is used by, shared by every delete) and `pdf_export.py` (one schedule as a PDF; not wired to a page yet). `errors.py` defines `ControllerError` / `FieldError`; `uploads.py` reads uploaded files safely. Controllers return plain data and never touch templates or `HttpResponse`. |
+| **View** | `gui/views.py`, `gui/views_*.py` | Thin request handlers: call a controller, then redirect with a message or re-render the form with its errors. `views.py` has the home page, the configuration lifecycle, the generator form and the viewer page; each configuration area has its own `views_<area>.py` (`views_timeslots.py`, `views_rooms.py`, ...). `views_errors.py` renders the error pages. `views_locks.py` (lock, unlock, unlock all), `views_generation.py` (the progress bar's start, status and cancel endpoints), `views_delete.py` and `views_rename.py` (the review-and-confirm pages), `views_history.py` (undo, redo, history) and `views_ai.py` (the chat) follow the same pattern. |
 | | `gui/calendar_layout.py` | The Schedule Viewer's weekly calendar as presentation data (`ScheduleGrid`): where each block sits, how overlapping blocks share a day column, colors, and how times are written. No request handling and no Django imports. |
 | | `gui/schedule_pdf.py` | A schedule export as a print-friendly PDF: `render_pdf(export, schedule_label, time_format)` returns the bytes. US Letter, portrait, grayscale-safe, headings repeated on continuation pages. Presentation only; it writes no files and has no Django imports. Uses ReportLab. |
 | | `gui/templates/gui/` | Pages and shared components (`components/`), including `base.html` (navigation, status, loading banner). |
 | | `gui/forms.py` | Django forms: field types, labels, help text, confirmation checkboxes. |
-| | `gui/static/gui/` | CSS and JavaScript (`loading.js` for busy states, `theme.js` for dark mode). |
-| **AI** | `gui/ai/` | `tools.py`: the fixed tool set (each tool has a Pydantic argument schema and calls a controller); `generation.py`: validate, review settings, generate, load/new configuration; `undo.py`: undo, redo, change history; `diagnose.py`: why a run found nothing; `chats.py`: the saved chats; `service.py`: one request (duplicate guard, reply built from tool results); `runner.py`: the LangChain agent; `prompt.py`: base prompt. `gui/views_ai.py` has the endpoint the chat button posts to and a read-only progress endpoint; the button itself is `templates/gui/components/chat_widget.html` with `static/gui/js/chat.js`. |
+| | `gui/static/gui/` | CSS and JavaScript (`loading.js` for busy states, `theme.js` for dark mode, `generation_progress.js` for the live progress bar, `schedule_viewer.js` for the calendar and picker, `history.js` for the undo and redo shortcuts, `chat.js` for the assistant). |
+| **AI** | `gui/ai/` | `tools.py`: the fixed tool set (each tool has a Pydantic argument schema and calls a controller); `generation.py`: validate, review settings, generate, load/new configuration; `undo.py`: undo, redo, change history; `locks.py`: lock, unlock and list sections, and the safety net for "lock and generate" requests; `changes.py`: the update and delete tools; `lifecycle.py`: save, new and load configuration; `clarify.py`: asking for missing details; `pending.py`: the Command pattern behind describe-then-confirm steps (a delete, a generation review); `base.py`: what every tool shares; `diagnose.py`: why a run found nothing; `chats.py`: the saved chats; `service.py`: one request (duplicate guard, reply built from tool results); `runner.py`: the LangChain agent; `prompt.py`: base prompt. `gui/views_ai.py` has the endpoint the chat button posts to and a read-only progress endpoint; the button itself is `templates/gui/components/chat_widget.html` with `static/gui/js/chat.js`. |
 | **Glue** | `gui/session_store.py` | Gives each browser its own `Session` (keyed by an id in a signed-cookie session). |
 | | `gui/middleware.py` | Turns unexpected exceptions into the friendly error page and logs the traceback. |
 | | `config/` | Django settings and root URL configuration; `gui/urls.py` maps each URL to a view. |
@@ -387,7 +451,7 @@ The Sprint 1 shell (`app/shell.py`, `app/commands/`) uses the same Model layer, 
 
 ### Design patterns
 
-MVC (above) is one of the patterns used. The others are described here as they are added: Memento, Observer, Adapter and, new in Sprint 4, Strategy and Template Method.
+MVC (above) is one of the patterns used. The others are described here as they are added: Memento, Observer and Adapter (carried forward from Sprint 3) and, new in Sprint 4, Strategy, Template Method and Command. That is seven with MVC.
 
 #### Memento (undo and redo)
 
@@ -530,6 +594,48 @@ MVC (above) is one of the patterns used. The others are described here as they a
   which is the case Template Method is for. It is a different job from Strategy above: the `Grouping` strategies
   decide which meetings go in which section; the document classes decide how a section is laid out on paper.
 
+#### Command (pending actions) — new in Sprint 4
+
+- **Problem.** Some assistant actions must never happen in the same message that asked for them. The assistant first
+  *describes* what it would do (a delete and everything that goes with it, or the generation settings it would use),
+  remembers it, and only does it when the user confirms in a *later* message. That "describe, wait, confirm or
+  cancel" flow was written twice by hand, once for deletes and once for generation. Each copy had its own steps
+  (is anything waiting? was it asked in this very message? has it expired? is it still what was described?) and kept
+  its request in a raw string-keyed attribute on the session that was cleared by hand with `setattr(session, ..., None)`.
+  A third kind of waiting thing would have meant a third copy.
+- **Where.** `gui/ai/pending.py` (the pattern), `gui/ai/changes.py` (`PendingDelete`, `confirm_delete`,
+  `cancel_delete`), `gui/ai/generation.py` (`PendingGeneration`, `confirm_schedule_generation`,
+  `cancel_schedule_generation`). Tests: `tests/test_ai_pending.py`, and the existing `tests/test_ai_changes.py`,
+  `tests/test_ai_generation.py`, `tests/test_ai_clarify.py`, `tests/test_ai_chats.py`.
+- **Participants.**
+  - *Command*: the abstract `PendingAction`. It holds what is needed to carry an action out later, and offers
+    `execute(request)` plus what to say when it can no longer run (`same_request_message`, `expired_message`, and
+    optionally `blocked_message` and `stale_message`).
+  - *Concrete commands*: `PendingDelete` (a described delete: its label, the configuration version it described and
+    the work to do) and `PendingGeneration` (the reviewed limit and optimizer flags, the configuration and the locked
+    sections they were checked against).
+  - *Receivers*: the objects that do the real work, which the commands only call: the delete controllers
+    (`rooms.delete_room`, ...) for a delete, and `schedule_controller.start_generation` for a run.
+  - *Invoker*: the shared steps in `pending.py`: `stage` (remember a command), `confirm` (the one confirmation flow),
+    `take` (forget it and hand it back, for cancel) and `forget`. The `confirm_delete` and `confirm_schedule_generation`
+    tools call `confirm`; `cancel_delete` and `cancel_schedule_generation` call `take`.
+  - *Client*: the tools that describe the action (`delete_room`, ..., `prepare_schedule_generation`). They build the
+    command and stage it; they never run it.
+- **How they interact.** `delete_room` checks the delete, builds a `PendingDelete` and stages it in the session's
+  slot, then answers with the description. Nothing has been deleted. In a later message the AI calls `confirm_delete`,
+  which asks `pending.confirm` to run the same checks for every kind of command, in this order: something is
+  waiting; it was not staged by this very message; nothing blocks it (a command can say so); it is used up whatever
+  happens next; it has not expired; it is still what was described (the configuration, and for a run the locks, have
+  not changed). Only then is `execute` called, which runs the receiver's work. Each failed check ends with the
+  command's own sentence and nothing is changed. A generation review is the same with `PendingGeneration`; reviewing
+  the settings also drops a waiting delete, so only one thing waits for a "yes" at a time.
+- **Why it fits.** A request is turned into an object that is created now and run later, which is what Command is
+  for (the lecture's "queue, schedule or undo individual actions"). The code that confirms an action does not know
+  what the action is, and a new kind of waiting action is one new class, not another copy of the flow
+  (open/closed). The checks that decide whether it may still run are written once, so a delete and a run can no
+  longer drift apart. This is a different job from Memento above: Memento restores state that was saved before a
+  change, while a command is the change itself, kept until the user agrees.
+
 ### Technical debt
 
 Design problems found in review, and what was done about each. Each entry says what the problem was, why it
@@ -553,7 +659,7 @@ mattered, what changed, and what shows that behavior was preserved.
     returns typed records (`ScheduleGrid`, `DayColumn`, `PositionedBlock`) built once instead of dictionaries edited
     in place.
   - The Time Slots pages moved to `gui/views_timeslots.py`, next to the other `views_<area>.py` modules.
-  - `gui/views.py` went from 1,069 lines to about 600. For the viewer it now only reads the address and builds the
+  - `gui/views.py` went from 1,069 lines to about 600 (it is about 690 now, because the lock panels live there). For the viewer it now only reads the address and builds the
     links that keep the user's choices.
 - **Evidence that behavior is preserved.** Before any code moved, the calendar data for a deliberately awkward
   schedule (overlapping meetings, a room and a lab that share a name, missing room, lab and faculty member, an
@@ -563,6 +669,25 @@ mattered, what changed, and what shows that behavior was preserved.
   (`tests/test_gui_schedule_room_view.py`, `tests/test_gui_schedule_export_json.py`, `tests/test_gui_timeslots.py`)
   are unchanged apart from where the helpers they call are imported from and reading typed records instead of
   dictionary keys. The schedule viewer template was not edited.
+
+#### 2. The assistant's confirm flows were written twice (Sprint 4)
+
+- **Problem.** `gui/ai/changes.py` (`_Pending`, `confirm_delete`, `cancel_delete`) and `gui/ai/generation.py` (`_Plan`,
+  `confirm_schedule_generation`, `cancel_schedule_generation`) each carried their own copy of the same flow: is
+  anything waiting, was it asked in this same message, has it expired, is it still what was described. Each kept its
+  request in a raw string-keyed attribute on the session and cleared it by hand, and `generation.py` imported a
+  private name from `changes.py` to share the request token.
+- **Why it mattered.** A change to the rules (for example how long a request may wait, or what makes it stale) had to
+  be made in two places, and the two could drift apart. The state lived in loose attributes, so nothing showed which
+  things could be waiting or how they were cleared.
+- **What changed.** The flow is written once in `gui/ai/pending.py` as the Command pattern (see
+  [Command](#command-pending-actions--new-in-sprint-4)). `PendingDelete` and `PendingGeneration` hold what differs (their
+  messages, what makes them stale, what running them does); `confirm`, `take`, `stage` and `forget` are the shared
+  steps. The request token moved there too, so neither module imports from the other for it.
+- **Evidence that behavior is preserved.** The messages, the order of the checks and the session slots are unchanged,
+  so `tests/test_ai_changes.py`, `tests/test_ai_generation.py`, `tests/test_ai_clarify.py`, `tests/test_ai_chats.py` and
+  `tests/test_ai_config_lifecycle.py`, which read those slots and age them with the modules' own clocks, were not edited.
+  `tests/test_ai_pending.py` adds tests for the shared flow and for both commands.
 
 ## Running the tests
 
@@ -577,7 +702,7 @@ uv run ty check
 uv run pytest --cov --cov-report=xml
 ```
 
-Coverage measures team-written code in `app/`: `app.commands.common`, `app.crud`, `app.generation_job`, `app.history`, `app.memento`, `app.schedule_io`, `app.schedule_export`, `app.schedule_ops`, `app.schedule_view`, and `app.session`. `app.commands.common` is included because its shared edit helper is used by both the CLI and GUI; its prompt helpers are included as part of that module. Third-party scheduler-library code is outside the target. Coverage is line coverage and fails below 80%; reproduce it locally with `uv run pytest --cov --cov-report=xml`. CI uploads the XML report to Codecov. No OpenAI secret is needed for routine tests. The tests live in `tests/`: `test_crud_*` and `test_schedule_*` cover the model and CLI layer, `test_gui_*` cover the controllers and pages through Django's test client.
+Coverage measures team-written code in `app/`: `app.commands.common`, `app.crud`, `app.faculty_export`, `app.generation_job`, `app.history`, `app.lock_solver`, `app.locks`, `app.memento`, `app.schedule_io`, `app.schedule_export`, `app.schedule_ops`, `app.schedule_view`, and `app.session` (the list in `pyproject.toml`). `app.commands.common` is included because its shared edit helper is used by both the CLI and GUI; its prompt helpers are included as part of that module. Third-party scheduler-library code is outside the target. Coverage is line coverage and fails below 80%; reproduce it locally with `uv run pytest --cov --cov-report=xml`. CI uploads the XML report to Codecov. No OpenAI secret is needed for routine tests. The tests live in `tests/`: `test_crud_*` and `test_schedule_*` cover the model and CLI layer, `test_gui_*` cover the controllers and pages through Django's test client, `test_lock*`, `test_locks*`, `test_session_locks.py` and `test_generation_locks.py` cover locking (`test_locks_real_solver.py` runs the real solver), and `test_ai_*` cover the assistant with a fake AI.
 
 ## Command-line shell (Sprint 1)
 
@@ -603,6 +728,10 @@ Shared building blocks — use these instead of rewriting them per feature:
 | Arrange a schedule into export sections, by room or lab or by faculty, for all groups or one | `build_export(assignments, orientation, selected=None)` → `ScheduleExport`; `available_groups(assignments, orientation)`; raises `ExportError` | `app/schedule_export.py` |
 | Lay a schedule out as the weekly calendar | `schedule_grid(assignments, view_mode, resources, time_format)` → `ScheduleGrid` | `gui/calendar_layout.py` |
 | Build a download (one schedule or all, JSON or CSV) | `export_schedules(request, index_or_None, "json"\|"csv")` → `ExportFile` | `gui/controllers/schedule_controller.py` |
+| Read or change the session's locks (one section, one instructor's, several at once, all) | `locked_assignments`, `locked_entries`, `section_states`, `lock_section`, `lock_faculty`, `unlock_section`, `unlock_faculty`, `clear_all`, and the all-or-nothing `lock_sections` / `unlock_sections` | `gui/controllers/locks.py` |
+| Hold locks, or spot locks that clash | `LockSet`, `Lock`, `find_conflicts(assignments)` | `app/locks.py` |
+| Turn locks into solver rules, and check a result keeps them | `plan_locks`, `apply_plan`, `unkept_locks` | `app/lock_solver.py` |
+| Export one schedule as a PDF (not wired to a page yet) | `export_pdf(request, index, orientation, selected, render)` with `render_pdf(export, schedule_label, time_format)` | `gui/controllers/pdf_export.py`, `gui/schedule_pdf.py` |
 | Read an uploaded file (empty/unreadable/too large handled) | `read_upload(uploaded_file, "field_name")` | `gui/controllers/uploads.py` |
 | Report a fixable problem on a form | `raise ControllerError([FieldError("field", "message")])` | `gui/controllers/errors.py` |
 | "Tick to confirm" before replacing or discarding data | `ConfirmReplaceMixin` + `require_confirmation(...)` | `gui/forms.py` |

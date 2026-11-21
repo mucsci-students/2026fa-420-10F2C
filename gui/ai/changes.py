@@ -36,13 +36,13 @@ from __future__ import annotations
 
 import re
 import time
-import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from gui.ai import pending
 from gui.ai.base import (
     WEEKDAYS,
     AiTool,
@@ -61,6 +61,7 @@ from gui.ai.base import (
     find_name,
     not_found,
 )
+from gui.ai.pending import PendingAction
 from gui.constants import DAY_NAMES
 from gui.controllers import (
     courses,
@@ -110,15 +111,6 @@ def _hhmm(value: str) -> str:
 def _version(request) -> int:
     """Changes every time the configuration really changes (undo and redo included)."""
     return get_session(request).history.version
-
-
-def _token(request) -> str:
-    """Identifies THIS request, so a delete can tell 'asked just now' from 'asked earlier'."""
-    token = getattr(request, "_ai_request_token", None)
-    if token is None:
-        token = uuid.uuid4().hex
-        request._ai_request_token = token
-    return token
 
 
 def _weekday(value: str) -> str:
@@ -984,15 +976,44 @@ def update_global_settings(request, args: UpdateSettingsArgs) -> str:
 
 # ---------------------------------------------------------------------- #
 #  Deletes: described first, carried out only when the NEXT message confirms
+#
+#  A described delete is a Command (gui/ai/pending.py): an object that holds everything needed to
+#  carry the delete out later (`run` calls the same delete controller the Delete pages use), and
+#  says what to tell the user when it cannot run any more. confirm_delete and cancel_delete are the
+#  invoker's side; the confirmation steps themselves are written once, in pending.confirm.
 # ---------------------------------------------------------------------- #
 @dataclass
-class _Pending:
+class PendingDelete(PendingAction):
+    """A delete that was described and is waiting for the user's confirmation (a concrete Command)."""
+
     label: str
     token: str  # the request that described it
     created: float
     version: int  # the configuration it described
     done: str
-    run: Callable[[Any], list[str]]
+    run: Callable[[Any], list[str]]  # the receiver's work: the delete controller
+    ttl: float = PENDING_SECONDS
+
+    def same_request_message(self) -> str:
+        return (
+            "A delete has to be confirmed in a separate message, after you have seen what it would change. "
+            "Nothing was deleted."
+        )
+
+    def expired_message(self) -> str:
+        return f"That delete ({self.label}) was described too long ago. Ask me again."
+
+    def stale_message(self, request) -> str | None:
+        if _version(request) != self.version:
+            return (
+                f"The configuration changed after I described deleting {self.label}, so I did not delete it. "
+                "Ask me again to see what it would do now."
+            )
+        return None
+
+    def execute(self, request) -> str:
+        notices = self.run(request)
+        return f"{self.done}{_notes(notices)} {UNDO_HINT}"
 
 
 def _short_names(names: list[str], limit: int = 8) -> str:
@@ -1017,10 +1038,17 @@ def _stage(
 ) -> str:
     """Remember the delete that was just described, and tell the user what it would do."""
     session = get_session(request)
-    setattr(
+    pending.stage(
         session,
         _PENDING_ATTR,
-        _Pending(label, _token(request), _now(), session.history.version, done, run),
+        PendingDelete(
+            label,
+            pending.request_token(request),
+            _now(),
+            session.history.version,
+            done,
+            run,
+        ),
     )
     return "\n".join(
         [f"Deleting {label} would do this:"]
@@ -1145,39 +1173,23 @@ def delete_meeting(request, args: MeetingRef) -> str:
 
 def confirm_delete(request, args: NoArgs) -> str:
     """Carry out the delete described in an EARLIER message, if it is still what was described."""
-    session = get_session(request)
-    pending = getattr(session, _PENDING_ATTR, None)
-    if pending is None:
-        raise ControllerError(
+    return pending.confirm(
+        request,
+        get_session(request),
+        _PENDING_ATTR,
+        now=_now,
+        nothing_waiting=(
             "There is nothing waiting to be deleted. Ask me to delete something first, then confirm."
-        )
-    if pending.token == _token(request):
-        raise ControllerError(
-            "A delete has to be confirmed in a separate message, after you have seen what it would change. "
-            "Nothing was deleted."
-        )
-    setattr(session, _PENDING_ATTR, None)  # used up, whatever happens next
-    if _now() - pending.created > PENDING_SECONDS:
-        raise ControllerError(
-            f"That delete ({pending.label}) was described too long ago. Ask me again."
-        )
-    if session.history.version != pending.version:
-        raise ControllerError(
-            f"The configuration changed after I described deleting {pending.label}, so I did not delete it. "
-            "Ask me again to see what it would do now."
-        )
-    notices = pending.run(request)
-    return f"{pending.done}{_notes(notices)} {UNDO_HINT}"
+        ),
+    )
 
 
 def cancel_delete(request, args: NoArgs) -> str:
     """Forget the delete that was described. Nothing is deleted."""
-    session = get_session(request)
-    pending = getattr(session, _PENDING_ATTR, None)
-    setattr(session, _PENDING_ATTR, None)
-    if pending is None:
+    waiting = pending.take(get_session(request), _PENDING_ATTR)
+    if waiting is None:
         return Unchanged("Nothing was waiting to be deleted.")
-    label = pending.label[:1].upper() + pending.label[1:]
+    label = waiting.label[:1].upper() + waiting.label[1:]
     return Unchanged(f"Cancelled. {label} was not deleted.")
 
 

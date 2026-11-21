@@ -80,6 +80,7 @@ class ToolResult:
     config_replaced: bool = (
         False  # True when a different configuration was opened (new, load)
     )
+    locks_changed: bool = False  # True when a section lock was added, replaced or removed (gui/ai/locks.py)
     note: bool = True  # False: do not add "not yet saved to a file" (undo and redo say what they did themselves)
     action: dict | None = (
         None  # something the chat draws under the message (a Save JSON box, choices); see gui/ai/lifecycle.py

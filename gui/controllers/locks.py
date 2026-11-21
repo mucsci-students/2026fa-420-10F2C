@@ -22,9 +22,10 @@ the user hears about it when they click, not later when generating fails.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
-from app.locks import LockSet, find_conflicts
+from app.locks import Lock, LockSet, find_conflicts
 from app.schedule_io import Assignment
 from gui.controllers import schedule_controller
 from gui.controllers.errors import ControllerError
@@ -130,10 +131,18 @@ def faculty_groups(
 # ---------------------------------------------------------------------- #
 #  Changing
 # ---------------------------------------------------------------------- #
-def _refuse_clashes(locks: LockSet, new: list[Assignment]) -> None:
-    """Refuse when locking `new` would clash with a lock already held (or with each other)."""
+def _refuse_clashes(
+    locks: LockSet, new: list[Assignment], ignore: Iterable[str] = ()
+) -> None:
+    """Refuse when locking `new` would clash with a lock already held (or with each other).
+
+    `ignore` names locks that are about to be released, so they cannot clash with anything.
+    """
     names = {item.course for item in new}
-    prospective = {item.course: item for item in locks.assignments()}
+    released = set(ignore)
+    prospective = {
+        item.course: item for item in locks.assignments() if item.course not in released
+    }
     prospective.update({item.course: item for item in new})
     clashes = [
         clash
@@ -212,3 +221,106 @@ def clear_all(request) -> int:
 
 def _count(number: int) -> str:
     return f"{number} section{'' if number == 1 else 's'}"
+
+
+# ---------------------------------------------------------------------- #
+#  Several sections at once (the AI chat's lock tools, gui/ai/locks.py)
+#
+#  Each of these checks EVERYTHING before it changes anything, so a request with one
+#  unknown section, or one clash, locks and unlocks nothing.
+# ---------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class LockChange:
+    """What lock_sections did, section by section."""
+
+    locked: tuple[str, ...] = ()  # newly locked
+    replaced: tuple[str, ...] = ()  # were locked to another placement; now this one
+    already: tuple[str, ...] = ()  # were already locked exactly like this
+    released: tuple[str, ...] = ()  # other locks removed (replace_existing)
+
+    @property
+    def changed(self) -> bool:
+        """True when the set of locks is different afterwards."""
+        return bool(self.locked or self.replaced or self.released)
+
+
+def locked_entries(request) -> list[Lock]:
+    """Every lock (the placement and the schedule it came from), ordered by section name."""
+    return list(_locks(request))
+
+
+def _distinct(names: Iterable[str]) -> list[str]:
+    return list(dict.fromkeys(name for name in names if name))
+
+
+def _quoted(names: Iterable[str]) -> str:
+    return ", ".join(f'"{name}"' for name in names)
+
+
+def lock_sections(
+    request,
+    schedule_number: int,
+    sections: Sequence[str],
+    replace_existing: bool = False,
+) -> LockChange:
+    """Lock several sections, exactly as schedule `schedule_number` (1-based) places them.
+
+    All or nothing: when any name is not in that schedule, or the result would clash (the same
+    room, lab or instructor at overlapping times), nothing is locked and nothing is released.
+    With `replace_existing` every OTHER lock is released first, so the named sections become the
+    only locks; the locks that are about to go cannot cause a clash.
+    """
+    wanted = _distinct(sections)
+    if not wanted:
+        raise ControllerError("Choose at least one section to lock.")
+    schedule = schedule_controller.get_schedule(request, schedule_number - 1)
+    placed = {item.course: item for item in schedule}
+    missing = [name for name in wanted if name not in placed]
+    if missing:
+        raise ControllerError(
+            f"{_quoted(missing)} {'is' if len(missing) == 1 else 'are'} not in schedule "
+            f"{schedule_number}, so {'it' if len(missing) == 1 else 'they'} cannot be "
+            "locked from there. Nothing was locked."
+        )
+    found = [placed[name] for name in wanted]
+    locks = _locks(request)
+    released = (
+        [name for name in locks.sections() if name not in wanted]
+        if replace_existing
+        else []
+    )
+    _refuse_clashes(locks, found, ignore=released)
+
+    # Everything is valid: only now does anything change.
+    locks.unlock_many(released)
+    locked: list[str] = []
+    replaced: list[str] = []
+    already: list[str] = []
+    for item in found:
+        earlier = locks.get(item.course)
+        if not locks.lock(item, schedule_number):
+            already.append(item.course)
+        elif earlier is not None:
+            replaced.append(item.course)
+        else:
+            locked.append(item.course)
+    return LockChange(tuple(locked), tuple(replaced), tuple(already), tuple(released))
+
+
+def unlock_sections(request, sections: Sequence[str]) -> list[str]:
+    """Unlock several sections; all or nothing (a section that is not locked unlocks nothing).
+
+    Returns the section names that were unlocked, in the order given.
+    """
+    wanted = _distinct(sections)
+    if not wanted:
+        raise ControllerError("Choose at least one section to unlock.")
+    locks = _locks(request)
+    not_locked = [name for name in wanted if name not in locks]
+    if not_locked:
+        raise ControllerError(
+            f"{_quoted(not_locked)} {'is' if len(not_locked) == 1 else 'are'} not "
+            "locked. Nothing was unlocked."
+        )
+    locks.unlock_many(wanted)
+    return wanted

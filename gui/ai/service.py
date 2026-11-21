@@ -32,6 +32,7 @@ import threading
 from dataclasses import dataclass, field, replace
 
 from gui.ai import chats
+from gui.ai.locks import finish_generation_request
 from gui.ai.runner import LangChainRunner, NotConfigured, Runner
 from gui.ai.tools import ToolBox, ToolResult
 from gui.session_store import get_session
@@ -122,10 +123,11 @@ def compose(results: list[ToolResult], model_text: str = "") -> Reply:
     action = next((result.action for result in reversed(shown) if result.action), None)
     schedules_changed = any(result.schedules_changed for result in results)
     replaced = any(result.config_replaced for result in results)
+    locks_changed = any(result.locks_changed for result in results)
     return replace(
         reply,
         schedules_changed=schedules_changed,
-        refresh=schedules_changed or replaced,
+        refresh=schedules_changed or replaced or locks_changed,
         suggestions=offered,
         action=action,
     )
@@ -247,6 +249,9 @@ def _run(request, text: str) -> Reply:
     try:
         runner = get_runner()
         model_text = runner.run(text, toolbox)
+        # "Lock X and generate 5 schedules": if the AI only locked, the generation settings are shown
+        # anyway (see gui/ai/locks.py). The run itself still needs a "go ahead" in a later message.
+        finish_generation_request(text, toolbox)
     except NotConfigured as error:
         return Reply(ok=False, message=f"{error} Nothing was changed.")
     except Exception as error:  # noqa: BLE001

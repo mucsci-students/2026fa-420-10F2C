@@ -952,6 +952,16 @@
         });
     }
 
+    // The schedule open in the Schedule Viewer (?schedule=N; the viewer shows schedule 1 without it),
+    // sent with every request so "lock CMSC 141.01" means the section on screen. Empty on any other page.
+    function viewedSchedule() {
+        if (!viewerUrl || window.location.pathname !== viewerUrl) {
+            return "";
+        }
+        var raw = new URLSearchParams(window.location.search).get("schedule");
+        return raw && /^[0-9]+$/.test(raw) ? raw : "1";
+    }
+
     function submit() {
         if (pending) {
             return;
@@ -969,6 +979,10 @@
         }
         var data = new FormData(form);
         data.set("message", text);
+        var viewed = viewedSchedule();
+        if (viewed) {
+            data.set("schedule", viewed);
+        }
 
         clearSuggestions();
         addMessage("user", text);
