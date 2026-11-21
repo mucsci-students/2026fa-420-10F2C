@@ -433,7 +433,6 @@ The GUI follows Model–View–Controller. User actions go through a controller;
 | | `app/schedule_view.py` | One schedule as typed `MeetingBlock`s (course and section split apart, the room or lab kept with its kind), and the `Grouping` strategies that read it by course, by room or lab, or by faculty member (see [Design patterns](#design-patterns)). |
 | | `app/schedule_export.py` | One schedule arranged into sections for a printed export, by room or lab or by faculty member: `build_export` returns a `ScheduleExport` of `ExportSection`s and `ExportRow`s, built from schedule records alone so imported schedules work. It holds the content only; it has no PDF code, and no page or button uses it yet (see **PDF is not in the interface yet** under [Exporting schedules](#exporting-schedules)). |
 | | `app/locks.py`, `app/lock_solver.py` | Section locks (selective regeneration): `LockSet` holds the session's locks and spots clashes between them; `lock_solver` turns locks into extra solver rules and double-checks results. See [Locking sections](#locking-sections-selective-regeneration). |
-| | `app/faculty_export.py` | Faculty-oriented export data (one schedule read faculty member by faculty member, with no PDF code). Built and tested, but no page or controller uses it yet. |
 | | `course-constraint-scheduler` | The configuration models, validation rules and Z3 solver. Validation is never reimplemented in this project. |
 | **Controller** | `gui/controllers/` | One module per area: `config_controller.py` (lifecycle), `timeslots.py`, `rooms.py`, `labs.py`, `courses.py`, `faculty.py`, `patterns.py`, `meetings.py`, `settings.py`, `schedule_controller.py` (generate, load, export, clear), `locks.py` (lock and unlock sections), `history_controller.py` (undo, redo), `dependencies.py` (what each record is used by, shared by every delete) and `pdf_export.py` (one schedule as a PDF; not wired to a page yet). `errors.py` defines `ControllerError` / `FieldError`; `uploads.py` reads uploaded files safely. Controllers return plain data and never touch templates or `HttpResponse`. |
 | **View** | `gui/views.py`, `gui/views_*.py` | Thin request handlers: call a controller, then redirect with a message or re-render the form with its errors. `views.py` has the home page, the configuration lifecycle, the generator form and the viewer page; each configuration area has its own `views_<area>.py` (`views_timeslots.py`, `views_rooms.py`, ...). `views_errors.py` renders the error pages. `views_locks.py` (lock, unlock, unlock all), `views_generation.py` (the progress bar's start, status and cancel endpoints), `views_delete.py` and `views_rename.py` (the review-and-confirm pages), `views_history.py` (undo, redo, history) and `views_ai.py` (the chat) follow the same pattern. |
@@ -689,6 +688,29 @@ mattered, what changed, and what shows that behavior was preserved.
   `tests/test_ai_config_lifecycle.py`, which read those slots and age them with the modules' own clocks, were not edited.
   `tests/test_ai_pending.py` adds tests for the shared flow and for both commands.
 
+#### 3. The faculty export was built twice (Sprint 4)
+
+- **Problem.** Two Model modules arranged one schedule faculty member by faculty member for a printed export:
+  `app/faculty_export.py` (`faculty_export`, `FacultySchedule`, `FacultyMeetingRow`, issue #167) and
+  `app/schedule_export.py` (`build_export(..., "faculty")`, issue #164), merged a day apart. The renderer
+  (`gui/schedule_pdf.py`) and the PDF controller (`gui/controllers/pdf_export.py`) use only `schedule_export.py`;
+  nothing imported `faculty_export.py` except its own tests.
+- **Why it mattered.** The same rules (how meetings merge into rows, row order, how a missing room or faculty member
+  is labelled, what happens to a section with no meeting times) lived in two places with two sets of record types, so
+  a fix to one would silently miss the other, and a reader could not tell which one the PDF used. Its 109 lines also
+  counted toward Model coverage while doing nothing in the application.
+- **What changed.** `app/faculty_export.py` and `tests/test_faculty_export.py` were removed, along with the module's
+  entry in the coverage list in `pyproject.toml`. `app/schedule_export.py` is the one source of export content for both
+  orientations.
+- **Evidence that behavior is preserved.** No application code imported the removed module, so nothing that runs
+  changed; `uv run ty check` confirms no import of it remains. Every rule its tests covered is covered for the faculty
+  orientation in `tests/test_schedule_export_data.py`: one section per person in name order with the unassigned last,
+  the row details, "No room assigned" instead of an invented room, sections with no meeting times keeping their room or
+  lab, one row for the same place and time on several days, row order, a course with no section part, and the schedule
+  being unchanged and the records immutable. The one behavior that differs is deliberate: choosing a faculty member
+  who teaches nothing is a clear error in `build_export` (decided in the review of #180), where the removed module
+  returned an empty section. `tests/test_schedule_pdf.py` checks the faculty PDF built from `schedule_export.py`.
+
 ## Running the tests
 
 Run the same checks as CI from the repository root:
@@ -702,7 +724,7 @@ uv run ty check
 uv run pytest --cov --cov-report=xml
 ```
 
-Coverage measures team-written code in `app/`: `app.commands.common`, `app.crud`, `app.faculty_export`, `app.generation_job`, `app.history`, `app.lock_solver`, `app.locks`, `app.memento`, `app.schedule_io`, `app.schedule_export`, `app.schedule_ops`, `app.schedule_view`, and `app.session` (the list in `pyproject.toml`). `app.commands.common` is included because its shared edit helper is used by both the CLI and GUI; its prompt helpers are included as part of that module. Third-party scheduler-library code is outside the target. Coverage is line coverage and fails below 80%; reproduce it locally with `uv run pytest --cov --cov-report=xml`. CI uploads the XML report to Codecov. No OpenAI secret is needed for routine tests. The tests live in `tests/`: `test_crud_*` and `test_schedule_*` cover the model and CLI layer, `test_gui_*` cover the controllers and pages through Django's test client, `test_lock*`, `test_locks*`, `test_session_locks.py` and `test_generation_locks.py` cover locking (`test_locks_real_solver.py` runs the real solver), and `test_ai_*` cover the assistant with a fake AI.
+Coverage measures team-written code in `app/`: `app.commands.common`, `app.crud`, `app.generation_job`, `app.history`, `app.lock_solver`, `app.locks`, `app.memento`, `app.schedule_io`, `app.schedule_export`, `app.schedule_ops`, `app.schedule_view`, and `app.session` (the list in `pyproject.toml`). `app.commands.common` is included because its shared edit helper is used by both the CLI and GUI; its prompt helpers are included as part of that module. Third-party scheduler-library code is outside the target. Coverage is line coverage and fails below 80%; reproduce it locally with `uv run pytest --cov --cov-report=xml`. CI uploads the XML report to Codecov. No OpenAI secret is needed for routine tests. The tests live in `tests/`: `test_crud_*` and `test_schedule_*` cover the model and CLI layer, `test_gui_*` cover the controllers and pages through Django's test client, `test_lock*`, `test_locks*`, `test_session_locks.py` and `test_generation_locks.py` cover locking (`test_locks_real_solver.py` runs the real solver), and `test_ai_*` cover the assistant with a fake AI.
 
 ## Command-line shell (Sprint 1)
 
