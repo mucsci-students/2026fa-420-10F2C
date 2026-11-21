@@ -241,6 +241,62 @@ The viewer shows whatever schedules are currently available, whether generated o
 - **Overwrite protection:** exports (and configuration saves) are browser downloads. The browser decides where the file goes and asks before replacing an existing file, or renames the new one. The application never writes to a path on your computer, so it cannot overwrite your files.
 - **PDF is not in the interface yet.** The pieces for a printable PDF of one schedule, by room or lab or by faculty member, are built and tested (`app/schedule_export.py`, `gui/controllers/pdf_export.py`, `gui/schedule_pdf.py`, which uses ReportLab), but no page or button uses them yet, so the Schedule Viewer offers JSON and CSV only.
 
+### Printed schedules (PDF)
+
+A PDF shows **one schedule**, arranged either **by room or lab** or **by faculty**, for every group or for one
+chosen room, lab or faculty member. It is built from the same schedule records as the viewer, so a generated
+schedule and a loaded one print the same way.
+
+**Samples.** [`docs/samples/sample-by-room-or-lab.pdf`](docs/samples/sample-by-room-or-lab.pdf) and
+[`docs/samples/sample-by-faculty.pdf`](docs/samples/sample-by-faculty.pdf) show both orientations, made from invented
+demonstration data (no real people, rooms or courses). Recreate them with:
+
+```bash
+uv run python scripts/make_sample_pdfs.py
+```
+
+The script uses the application's own code (`build_export`, then `render_pdf`), and its data is chosen to exercise
+the layout: enough sections to fill three pages, a room and a faculty member whose tables continue onto the next
+page, a very long faculty name and room name, a lab meeting, an online section with no room or meeting times, and a
+section with no faculty member. `tests/test_sample_pdfs.py` checks that the script still runs and produces readable
+multi-page PDFs that list every section.
+
+**Page layout**
+
+| | |
+|---|---|
+| Paper | **US Letter** (8.5 × 11 in), portrait |
+| Margins | 0.75 in on every side, with room at the top for a running header |
+| Title | The schedule and the orientation ("Schedule 2 of 5 — By faculty") and which groups it covers ("All faculty", "Hogg (faculty)") |
+| Every page | A running header with the same two facts, and the page number at the bottom |
+| Sections | One table per room, lab or faculty member. Its heading ("Room: Roddy 136", "Lab: Linux", "Faculty: Hogg") and its column headings repeat at the top of every page the table continues onto. A section does not start in the last 1.3 in of a page. |
+| Rows | Course, section, faculty (by room or lab) or room or lab (by faculty), days, and start–end time, all in one clock format (24-hour by default; `render_pdf` takes `time_format` for 12-hour). Ordered by first day, then start time, then course. |
+| Missing values | "No room assigned", "No faculty assigned" and "No meeting times" are printed, never an invented room or a blank |
+| Color | Black text, gray rules and light gray heading bands only, so it reads the same printed in grayscale |
+
+**Manual check (Sprint 4 §7).** Pagination and visual layout were checked by eye in both samples, which have three
+pages each:
+
+| Checked | By room or lab | By faculty |
+|---|---|---|
+| US Letter, portrait, margins even, page numbers 1–3 | ✓ | ✓ |
+| Title and running header name the schedule and the grouping on every page | ✓ | ✓ |
+| A table continued on the next page repeats its section and column headings | ✓ "Science Hall 204", page 1 → 2 | ✓ "Chen" 1 → 2, "Evans" 2 → 3 |
+| Long names wrap inside their cell, nothing cut off or overlapping | ✓ | ✓ |
+| Rooms and labs labelled; no room, no faculty and no meeting times labelled | ✓ | ✓ |
+| Readable with no color (grayscale) | ✓ | ✓ |
+| Every section in the data appears | ✓ (also tested) | ✓ (also tested) |
+
+**Limitations**
+
+- One schedule per PDF. A whole set of alternative schedules in one PDF is not offered (Sprint 4 §5.4 does not
+  require it), and PDFs cannot be loaded back; use JSON for that.
+- US Letter only; there is no A4 option.
+- A single word longer than its column, such as a long hyphenated name in the narrow Faculty column, is split
+  mid-word onto the next line. Nothing is lost, but the break can fall inside a name.
+- The running header is one line, so a very long title or scope is shortened there with "…". The title block and
+  section headings on the page always show the full text.
+
 ### Clearing schedules
 
 **Clear schedules** removes every schedule from the viewer, generated or loaded. It always asks first ("Remove all N schedules from the viewer? This cannot be undone."). Only the schedules are removed; the configuration stays loaded. The button is disabled with "Nothing to clear yet." when there are no schedules.
