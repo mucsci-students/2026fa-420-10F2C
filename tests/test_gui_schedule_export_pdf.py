@@ -82,8 +82,12 @@ def pdf_text(content: bytes) -> str:
     )
 
 
-def export(client, schedule_number="1", what="rooms", **extra):
-    return client.get(PDF_URL, {"schedule": schedule_number, "what": what, **extra})
+def export(client, schedule_number="1", what="rooms", follow=False, **extra):
+    """GET the PDF download. `extra` becomes more query parameters (for
+    example download_token); `follow` tells the test client to follow a
+    redirect back to the viewer."""
+    query = {"schedule": schedule_number, "what": what, **extra}
+    return client.get(PDF_URL, query, follow=follow)
 
 
 # ---------------------------------------------------------------------- #
