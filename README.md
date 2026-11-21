@@ -413,6 +413,16 @@ With no configuration open, the assistant says one must be created or loaded and
 
 **Saving.** "Save my configuration", "Download my config" or "Save as fall.json" (`save_configuration`) shows a file name box and a **Save JSON** button under the reply. The button posts to the Configuration Editor's own Save view (the Editor's Save form has the same optional file name box), so there is one export: the same validation and JSON, delivered as a normal browser download. Your browser decides where the file goes and what happens if a file with that name already exists; the app writes nothing to disk, so it can never overwrite a file. It cannot tell whether the download finished, so the assistant only says a download was requested, never that the file was saved. With no configuration open it explains there is nothing to save and offers Load and New; ask again afterwards.
 
+**Exporting a PDF.** "Export the schedule as a PDF by room", "Print the faculty schedules", "PDF for Hogg" or "PDF of
+lab Roddy 147 from schedule 2" (`export_schedule_pdf`, in `gui/ai/exports.py`) shows an **Export PDF** button under
+the reply. The button is the Schedule Viewer's own PDF export (see [Exporting a PDF](#exporting-a-pdf)), so the PDF,
+its file name and its checks are exactly the same, and it is a normal browser download: the assistant only says it is
+ready, never that it was saved. It exports the schedule you name, otherwise the one open in the Schedule Viewer,
+otherwise schedule 1 (and says so). A room, lab or faculty member is found the way every other request finds a name
+("room 136", "hogg"); a name that is both a room and a lab is asked about, with a button for each. An unknown name,
+a schedule number that does not exist, or no schedules at all gets a clear reply and no button. Asking never changes
+the schedules or the configuration.
+
 **Starting a new configuration** (`create_new_configuration`) happens at once only when there are no unsaved changes and no generated schedules. Otherwise the assistant warns about what would be discarded and shows **Save JSON**, **Discard and Continue** and **Cancel**. Nothing changes until you choose; Cancel (or a stale or reused warning) leaves the configuration, its changes and its schedules as they were, and after Discard and Continue the old configuration can be brought back with Restore previous configuration in the Configuration Editor.
 
 **Understanding you.** You can talk to the assistant the way you would to a person.
@@ -434,7 +444,7 @@ With no configuration open, the assistant says one must be created or loaded and
 - The reply comes from what the application actually did. A change says **"applied but not yet saved to a file"**: it's in the open configuration and marked as unsaved changes, but it isn't written to disk until you save it.
 - AI service errors are retried at most twice, with a 60-second timeout. After that you get a "couldn't finish" message, and nothing is changed.
 
-Tests use a fake AI (`tests/test_ai_chat.py`, `tests/test_ai_tools.py`, `tests/test_ai_changes.py`, `tests/test_ai_generation.py`, `tests/test_ai_chats.py`, `tests/test_ai_smarter.py`, `tests/test_ai_locks.py`) or a mocked OpenAI endpoint (`tests/test_ai_langchain.py`), so no key is needed and no API calls are made.
+Tests use a fake AI (`tests/test_ai_chat.py`, `tests/test_ai_tools.py`, `tests/test_ai_changes.py`, `tests/test_ai_generation.py`, `tests/test_ai_chats.py`, `tests/test_ai_smarter.py`, `tests/test_ai_locks.py`, `tests/test_ai_pdf_export.py`) or a mocked OpenAI endpoint (`tests/test_ai_langchain.py`), so no key is needed and no API calls are made.
 
 ## Behavior shared by every page
 
