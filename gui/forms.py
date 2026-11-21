@@ -278,6 +278,32 @@ class ScheduleExportForm(forms.Form):
         return cleaned
 
 
+class SchedulePdfExportForm(forms.Form):
+    """Schedule Viewer: export the schedule being viewed as a PDF (Sprint 4
+    Section 5).
+
+    Submitted with GET, since exporting changes nothing. One list, `what`,
+    names both the orientation and the group: grouped under "By room or lab"
+    and "By faculty", each heading starts with every group ("All rooms and
+    labs") and then lists each room, lab or faculty member. Pass the list from
+    gui/controllers/pdf_export.export_choices(request, index) as `choices`.
+    The schedule itself is the one shown in the viewer, sent as a hidden
+    `schedule` number by the template.
+    """
+
+    what = forms.ChoiceField(
+        label="What to export",
+        help_text=(
+            "Every room and lab, every faculty member, or just one of them. "
+            "Rooms and labs are listed separately even when they share a name."
+        ),
+    )
+
+    def __init__(self, *args, choices=(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["what"].choices = list(choices)
+
+
 class ConfigNewForm(ConfirmReplaceMixin, forms.Form):
     """Configuration Editor: start a new configuration (Section 8).
 

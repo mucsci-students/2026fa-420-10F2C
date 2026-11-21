@@ -159,6 +159,9 @@ urlpatterns = [
     path("schedules/locks/clear/", views_locks.locks_clear, name="locks_clear"),
     path("schedules/export/", views.schedule_export, name="schedule_export"),
     path("schedules/export/json/", views.schedule_export, name="schedule_export_json"),
+    path(
+        "schedules/export/pdf/", views.schedule_export_pdf, name="schedule_export_pdf"
+    ),
     path("assistant/ask/", views_ai.assistant_ask, name="assistant_ask"),
     path(
         "assistant/new/",
