@@ -1,0 +1,778 @@
+diff --git a/README.md b/README.md
+index 0578f61..ac0a786 100644
+--- a/README.md
++++ b/README.md
+@@ -241,6 +241,58 @@ The viewer shows whatever schedules are currently available, whether generated o
+ - **Overwrite protection:** exports (and configuration saves) are browser downloads. The browser decides where the file goes and asks before replacing an existing file, or renames the new one. The application never writes to a path on your computer, so it cannot overwrite your files.
+ - **PDF is not in the interface yet.** The pieces for a printable PDF of one schedule, by room or lab or by faculty member, are built and tested (`app/schedule_export.py`, `gui/controllers/pdf_export.py`, `gui/schedule_pdf.py`, which uses ReportLab), but no page or button uses them yet, so the Schedule Viewer offers JSON and CSV only.
+ 
++### Exporting a PDF
++
++The **Print-friendly PDF** part of the **Export** card makes a PDF of the schedule you are viewing, for printing
++or sharing. It works for generated and loaded schedules alike, and never reruns the solver.
++
++1. Open the schedule you want with **Previous** and **Next**. The form says which one it will export
++   ("Exports Schedule 2 of 5").
++2. In **What to export**, choose one of:
++   - **By room or lab**: **All rooms and labs**, or one room or lab ("Room: Roddy 136", "Lab: Linux"). A room and
++     a lab that share a name are listed separately.
++   - **By faculty**: **All faculty**, or one faculty member.
++
++   The list starts on the orientation that matches the view (By faculty in Faculty view, otherwise By room or lab).
++3. Click **Export PDF**. The file downloads as `schedule-<n>-<what>.pdf`, for example
++   `schedule-2-all-rooms-and-labs.pdf`, `schedule-2-lab-linux.pdf` or `schedule-2-faculty-hogg.pdf`.
++
++What is in the PDF:
++
++| By room or lab | By faculty |
++|---|---|
++| One section per room and one per lab, headed "Room: …" or "Lab: …", in name order | One section per faculty member, in name order |
++| Columns: course, section, faculty, days, time | Columns: course, section, room or lab (with "room" or "lab"), days, time |
++| A last section, **No room assigned**, for meetings with no room or lab (for example online sections) | A last section, **No faculty assigned**, for sections with no faculty member |
++
++- Meetings in the same place at the same time on several days are one row ("Mon, Wed, Fri"). A section with no
++  meeting times is still listed, as "No meeting times". A meeting with no room says "No room assigned"; it is never
++  given a room.
++- Every page names the schedule and the grouping ("Schedule 2 of 5 — By faculty"), what the export covers, and the
++  page number. A section that continues onto another page repeats its heading and column headings there.
++- Times use the viewer's clock choice (**24-hour** or **12-hour**), the same way throughout the document.
++- A schedule with no course sections gives a one-page PDF that says so.
++- **Paper:** US Letter (8.5 × 11 in), portrait, 0.75 in margins. Black text with gray rules and light gray heading
++  bands, so it reads the same printed in grayscale.
++- **Overwrite protection:** like the JSON and CSV exports, the PDF is a browser download, so the browser chooses
++  where it goes and asks before replacing an existing file. The app never writes the PDF to disk itself.
++- **Problems** (no schedules, a schedule that no longer exists, a choice that is not in the schedule, or the PDF
++  failing to draw) bring you back to the viewer, on the same schedule, with a message. Nothing in the schedules or the
++  configuration changes, whether the export works or not.
++
++Samples, made from the example configuration (`app/examples/config_example.json`):
++[by room or lab](docs/samples/schedule-by-room-or-lab.pdf) and [by faculty](docs/samples/schedule-by-faculty.pdf).
++
++**Limitations**
++
++- One schedule per PDF; exporting the whole set of alternative schedules into one PDF is not supported.
++- The PDF is a table per room, lab or faculty member, not a picture of the weekly calendar.
++- A single word too long for its column (an unusually long name with no spaces) is split where the line runs out,
++  without a hyphen. No text is lost.
++- The running header at the top of each page is one line; a very long name there is shortened with an ellipsis. The
++  full name is always in the title and the section heading.
++- Only US Letter is supported.
++
+ ### Clearing schedules
+ 
+ **Clear schedules** removes every schedule from the viewer, generated or loaded. It always asks first ("Remove all N schedules from the viewer? This cannot be undone."). Only the schedules are removed; the configuration stays loaded. The button is disabled with "Nothing to clear yet." when there are no schedules.
+@@ -434,7 +486,7 @@ The GUI follows Model–View–Controller. User actions go through a controller;
+ | | `app/schedule_export.py` | One schedule arranged into sections for a printed export, by room or lab or by faculty member: `build_export` returns a `ScheduleExport` of `ExportSection`s and `ExportRow`s, built from schedule records alone so imported schedules work. It holds the content only; it has no PDF code, and no page or button uses it yet (see **PDF is not in the interface yet** under [Exporting schedules](#exporting-schedules)). |
+ | | `app/locks.py`, `app/lock_solver.py` | Section locks (selective regeneration): `LockSet` holds the session's locks and spots clashes between them; `lock_solver` turns locks into extra solver rules and double-checks results. See [Locking sections](#locking-sections-selective-regeneration). |
+ | | `course-constraint-scheduler` | The configuration models, validation rules and Z3 solver. Validation is never reimplemented in this project. |
+-| **Controller** | `gui/controllers/` | One module per area: `config_controller.py` (lifecycle), `timeslots.py`, `rooms.py`, `labs.py`, `courses.py`, `faculty.py`, `patterns.py`, `meetings.py`, `settings.py`, `schedule_controller.py` (generate, load, export, clear), `locks.py` (lock and unlock sections), `history_controller.py` (undo, redo), `dependencies.py` (what each record is used by, shared by every delete) and `pdf_export.py` (one schedule as a PDF; not wired to a page yet). `errors.py` defines `ControllerError` / `FieldError`; `uploads.py` reads uploaded files safely. Controllers return plain data and never touch templates or `HttpResponse`. |
++| **Controller** | `gui/controllers/` | One module per area: `config_controller.py` (lifecycle), `timeslots.py`, `rooms.py`, `labs.py`, `courses.py`, `faculty.py`, `patterns.py`, `meetings.py`, `settings.py`, `schedule_controller.py` (generate, load, export, clear), `locks.py` (lock and unlock sections), `history_controller.py` (undo, redo), `dependencies.py` (what each record is used by, shared by every delete) and `pdf_export.py` (the PDF export: what can be exported, and building one). `errors.py` defines `ControllerError` / `FieldError`; `uploads.py` reads uploaded files safely. Controllers return plain data and never touch templates or `HttpResponse`. |
+ | **View** | `gui/views.py`, `gui/views_*.py` | Thin request handlers: call a controller, then redirect with a message or re-render the form with its errors. `views.py` has the home page, the configuration lifecycle, the generator form and the viewer page; each configuration area has its own `views_<area>.py` (`views_timeslots.py`, `views_rooms.py`, ...). `views_errors.py` renders the error pages. `views_locks.py` (lock, unlock, unlock all), `views_generation.py` (the progress bar's start, status and cancel endpoints), `views_delete.py` and `views_rename.py` (the review-and-confirm pages), `views_history.py` (undo, redo, history) and `views_ai.py` (the chat) follow the same pattern. |
+ | | `gui/calendar_layout.py` | The Schedule Viewer's weekly calendar as presentation data (`ScheduleGrid`): where each block sits, how overlapping blocks share a day column, colors, and how times are written. No request handling and no Django imports. |
+ | | `gui/schedule_pdf.py` | A schedule export as a print-friendly PDF: `render_pdf(export, schedule_label, time_format)` returns the bytes. US Letter, portrait, grayscale-safe, headings repeated on continuation pages. Presentation only; it writes no files and has no Django imports. Uses ReportLab. |
+@@ -753,7 +805,7 @@ Shared building blocks — use these instead of rewriting them per feature:
+ | Read or change the session's locks (one section, one instructor's, several at once, all) | `locked_assignments`, `locked_entries`, `section_states`, `lock_section`, `lock_faculty`, `unlock_section`, `unlock_faculty`, `clear_all`, and the all-or-nothing `lock_sections` / `unlock_sections` | `gui/controllers/locks.py` |
+ | Hold locks, or spot locks that clash | `LockSet`, `Lock`, `find_conflicts(assignments)` | `app/locks.py` |
+ | Turn locks into solver rules, and check a result keeps them | `plan_locks`, `apply_plan`, `unkept_locks` | `app/lock_solver.py` |
+-| Export one schedule as a PDF (not wired to a page yet) | `export_pdf(request, index, orientation, selected, render)` with `render_pdf(export, schedule_label, time_format)` | `gui/controllers/pdf_export.py`, `gui/schedule_pdf.py` |
++| Build a PDF of one schedule, and the viewer's list of what it can be exported as | `export_pdf(request, index, orientation, selected, render)` → `PdfFile`; `export_choices(request, index)`; `parse_choice(value)` | `gui/controllers/pdf_export.py` |
+ | Read an uploaded file (empty/unreadable/too large handled) | `read_upload(uploaded_file, "field_name")` | `gui/controllers/uploads.py` |
+ | Report a fixable problem on a form | `raise ControllerError([FieldError("field", "message")])` | `gui/controllers/errors.py` |
+ | "Tick to confirm" before replacing or discarding data | `ConfirmReplaceMixin` + `require_confirmation(...)` | `gui/forms.py` |
+diff --git a/gui/controllers/pdf_export.py b/gui/controllers/pdf_export.py
+index 8397e7a..a5b8fb1 100644
+--- a/gui/controllers/pdf_export.py
++++ b/gui/controllers/pdf_export.py
+@@ -27,6 +27,10 @@ depend on a PDF library and its tests do not need one. A renderer is any
+ function ``render(export, title) -> bytes``; ``title`` identifies the
+ schedule, e.g. "Schedule 2 of 5".
+ 
++The Schedule Viewer offers one "What to export" choice that names both the
++orientation and the group (export_choices); parse_choice turns the chosen
++value back into the (orientation, selected) pair export_pdf takes.
++
+ Like every controller, this never builds HTTP responses (Section 20).
+ """
+ 
+@@ -37,7 +41,18 @@ import re
+ from collections.abc import Callable
+ from dataclasses import dataclass
+ 
+-from app.schedule_export import ExportError, ScheduleExport, build_export
++from app.schedule_export import (
++    BY_FACULTY,
++    BY_ROOM_OR_LAB,
++    EXPORT_ORIENTATIONS,
++    ExportError,
++    GroupKey,
++    ScheduleExport,
++    available_groups,
++    build_export,
++    export_grouping,
++)
++from app.schedule_view import FACULTY
+ from gui.controllers.errors import ControllerError
+ from gui.controllers.schedule_controller import get_schedule, schedule_count
+ 
+@@ -54,6 +69,22 @@ PDF_FAILED_MESSAGE = (
+ )
+ 
+ 
++# The headings of the "What to export" list, one per orientation.
++ORIENTATION_LABELS = {BY_ROOM_OR_LAB: "By room or lab", BY_FACULTY: "By faculty"}
++
++CHOOSE_EXPORT_MESSAGE = (
++    "Choose what to export from the list. If the schedules changed since the "
++    "page loaded, reload it and choose again."
++)
++
++# A choice is "<orientation>" for every group, or "<orientation>:<kind>:<name>"
++# for one. Orientations and kinds have no colon, so a name may contain one.
++_SEPARATOR = ":"
++
++# A (value, label) list under one heading, as Django's grouped choices take it.
++ChoiceGroup = tuple[str, list[tuple[str, str]]]
++
++
+ @dataclass(frozen=True)
+ class PdfFile:
+     """A PDF ready to download: the view passes these to download_response()."""
+@@ -127,3 +158,55 @@ def _slug(text: str) -> str:
+ def _is_pdf(content: object) -> bool:
+     """True for non-empty bytes that start like a PDF file does."""
+     return isinstance(content, (bytes, bytearray)) and content.startswith(b"%PDF-")
++
++
++def export_choices(request, index: int) -> list[ChoiceGroup]:
++    """What schedule ``index`` (0-based) can be exported as, for the viewer's list.
++
++    One heading per orientation. Each starts with every group ("All rooms and
++    labs", "All faculty"), followed by each room and lab ("Room: Roddy 136",
++    "Lab: Roddy 147") or each faculty member, in the order the PDF lists them.
++    A room and a lab with the same name are two choices.
++
++    Raises ControllerError when there is no such schedule.
++    """
++    assignments = get_schedule(request, index)
++    choices = []
++    for orientation in EXPORT_ORIENTATIONS:
++        options = [(orientation, f"All {export_grouping(orientation).plural}")]
++        options.extend(
++            (choice_value(orientation, group), _group_label(group))
++            for group in available_groups(assignments, orientation)
++        )
++        choices.append((ORIENTATION_LABELS[orientation], options))
++    return choices
++
++
++def choice_value(orientation: str, group: GroupKey | None = None) -> str:
++    """The list value for one orientation and group (None = every group)."""
++    if group is None:
++        return orientation
++    return _SEPARATOR.join((orientation, group.kind, group.name))
++
++
++def parse_choice(value: str) -> tuple[str, tuple[str, str] | None]:
++    """The (orientation, selected) pair a list value stands for.
++
++    Raises ControllerError for a value no list would contain. Whether the
++    group is really in the schedule is checked by export_pdf.
++    """
++    orientation, *rest = value.split(_SEPARATOR, 2)
++    if orientation not in EXPORT_ORIENTATIONS or len(rest) not in (0, 2):
++        raise ControllerError(CHOOSE_EXPORT_MESSAGE)
++    if not rest:
++        return orientation, None
++    kind, name = rest
++    if not name:
++        raise ControllerError(CHOOSE_EXPORT_MESSAGE)
++    return orientation, (kind, name)
++
++
++def _group_label(group: GroupKey) -> str:
++    if group.kind == FACULTY:
++        return group.name
++    return f"{group.kind.capitalize()}: {group.name}"
+diff --git a/gui/forms.py b/gui/forms.py
+index 9f18c9c..9ac618f 100644
+--- a/gui/forms.py
++++ b/gui/forms.py
+@@ -278,6 +278,32 @@ class ScheduleExportForm(forms.Form):
+         return cleaned
+ 
+ 
++class SchedulePdfExportForm(forms.Form):
++    """Schedule Viewer: export the schedule being viewed as a PDF (Sprint 4
++    Section 5).
++
++    Submitted with GET, since exporting changes nothing. One list, `what`,
++    names both the orientation and the group: grouped under "By room or lab"
++    and "By faculty", each heading starts with every group ("All rooms and
++    labs") and then lists each room, lab or faculty member. Pass the list from
++    gui/controllers/pdf_export.export_choices(request, index) as `choices`.
++    The schedule itself is the one shown in the viewer, sent as a hidden
++    `schedule` number by the template.
++    """
++
++    what = forms.ChoiceField(
++        label="What to export",
++        help_text=(
++            "Every room and lab, every faculty member, or just one of them. "
++            "Rooms and labs are listed separately even when they share a name."
++        ),
++    )
++
++    def __init__(self, *args, choices=(), **kwargs):
++        super().__init__(*args, **kwargs)
++        self.fields["what"].choices = list(choices)
++
++
+ class ConfigNewForm(ConfirmReplaceMixin, forms.Form):
+     """Configuration Editor: start a new configuration (Section 8).
+ 
+diff --git a/gui/templates/gui/schedule_viewer.html b/gui/templates/gui/schedule_viewer.html
+index da72232..033573c 100644
+--- a/gui/templates/gui/schedule_viewer.html
++++ b/gui/templates/gui/schedule_viewer.html
+@@ -187,6 +187,28 @@
+     Exports download through your browser, which chooses where the file goes and asks before replacing
+     an existing file (or renames the new one). This app never writes over files on your computer.
+ </p>
++
++<h3 id="export-pdf">Print-friendly PDF</h3>
++{% if pdf_form %}
++<form method="get" action="{% url 'gui:schedule_export_pdf' %}" class="edit-form" data-loading="Creating PDF…" data-loading-download>
++    <input type="hidden" name="schedule" value="{{ current_schedule }}">
++    <p class="help">Exports <strong>Schedule {{ current_schedule }} of {{ schedule_count }}</strong>, the one shown above. Use Previous and Next to export a different schedule.</p>
++    {% include "gui/components/field.html" with field=pdf_form.what %}
++    <div class="button-row">
++        <button type="submit" class="btn btn-primary">Export PDF</button>
++    </div>
++</form>
++{% else %}
++<p class="help" id="export-pdf-unavailable">Nothing to export yet. PDF export becomes available once schedules are generated or loaded.</p>
++<div class="button-row">
++    <button type="button" class="btn btn-disabled" disabled aria-describedby="export-pdf-unavailable">Export PDF</button>
++</div>
++{% endif %}
++<p class="help">
++    One table per room, lab or faculty member, on US Letter paper in portrait. Times use the clock
++    chosen above ({% if time_format == "12h" %}12-hour{% else %}24-hour{% endif %}). Meetings with no room are listed as
++    "No room assigned", never given one. The PDF downloads through your browser like the other exports.
++</p>
+ </section>
+ 
+ <section class="card">
+diff --git a/gui/urls.py b/gui/urls.py
+index 446e644..b580b34 100644
+--- a/gui/urls.py
++++ b/gui/urls.py
+@@ -159,6 +159,9 @@ urlpatterns = [
+     path("schedules/locks/clear/", views_locks.locks_clear, name="locks_clear"),
+     path("schedules/export/", views.schedule_export, name="schedule_export"),
+     path("schedules/export/json/", views.schedule_export, name="schedule_export_json"),
++    path(
++        "schedules/export/pdf/", views.schedule_export_pdf, name="schedule_export_pdf"
++    ),
+     path("assistant/ask/", views_ai.assistant_ask, name="assistant_ask"),
+     path(
+         "assistant/new/",
+diff --git a/gui/views.py b/gui/views.py
+index ec6e24c..807ad0a 100644
+--- a/gui/views.py
++++ b/gui/views.py
+@@ -20,6 +20,7 @@ links that keep those choices.
+ 
+ import re
+ from dataclasses import replace
++from functools import partial
+ from urllib.parse import quote
+ 
+ from django.contrib import messages
+@@ -35,10 +36,13 @@ from gui.constants import (
+     TIME_FORMAT_24,
+     TIME_FORMAT_OPTIONS,
+     VIEW_COURSES,
++    VIEW_FACULTY,
+     VIEW_OPTIONS,
++    VIEW_ROOMS,
+ )
+ from gui.controllers import (
+     config_controller,
++    pdf_export,
+     schedule_controller,
+ )
+ from gui.controllers import locks as lock_controller
+@@ -54,7 +58,9 @@ from gui.forms import (
+     SavedConfigSelectionForm,
+     ScheduleExportForm,
+     ScheduleImportForm,
++    SchedulePdfExportForm,
+ )
++from gui.schedule_pdf import render_pdf
+ 
+ TIME_FORMAT_KEY = "viewer_time_format"  # where the session remembers the clock choice
+ 
+@@ -336,6 +342,15 @@ def schedule_viewer(request, import_form=None):
+     export_form = ScheduleExportForm(
+         schedule_count=count, initial={"schedule": current}
+     )
++    # The PDF list starts on the orientation that matches the view.
++    pdf_form = (
++        SchedulePdfExportForm(
++            choices=pdf_export.export_choices(request, current - 1),
++            initial={"what": VIEW_FACULTY if view_mode == VIEW_FACULTY else VIEW_ROOMS},
++        )
++        if count
++        else None
++    )
+     pager = _schedule_pager_context(current, count, view_mode, resources)
+     # Locked sections: the banner, the padlocks on the blocks and the "Keep sections you like" card.
+     lock_context = {
+@@ -382,6 +397,7 @@ def schedule_viewer(request, import_form=None):
+             **pager,
+             "import_form": import_form,
+             "export_form": export_form,
++            "pdf_form": pdf_form,
+             **lock_context,
+         },
+     )
+@@ -633,6 +649,57 @@ def schedule_export(request):
+     )
+ 
+ 
++def schedule_export_pdf(request):
++    """Download the schedule being viewed as a print-friendly PDF (Sprint 4 Section 5).
++
++    A GET form, since nothing changes. ?schedule=N (1-based) is the schedule
++    and ?what= is one value from the viewer's "What to export" list (see
++    gui/controllers/pdf_export.export_choices). Times follow the viewer's
++    clock choice. Success sends the PDF as a browser download, like the JSON
++    and CSV exports. Any problem goes back to the viewer, on the same
++    schedule, with a message; nothing in the session changes either way.
++    """
++    count = schedule_controller.schedule_count(request)
++    if count == 0:
++        messages.error(request, schedule_controller.NO_SCHEDULES_MESSAGE)
++        return redirect("gui:schedule_viewer")
++    number = _export_schedule_number(request.GET.get("schedule"), count)
++    if number is None:
++        messages.error(request, f"Choose a schedule from 1 to {count} to export.")
++        return redirect("gui:schedule_viewer")
++    back = f"{reverse('gui:schedule_viewer')}?schedule={number}#export-pdf"
++
++    form = SchedulePdfExportForm(
++        request.GET, choices=pdf_export.export_choices(request, number - 1)
++    )
++    try:
++        if not form.is_valid():
++            raise ControllerError(pdf_export.CHOOSE_EXPORT_MESSAGE)
++        orientation, selected = pdf_export.parse_choice(form.cleaned_data["what"])
++        pdf = pdf_export.export_pdf(
++            request,
++            number - 1,
++            orientation,
++            selected,
++            partial(render_pdf, time_format=_current_time_format(request)),
++        )
++    except ControllerError as error:
++        messages.error(request, error.message)
++        return redirect(back)
++    return download_response(
++        pdf.filename, pdf.content, pdf.content_type, download_token(request)
++    )
++
++
++def _export_schedule_number(raw, count):
++    """The 1-based schedule number in `raw`, or None when it is not one of 1..count."""
++    try:
++        number = int(raw)
++    except TypeError, ValueError:
++        return None
++    return number if 1 <= number <= count else None
++
++
+ # ---------------------------------------------------------------------- #
+ #  Helpers shared with the other view modules (gui/views_*.py).
+ # ---------------------------------------------------------------------- #
+diff --git a/tests/test_gui_schedule_export_pdf.py b/tests/test_gui_schedule_export_pdf.py
+new file mode 100644
+index 0000000..7ef7802
+--- /dev/null
++++ b/tests/test_gui_schedule_export_pdf.py
+@@ -0,0 +1,375 @@
++"""
++Tests for exporting a PDF from the Schedule Viewer (Sprint 4 Sections 5, 5.4
++and 7).
++
++Covers the "Print-friendly PDF" form on the viewer, the /schedules/export/pdf/
++download (gui/views.schedule_export_pdf), and the list of choices behind it
++(gui/controllers/pdf_export.export_choices and parse_choice). The downloads
++are real PDFs from gui/schedule_pdf.py, read back with pypdf, so these tests
++fail if the wrong schedule, orientation or group ends up on the page.
++"""
++
++from io import BytesIO
++
++import pytest
++from django.core.files.uploadedfile import SimpleUploadedFile
++from pypdf import PdfReader
++
++from app import schedule_io
++from app.schedule_io import Assignment, MeetingTime
++from app.session import Session
++from gui import views
++from gui.controllers import pdf_export
++from gui.controllers import schedule_controller as ctrl
++from gui.controllers.errors import ControllerError
++
++VIEWER_URL = "/schedules/"
++IMPORT_URL = "/schedules/import/"
++EXPORT_URL = "/schedules/export/"
++PDF_URL = "/schedules/export/pdf/"
++
++
++def schedule(faculty="Hogg"):
++    """`faculty` teaches CMSC 140.01 in Roddy 136; Killen teaches CMSC 162.01
++    with a lecture in Roddy 140 and a lab in Roddy 147; CMSC 201.01 meets in a
++    room that is also called Roddy 147; CMSC 999.01 is online."""
++    return [
++        Assignment(
++            "CMSC 140.01",
++            faculty,
++            "Roddy 136",
++            None,
++            (
++                MeetingTime("MON", "09:00", "09:50", 50),
++                MeetingTime("WED", "09:00", "09:50", 50),
++            ),
++        ),
++        Assignment(
++            "CMSC 162.01",
++            "Killen",
++            "Roddy 140",
++            "Roddy 147",
++            (
++                MeetingTime("TUE", "10:00", "10:50", 50),
++                MeetingTime("THU", "13:00", "14:50", 110, lab=True),
++            ),
++        ),
++        Assignment(
++            "CMSC 201.01",
++            "Zoppetti",
++            "Roddy 147",
++            None,
++            (MeetingTime("FRI", "08:00", "08:50", 50),),
++        ),
++        Assignment("CMSC 999.01", "Online Person", None, None, ()),
++    ]
++
++
++def load(client, *faculty):
++    """Load one schedule per name into the client's session, through the
++    viewer's import form, as a user would."""
++    raw = schedule_io.schedules_to_json([schedule(name) for name in faculty])
++    upload = SimpleUploadedFile(
++        "fall.json", raw.encode("utf-8"), content_type="application/json"
++    )
++    return client.post(IMPORT_URL, {"schedule_file": upload}, follow=True)
++
++
++def pdf_text(content: bytes) -> str:
++    reader = PdfReader(BytesIO(content))
++    return " ".join(
++        " ".join((page.extract_text() or "").split()) for page in reader.pages
++    )
++
++
++def export(client, schedule_number="1", what="rooms", **extra):
++    return client.get(PDF_URL, {"schedule": schedule_number, "what": what, **extra})
++
++
++# ---------------------------------------------------------------------- #
++#  The form on the viewer
++# ---------------------------------------------------------------------- #
++def test_viewer_offers_a_pdf_export_of_the_schedule_shown(client):
++    load(client, "Hogg", "Hardy")
++    html = client.get(VIEWER_URL, {"schedule": "2"}).content.decode()
++    assert 'id="export-pdf"' in html
++    assert 'action="/schedules/export/pdf/"' in html
++    assert '<input type="hidden" name="schedule" value="2">' in html
++    assert "<strong>Schedule 2 of 2</strong>" in html
++    assert ">Export PDF</button>" in html
++
++
++def test_the_list_offers_every_group_and_each_room_lab_and_faculty_member(client):
++    load(client, "Hogg")
++    html = client.get(VIEWER_URL).content.decode()
++    assert '<optgroup label="By room or lab">' in html
++    assert '<optgroup label="By faculty">' in html
++    for value, label in [
++        ("rooms", "All rooms and labs"),
++        ("rooms:room:Roddy 136", "Room: Roddy 136"),
++        ("rooms:lab:Roddy 147", "Lab: Roddy 147"),
++        ("rooms:room:Roddy 147", "Room: Roddy 147"),
++        ("faculty", "All faculty"),
++        ("faculty:faculty:Hogg", "Hogg"),
++        ("faculty:faculty:Online Person", "Online Person"),
++    ]:
++        assert f'value="{value}"' in html, value
++        assert f">{label}</option>" in html, label
++
++
++def test_the_list_matches_the_schedule_shown(client):
++    load(client, "Hogg", "Hardy")
++    first = client.get(VIEWER_URL, {"schedule": "1"}).content.decode()
++    second = client.get(VIEWER_URL, {"schedule": "2"}).content.decode()
++    assert 'value="faculty:faculty:Hogg"' in first
++    assert 'value="faculty:faculty:Hogg"' not in second
++    assert 'value="faculty:faculty:Hardy"' in second
++
++
++@pytest.mark.parametrize(
++    "view, selected",
++    [
++        (None, "rooms"),
++        ("courses", "rooms"),
++        ("rooms", "rooms"),
++        ("faculty", "faculty"),
++    ],
++)
++def test_the_list_starts_on_the_orientation_of_the_view(client, view, selected):
++    load(client, "Hogg")
++    query = {"view": view} if view else {}
++    html = client.get(VIEWER_URL, query).content.decode()
++    assert f'<option value="{selected}" selected>' in html
++
++
++def test_pdf_export_is_disabled_when_there_are_no_schedules(client):
++    html = client.get(VIEWER_URL).content.decode()
++    assert 'action="/schedules/export/pdf/"' not in html
++    assert (
++        'disabled aria-describedby="export-pdf-unavailable">Export PDF</button>' in html
++    )
++
++
++# ---------------------------------------------------------------------- #
++#  Downloads
++# ---------------------------------------------------------------------- #
++def test_downloads_every_room_and_lab_as_a_pdf(client):
++    load(client, "Hogg", "Hardy")
++    response = export(client, "1", "rooms")
++    assert response.status_code == 200
++    assert response["Content-Type"] == "application/pdf"
++    assert (
++        response["Content-Disposition"]
++        == 'attachment; filename="schedule-1-all-rooms-and-labs.pdf"'
++    )
++    text = pdf_text(response.content)
++    assert "Schedule 1 of 2 — By room or lab" in text
++    for heading in ("Room: Roddy 136", "Room: Roddy 140", "Lab: Roddy 147"):
++        assert heading in text
++    assert "CMSC 140 01 Hogg Mon, Wed 09:00–09:50" in text
++
++
++def test_downloads_every_faculty_member_as_a_pdf(client):
++    load(client, "Hogg")
++    response = export(client, "1", "faculty")
++    assert response["Content-Type"] == "application/pdf"
++    assert 'filename="schedule-1-all-faculty.pdf"' in response["Content-Disposition"]
++    text = pdf_text(response.content)
++    assert "By faculty" in text and "All faculty" in text
++    assert "Faculty: Killen" in text
++    assert "CMSC 162 01 Roddy 147 (lab) Thu 13:00–14:50" in text
++    assert "CMSC 999 01 No room assigned No meeting times" in text
++
++
++def test_downloads_one_lab_on_its_own(client):
++    load(client, "Hogg")
++    response = export(client, "1", "rooms:lab:Roddy 147")
++    assert 'filename="schedule-1-lab-roddy-147.pdf"' in response["Content-Disposition"]
++    text = pdf_text(response.content)
++    assert "Lab: Roddy 147" in text and "CMSC 162" in text
++    # the room with the same name is a different export
++    assert "Room: Roddy 147" not in text and "CMSC 201" not in text
++
++
++def test_downloads_one_faculty_member_on_their_own(client):
++    load(client, "Hogg")
++    response = export(client, "1", "faculty:faculty:Killen")
++    assert 'filename="schedule-1-faculty-killen.pdf"' in response["Content-Disposition"]
++    text = pdf_text(response.content)
++    assert "Faculty: Killen" in text
++    assert "Hogg" not in text
++
++
++def test_exports_the_chosen_schedule_not_the_first(client):
++    load(client, "Hogg", "Hardy", "Xie")
++    text = pdf_text(export(client, "3", "faculty").content)
++    assert "Schedule 3 of 3" in text
++    assert "Faculty: Xie" in text and "Hogg" not in text
++
++
++def test_times_follow_the_viewers_clock(client):
++    load(client, "Hogg")
++    assert "09:00–09:50" in pdf_text(export(client, "1", "faculty").content)
++    client.get(VIEWER_URL, {"time": "12h"})  # the viewer remembers the choice
++    twelve = pdf_text(export(client, "1", "faculty").content)
++    assert "9:00–9:50 AM" in twelve and "1:00–2:50 PM" in twelve
++    assert "13:00" not in twelve
++
++
++def test_a_download_token_is_echoed_for_the_loading_state(client):
++    load(client, "Hogg")
++    response = export(client, download_token="abc123")
++    assert response.cookies["download_token"].value == "abc123"
++
++
++# ---------------------------------------------------------------------- #
++#  Problems go back to the viewer with a message (Section 5.4)
++# ---------------------------------------------------------------------- #
++def test_no_schedules_goes_back_to_the_viewer_and_explains_why(client):
++    response = export(client, "1", "rooms", follow=True)
++    assert response.redirect_chain == [(VIEWER_URL, 302)]
++    assert "There are no schedules yet." in response.content.decode()
++
++
++@pytest.mark.parametrize("value", ["9", "0", "-1", "abc", ""])
++def test_a_bad_schedule_number_explains_the_range(client, value):
++    load(client, "Hogg", "Hardy")
++    response = export(client, value, "rooms", follow=True)
++    assert response.redirect_chain[-1][0] == VIEWER_URL
++    assert "Choose a schedule from 1 to 2 to export." in response.content.decode()
++
++
++@pytest.mark.parametrize(
++    "what",
++    [
++        "",
++        "courses",
++        "rooms:room",
++        "rooms:room:",
++        "rooms:room:Nowhere",
++        "rooms:lab:Roddy 136",  # a room, asked for as a lab
++        "faculty:faculty:Nobody",
++        "faculty:room:Roddy 136",
++    ],
++)
++def test_a_choice_that_is_not_in_the_list_goes_back_with_a_message(client, what):
++    load(client, "Hogg", "Hardy")
++    response = export(client, "2", what, follow=True)
++    url, status = response.redirect_chain[-1]
++    assert (url, status) == ("/schedules/?schedule=2#export-pdf", 302)
++    assert pdf_export.CHOOSE_EXPORT_MESSAGE in response.content.decode()
++
++
++def test_a_drawing_failure_is_a_clear_message(client, monkeypatch):
++    load(client, "Hogg")
++
++    def broken(schedule_export, title, time_format="24h"):
++        raise RuntimeError("out of paper")
++
++    monkeypatch.setattr(views, "render_pdf", broken)
++    response = export(client, "1", "rooms", follow=True)
++    assert response.redirect_chain[-1][0] == "/schedules/?schedule=1#export-pdf"
++    assert "The PDF could not be created." in response.content.decode()
++
++
++# ---------------------------------------------------------------------- #
++#  Nothing changes (Section 5.4)
++# ---------------------------------------------------------------------- #
++def test_exporting_does_not_change_the_schedules(client):
++    load(client, "Hogg", "Hardy")
++    json_before = client.get(EXPORT_URL, {"schedule": "all"}).content
++    export(client, "1", "rooms")
++    export(client, "2", "faculty:faculty:Killen")
++    export(client, "2", "faculty:faculty:Nobody")
++    export(client, "9", "rooms")
++    assert client.get(EXPORT_URL, {"schedule": "all"}).content == json_before
++
++
++def test_json_and_csv_export_still_work(client):
++    load(client, "Hogg")
++    json_response = client.get(EXPORT_URL, {"schedule": "1", "file_format": "json"})
++    csv_response = client.get(EXPORT_URL, {"schedule": "1", "file_format": "csv"})
++    assert json_response["Content-Type"] == "application/json; charset=utf-8"
++    assert csv_response["Content-Type"].startswith("text/csv")
++
++
++# ---------------------------------------------------------------------- #
++#  The list of choices (controller, no Django request cycle)
++# ---------------------------------------------------------------------- #
++@pytest.fixture
++def session(monkeypatch):
++    fresh = Session()
++    monkeypatch.setattr(ctrl, "get_session", lambda request: fresh)
++    return fresh
++
++
++def test_export_choices_are_grouped_by_orientation(session):
++    session.schedules = [schedule("Hogg")]
++    assert pdf_export.export_choices(None, 0) == [
++        (
++            "By room or lab",
++            [
++                ("rooms", "All rooms and labs"),
++                ("rooms:room:Roddy 136", "Room: Roddy 136"),
++                ("rooms:room:Roddy 140", "Room: Roddy 140"),
++                ("rooms:lab:Roddy 147", "Lab: Roddy 147"),
++                ("rooms:room:Roddy 147", "Room: Roddy 147"),
++            ],
++        ),
++        (
++            "By faculty",
++            [
++                ("faculty", "All faculty"),
++                ("faculty:faculty:Hogg", "Hogg"),
++                ("faculty:faculty:Killen", "Killen"),
++                ("faculty:faculty:Online Person", "Online Person"),
++                ("faculty:faculty:Zoppetti", "Zoppetti"),
++            ],
++        ),
++    ]
++
++
++def test_export_choices_of_a_missing_schedule_is_a_controller_error(session):
++    with pytest.raises(ControllerError):
++        pdf_export.export_choices(None, 0)
++    session.schedules = [schedule()]
++    with pytest.raises(ControllerError):
++        pdf_export.export_choices(None, 5)
++
++
++@pytest.mark.parametrize(
++    "value, expected",
++    [
++        ("rooms", ("rooms", None)),
++        ("faculty", ("faculty", None)),
++        ("rooms:lab:Roddy 147", ("rooms", ("lab", "Roddy 147"))),
++        ("faculty:faculty:Hogg", ("faculty", ("faculty", "Hogg"))),
++        # a colon in a name is kept
++        ("rooms:room:Hall A: West", ("rooms", ("room", "Hall A: West"))),
++    ],
++)
++def test_parse_choice_reads_back_every_value_the_list_contains(value, expected):
++    assert pdf_export.parse_choice(value) == expected
++
++
++@pytest.mark.parametrize(
++    "value", ["", "courses", "rooms:", "rooms:room", "rooms:room:", "faculty:x"]
++)
++def test_parse_choice_rejects_anything_else(value):
++    with pytest.raises(ControllerError) as raised:
++        pdf_export.parse_choice(value)
++    assert raised.value.message == pdf_export.CHOOSE_EXPORT_MESSAGE
++
++
++def test_every_listed_choice_round_trips(session):
++    session.schedules = [schedule("Hogg")]
++    for _, options in pdf_export.export_choices(None, 0):
++        for value, _label in options:
++            orientation, selected = pdf_export.parse_choice(value)
++            assert (
++                pdf_export.choice_value(
++                    orientation,
++                    None if selected is None else pdf_export.GroupKey(*selected),
++                )
++                == value
++            )
