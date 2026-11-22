@@ -21,7 +21,7 @@ links that keep those choices.
 import re
 from dataclasses import replace
 from functools import partial
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from django.contrib import messages
 from django.http import HttpResponse
@@ -667,7 +667,7 @@ def schedule_export_pdf(request):
     if number is None:
         messages.error(request, f"Choose a schedule from 1 to {count} to export.")
         return redirect("gui:schedule_viewer")
-    back = f"{reverse('gui:schedule_viewer')}?schedule={number}#export-pdf"
+    back = _viewer_return_url(request, number)
 
     form = SchedulePdfExportForm(
         request.GET, choices=pdf_export.export_choices(request, number - 1)
@@ -689,6 +689,21 @@ def schedule_export_pdf(request):
     return download_response(
         pdf.filename, pdf.content, pdf.content_type, download_token(request)
     )
+
+
+def _viewer_return_url(request, number):
+    """Where a failed PDF export goes back to: the viewer as it was when the form
+    was sent (Sprint 4 Section 5.4, user story 6). The same schedule, and, when
+    the form carried them, the same view and the same picked rooms, labs or
+    faculty members. An unknown view is left out, so the viewer shows its default.
+    """
+    query = [("schedule", str(number))]
+    view_mode = request.GET.get("view")
+    if view_mode in VIEW_OPTIONS:
+        query.append(("view", view_mode))
+        picked = dict.fromkeys(request.GET.getlist("resource"))
+        query += [("resource", value) for value in picked if value]
+    return f"{reverse('gui:schedule_viewer')}?{urlencode(query)}#export-pdf"
 
 
 def _export_schedule_number(raw, count):

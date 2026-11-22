@@ -192,6 +192,9 @@
 {% if pdf_form %}
 <form method="get" action="{% url 'gui:schedule_export_pdf' %}" class="edit-form" data-loading="Creating PDF…" data-loading-download>
     <input type="hidden" name="schedule" value="{{ current_schedule }}">
+    <input type="hidden" name="view" value="{{ view_mode }}">
+    {% for value in resources %}<input type="hidden" name="resource" value="{{ value }}">
+    {% endfor %}
     <p class="help">Exports <strong>Schedule {{ current_schedule }} of {{ schedule_count }}</strong>, the one shown above. Use Previous and Next to export a different schedule.</p>
     {% include "gui/components/field.html" with field=pdf_form.what %}
     <div class="button-row">

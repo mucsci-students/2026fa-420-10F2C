@@ -277,8 +277,10 @@ What is in the PDF:
 - **Overwrite protection:** like the JSON and CSV exports, the PDF is a browser download, so the browser chooses
   where it goes and asks before replacing an existing file. The app never writes the PDF to disk itself.
 - **Problems** (no schedules, a schedule that no longer exists, a choice that is not in the schedule, or the PDF
-  failing to draw) bring you back to the viewer, on the same schedule, with a message. Nothing in the schedules or the
-  configuration changes, whether the export works or not.
+  failing to draw) bring you back to the viewer where you were (the same schedule, view, and picked rooms, labs or
+  faculty members) with a message. Nothing in the schedules or the configuration changes, whether the export works or
+  not: the configuration, its "no unsaved changes" state and its undo history stay as they were, and JSON and CSV
+  export keep working (`tests/test_gui_export_preserves_state.py`).
 
 **Samples:** [by room or lab](docs/samples/schedule-by-room-or-lab.pdf) and
 [by faculty](docs/samples/schedule-by-faculty.pdf), three pages each, made from invented demonstration data (no real
