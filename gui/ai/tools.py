@@ -63,6 +63,7 @@ from gui.ai.base import (
 )
 from gui.ai.changes import CHANGE_TOOLS
 from gui.ai.diagnose import DIAGNOSE_TOOLS
+from gui.ai.exports import EXPORT_TOOLS
 from gui.ai.generation import GENERATION_TOOLS
 from gui.ai.lifecycle import LIFECYCLE_TOOLS
 from gui.ai.locks import LOCK_TOOLS
@@ -803,6 +804,7 @@ TOOLS: tuple[AiTool, ...] = (
     *GENERATION_TOOLS,
     *LOCK_TOOLS,
     *LIFECYCLE_TOOLS,
+    *EXPORT_TOOLS,
     AiTool(
         "provide_details",
         "Give the application the details it asked for, or correct one you gave, for the request that is "

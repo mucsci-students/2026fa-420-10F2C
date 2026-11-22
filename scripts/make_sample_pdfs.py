@@ -37,8 +37,8 @@ SAMPLES_DIR = ROOT / "docs" / "samples"
 SCHEDULE_LABEL = "Sample schedule 1 of 1"
 
 FILE_NAMES = {
-    BY_ROOM_OR_LAB: "sample-by-room-or-lab.pdf",
-    BY_FACULTY: "sample-by-faculty.pdf",
+    BY_ROOM_OR_LAB: "schedule-by-room-or-lab.pdf",
+    BY_FACULTY: "schedule-by-faculty.pdf",
 }
 
 LONG_FACULTY = "Dr. Alexandra Montgomery-Okonkwo-Vasquez, Visiting Professor"

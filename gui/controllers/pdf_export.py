@@ -27,6 +27,10 @@ depend on a PDF library and its tests do not need one. A renderer is any
 function ``render(export, title) -> bytes``; ``title`` identifies the
 schedule, e.g. "Schedule 2 of 5".
 
+The Schedule Viewer offers one "What to export" choice that names both the
+orientation and the group (export_choices); parse_choice turns the chosen
+value back into the (orientation, selected) pair export_pdf takes.
+
 Like every controller, this never builds HTTP responses (Section 20).
 """
 
@@ -37,7 +41,18 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from app.schedule_export import ExportError, ScheduleExport, build_export
+from app.schedule_export import (
+    BY_FACULTY,
+    BY_ROOM_OR_LAB,
+    EXPORT_ORIENTATIONS,
+    ExportError,
+    GroupKey,
+    ScheduleExport,
+    available_groups,
+    build_export,
+    export_grouping,
+)
+from app.schedule_view import FACULTY
 from gui.controllers.errors import ControllerError
 from gui.controllers.schedule_controller import get_schedule, schedule_count
 
@@ -52,6 +67,22 @@ PDF_FAILED_MESSAGE = (
     "The PDF could not be created. Your schedules and configuration were not "
     "changed. Try again, or export the schedule as JSON or CSV instead."
 )
+
+
+# The headings of the "What to export" list, one per orientation.
+ORIENTATION_LABELS = {BY_ROOM_OR_LAB: "By room or lab", BY_FACULTY: "By faculty"}
+
+CHOOSE_EXPORT_MESSAGE = (
+    "Choose what to export from the list. If the schedules changed since the "
+    "page loaded, reload it and choose again."
+)
+
+# A choice is "<orientation>" for every group, or "<orientation>:<kind>:<name>"
+# for one. Orientations and kinds have no colon, so a name may contain one.
+_SEPARATOR = ":"
+
+# A (value, label) list under one heading, as Django's grouped choices take it.
+ChoiceGroup = tuple[str, list[tuple[str, str]]]
 
 
 @dataclass(frozen=True)
@@ -127,3 +158,55 @@ def _slug(text: str) -> str:
 def _is_pdf(content: object) -> bool:
     """True for non-empty bytes that start like a PDF file does."""
     return isinstance(content, (bytes, bytearray)) and content.startswith(b"%PDF-")
+
+
+def export_choices(request, index: int) -> list[ChoiceGroup]:
+    """What schedule ``index`` (0-based) can be exported as, for the viewer's list.
+
+    One heading per orientation. Each starts with every group ("All rooms and
+    labs", "All faculty"), followed by each room and lab ("Room: Roddy 136",
+    "Lab: Roddy 147") or each faculty member, in the order the PDF lists them.
+    A room and a lab with the same name are two choices.
+
+    Raises ControllerError when there is no such schedule.
+    """
+    assignments = get_schedule(request, index)
+    choices = []
+    for orientation in EXPORT_ORIENTATIONS:
+        options = [(orientation, f"All {export_grouping(orientation).plural}")]
+        options.extend(
+            (choice_value(orientation, group), _group_label(group))
+            for group in available_groups(assignments, orientation)
+        )
+        choices.append((ORIENTATION_LABELS[orientation], options))
+    return choices
+
+
+def choice_value(orientation: str, group: GroupKey | None = None) -> str:
+    """The list value for one orientation and group (None = every group)."""
+    if group is None:
+        return orientation
+    return _SEPARATOR.join((orientation, group.kind, group.name))
+
+
+def parse_choice(value: str) -> tuple[str, tuple[str, str] | None]:
+    """The (orientation, selected) pair a list value stands for.
+
+    Raises ControllerError for a value no list would contain. Whether the
+    group is really in the schedule is checked by export_pdf.
+    """
+    orientation, *rest = value.split(_SEPARATOR, 2)
+    if orientation not in EXPORT_ORIENTATIONS or len(rest) not in (0, 2):
+        raise ControllerError(CHOOSE_EXPORT_MESSAGE)
+    if not rest:
+        return orientation, None
+    kind, name = rest
+    if not name:
+        raise ControllerError(CHOOSE_EXPORT_MESSAGE)
+    return orientation, (kind, name)
+
+
+def _group_label(group: GroupKey) -> str:
+    if group.kind == FACULTY:
+        return group.name
+    return f"{group.kind.capitalize()}: {group.name}"

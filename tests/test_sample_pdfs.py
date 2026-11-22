@@ -41,8 +41,8 @@ def text_of(path: Path) -> tuple[int, str]:
 def test_writes_one_readable_pdf_per_orientation(script, tmp_path):
     written = script.write_samples(tmp_path)
     assert [path.name for path in written] == [
-        "sample-by-room-or-lab.pdf",
-        "sample-by-faculty.pdf",
+        "schedule-by-room-or-lab.pdf",
+        "schedule-by-faculty.pdf",
     ]
     for path in written:
         assert path.read_bytes().startswith(b"%PDF-")
