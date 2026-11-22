@@ -239,7 +239,7 @@ The viewer shows whatever schedules are currently available, whether generated o
 - **CSV** is for spreadsheets: one row per meeting with the columns `schedule, course, faculty, room, lab, day, start, end, duration_minutes, lab_meeting`. A section with no meetings (for example an online course) gets one row with blank meeting columns. CSV can't be loaded back into the viewer; use JSON for that.
 - Export buttons are disabled until there are schedules. Exporting never changes the loaded schedules.
 - **Overwrite protection:** exports (and configuration saves) are browser downloads. The browser decides where the file goes and asks before replacing an existing file, or renames the new one. The application never writes to a path on your computer, so it cannot overwrite your files.
-- **PDF is not in the interface yet.** The pieces for a printable PDF of one schedule, by room or lab or by faculty member, are built and tested (`app/schedule_export.py`, `gui/controllers/pdf_export.py`, `gui/schedule_pdf.py`, which uses ReportLab), but no page or button uses them yet, so the Schedule Viewer offers JSON and CSV only.
+- **PDF:** a print-friendly PDF of one schedule, by room or lab or by faculty member, is exported from the same card; see [Exporting a PDF](#exporting-a-pdf) below.
 
 ### Exporting a PDF
 
@@ -280,8 +280,30 @@ What is in the PDF:
   failing to draw) bring you back to the viewer, on the same schedule, with a message. Nothing in the schedules or the
   configuration changes, whether the export works or not.
 
-Samples, made from the example configuration (`app/examples/config_example.json`):
-[by room or lab](docs/samples/schedule-by-room-or-lab.pdf) and [by faculty](docs/samples/schedule-by-faculty.pdf).
+**Samples:** [by room or lab](docs/samples/schedule-by-room-or-lab.pdf) and
+[by faculty](docs/samples/schedule-by-faculty.pdf), three pages each, made from invented demonstration data (no real
+people, rooms or courses). Recreate them with:
+
+```bash
+uv run python scripts/make_sample_pdfs.py
+```
+
+The script uses the application's own code (`build_export`, then `render_pdf`), and its data is chosen to exercise
+the layout: tables that continue onto the next page, a very long faculty name and room name, a lab meeting, an online
+section with no room or meeting times, and a section with no faculty member. `tests/test_sample_pdfs.py` checks that
+the script still runs and writes readable multi-page PDFs that list every section.
+
+**Manual check (Sprint 4 §7).** Pagination and visual layout were checked by eye in both samples:
+
+| Checked | By room or lab | By faculty |
+|---|---|---|
+| US Letter, portrait, even margins, page numbers 1–3 | ✓ | ✓ |
+| Title and running header name the schedule and the grouping on every page | ✓ | ✓ |
+| A table continued on the next page repeats its section and column headings | ✓ "Science Hall 204", page 1 → 2 | ✓ "Chen" 1 → 2, "Evans" 2 → 3 |
+| Long names wrap inside their cell; nothing is cut off or overlaps | ✓ | ✓ |
+| Rooms and labs labelled; no room, no faculty and no meeting times labelled | ✓ | ✓ |
+| Readable with no color (grayscale) | ✓ | ✓ |
+| Every section in the data appears | ✓ (also tested) | ✓ (also tested) |
 
 **Limitations**
 
@@ -493,7 +515,7 @@ The GUI follows Model–View–Controller. User actions go through a controller;
 | | `app/generation_job.py` | One generation run on a background thread. `GenerationJob` is the subject of the Observer pattern: it notifies `GenerationObserver`s (`ProgressTracker` here, `ResultsStore` in the controller) of progress and of the result (see [Design patterns](#design-patterns)). |
 | | `app/schedule_io.py` | Neutral schedule records (`Assignment`, `MeetingTime`) used by both generated and loaded schedules; JSON/CSV reading, writing and validation. |
 | | `app/schedule_view.py` | One schedule as typed `MeetingBlock`s (course and section split apart, the room or lab kept with its kind), and the `Grouping` strategies that read it by course, by room or lab, or by faculty member (see [Design patterns](#design-patterns)). |
-| | `app/schedule_export.py` | One schedule arranged into sections for a printed export, by room or lab or by faculty member: `build_export` returns a `ScheduleExport` of `ExportSection`s and `ExportRow`s, built from schedule records alone so imported schedules work. It holds the content only; it has no PDF code, and no page or button uses it yet (see **PDF is not in the interface yet** under [Exporting schedules](#exporting-schedules)). |
+| | `app/schedule_export.py` | One schedule arranged into sections for a printed export, by room or lab or by faculty member: `build_export` returns a `ScheduleExport` of `ExportSection`s and `ExportRow`s, built from schedule records alone so imported schedules work. It holds the content only and has no PDF code: `gui/schedule_pdf.py` draws it, and the Schedule Viewer's **Export PDF** uses it (see [Exporting a PDF](#exporting-a-pdf)). |
 | | `app/locks.py`, `app/lock_solver.py` | Section locks (selective regeneration): `LockSet` holds the session's locks and spots clashes between them; `lock_solver` turns locks into extra solver rules and double-checks results. See [Locking sections](#locking-sections-selective-regeneration). |
 | | `course-constraint-scheduler` | The configuration models, validation rules and Z3 solver. Validation is never reimplemented in this project. |
 | **Controller** | `gui/controllers/` | One module per area: `config_controller.py` (lifecycle), `timeslots.py`, `rooms.py`, `labs.py`, `courses.py`, `faculty.py`, `patterns.py`, `meetings.py`, `settings.py`, `schedule_controller.py` (generate, load, export, clear), `locks.py` (lock and unlock sections), `history_controller.py` (undo, redo), `dependencies.py` (what each record is used by, shared by every delete) and `pdf_export.py` (the PDF export: what can be exported, and building one). `errors.py` defines `ControllerError` / `FieldError`; `uploads.py` reads uploaded files safely. Controllers return plain data and never touch templates or `HttpResponse`. |
