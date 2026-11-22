@@ -72,6 +72,7 @@
     var saveUrl = root.getAttribute("data-save-url");
     var newConfigUrl = root.getAttribute("data-new-url");
     var editorUrl = root.getAttribute("data-editor-url");
+    var pdfUrl = root.getAttribute("data-pdf-url");
     var progressTimer = null;
     var resumeTimer = null;
     var confirmId = null;
@@ -378,6 +379,19 @@
             link.href = editorUrl + "#load-configuration";
             link.textContent = "Load Configuration";
             box.appendChild(link);
+        }
+        if (action.kind === "pdf" && pdfUrl) {
+            // The Schedule Viewer's own PDF export: a plain link, so a successful export is a browser
+            // download and a problem lands on the Schedule Viewer with its message.
+            var pdfLink = document.createElement("a");
+            pdfLink.className = "btn btn-small btn-primary";
+            pdfLink.href = pdfUrl + "?schedule=" + encodeURIComponent(String(action.schedule || "")) +
+                "&what=" + encodeURIComponent(String(action.what || ""));
+            pdfLink.textContent = "Export PDF";
+            pdfLink.addEventListener("click", function () {
+                addMessage("notice", "Download requested. Your browser decides where the file goes, and I can't tell whether it finished.");
+            });
+            box.appendChild(pdfLink);
         }
         if (box.childNodes.length) {
             item.appendChild(box);

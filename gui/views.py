@@ -20,6 +20,7 @@ links that keep those choices.
 
 import re
 from dataclasses import replace
+from functools import partial
 from urllib.parse import quote
 
 from django.contrib import messages
@@ -35,10 +36,13 @@ from gui.constants import (
     TIME_FORMAT_24,
     TIME_FORMAT_OPTIONS,
     VIEW_COURSES,
+    VIEW_FACULTY,
     VIEW_OPTIONS,
+    VIEW_ROOMS,
 )
 from gui.controllers import (
     config_controller,
+    pdf_export,
     schedule_controller,
 )
 from gui.controllers import locks as lock_controller
@@ -54,7 +58,9 @@ from gui.forms import (
     SavedConfigSelectionForm,
     ScheduleExportForm,
     ScheduleImportForm,
+    SchedulePdfExportForm,
 )
+from gui.schedule_pdf import render_pdf
 
 TIME_FORMAT_KEY = "viewer_time_format"  # where the session remembers the clock choice
 
@@ -336,6 +342,15 @@ def schedule_viewer(request, import_form=None):
     export_form = ScheduleExportForm(
         schedule_count=count, initial={"schedule": current}
     )
+    # The PDF list starts on the orientation that matches the view.
+    pdf_form = (
+        SchedulePdfExportForm(
+            choices=pdf_export.export_choices(request, current - 1),
+            initial={"what": VIEW_FACULTY if view_mode == VIEW_FACULTY else VIEW_ROOMS},
+        )
+        if count
+        else None
+    )
     pager = _schedule_pager_context(current, count, view_mode, resources)
     # Locked sections: the banner, the padlocks on the blocks and the "Keep sections you like" card.
     lock_context = {
@@ -382,6 +397,7 @@ def schedule_viewer(request, import_form=None):
             **pager,
             "import_form": import_form,
             "export_form": export_form,
+            "pdf_form": pdf_form,
             **lock_context,
         },
     )
@@ -631,6 +647,57 @@ def schedule_export(request):
     return download_response(
         export.filename, export.content, export.content_type, download_token(request)
     )
+
+
+def schedule_export_pdf(request):
+    """Download the schedule being viewed as a print-friendly PDF (Sprint 4 Section 5).
+
+    A GET form, since nothing changes. ?schedule=N (1-based) is the schedule
+    and ?what= is one value from the viewer's "What to export" list (see
+    gui/controllers/pdf_export.export_choices). Times follow the viewer's
+    clock choice. Success sends the PDF as a browser download, like the JSON
+    and CSV exports. Any problem goes back to the viewer, on the same
+    schedule, with a message; nothing in the session changes either way.
+    """
+    count = schedule_controller.schedule_count(request)
+    if count == 0:
+        messages.error(request, schedule_controller.NO_SCHEDULES_MESSAGE)
+        return redirect("gui:schedule_viewer")
+    number = _export_schedule_number(request.GET.get("schedule"), count)
+    if number is None:
+        messages.error(request, f"Choose a schedule from 1 to {count} to export.")
+        return redirect("gui:schedule_viewer")
+    back = f"{reverse('gui:schedule_viewer')}?schedule={number}#export-pdf"
+
+    form = SchedulePdfExportForm(
+        request.GET, choices=pdf_export.export_choices(request, number - 1)
+    )
+    try:
+        if not form.is_valid():
+            raise ControllerError(pdf_export.CHOOSE_EXPORT_MESSAGE)
+        orientation, selected = pdf_export.parse_choice(form.cleaned_data["what"])
+        pdf = pdf_export.export_pdf(
+            request,
+            number - 1,
+            orientation,
+            selected,
+            partial(render_pdf, time_format=_current_time_format(request)),
+        )
+    except ControllerError as error:
+        messages.error(request, error.message)
+        return redirect(back)
+    return download_response(
+        pdf.filename, pdf.content, pdf.content_type, download_token(request)
+    )
+
+
+def _export_schedule_number(raw, count):
+    """The 1-based schedule number in `raw`, or None when it is not one of 1..count."""
+    try:
+        number = int(raw)
+    except TypeError, ValueError:
+        return None
+    return number if 1 <= number <= count else None
 
 
 # ---------------------------------------------------------------------- #
