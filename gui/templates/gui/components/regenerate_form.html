@@ -1,0 +1,24 @@
+{% comment %}
+    The "Generate again" button: starts a new run and keeps every locked section.
+    Next to it, a box for how many schedules to generate, filled in with the saved generation limit. Changing it
+    applies to this run only (the saved limit in Global Settings never changes), the same as the override on the
+    Schedule Generator page. The saved optimizer flags go along as hidden fields so the run uses them; without
+    them the page would ask for a run with no flags at all.
+    With JavaScript (gui/js/generation_progress.js) the run starts in the background and its progress shows in the
+    lock banner at the top of the Schedule Viewer. Without JavaScript the form posts to the Schedule Generator,
+    which runs the same generation and shows the result. data-loading (gui/js/loading.js) covers that case:
+    a "Generating schedules" banner, and a second click is ignored. The progress script stops that event, so with
+    JavaScript working the banner never shows.
+    Needs regen_limit and regen_flags (the saved ones; the box is left out when no configuration is open).
+    Optional: button_class, and id_prefix to keep the box's id unique when the form is on the page twice.
+{% endcomment %}
+<form method="post" action="{% url 'gui:schedule_generator' %}" class="regenerate-form" data-regenerate-form data-loading="Generating schedules" data-start-url="{% url 'gui:generation_start' %}">
+    {% csrf_token %}
+    {% if regen_limit %}
+    <label class="regenerate-form__limit" for="{{ id_prefix|default:'regen' }}-limit">Up to
+        <input type="number" class="regenerate-form__input" id="{{ id_prefix|default:'regen' }}-limit" name="limit" value="{{ regen_limit }}" min="1" step="1" inputmode="numeric" required>
+        schedules</label>
+    {% for flag in regen_flags %}<input type="hidden" name="optimizer_flags" value="{{ flag }}">{% endfor %}
+    {% endif %}
+    <button type="submit" class="{{ button_class|default:'btn btn-small btn-primary' }}">Generate again</button>
+</form>

@@ -63,8 +63,10 @@ from gui.ai.base import (
 )
 from gui.ai.changes import CHANGE_TOOLS
 from gui.ai.diagnose import DIAGNOSE_TOOLS
+from gui.ai.exports import EXPORT_TOOLS
 from gui.ai.generation import GENERATION_TOOLS
 from gui.ai.lifecycle import LIFECYCLE_TOOLS
+from gui.ai.locks import LOCK_TOOLS
 from gui.ai.prompt import CAPABILITIES
 from gui.ai.undo import UNDO_TOOLS
 from gui.constants import DAY_NAMES
@@ -800,7 +802,9 @@ TOOLS: tuple[AiTool, ...] = (
         write=True,
     ),
     *GENERATION_TOOLS,
+    *LOCK_TOOLS,
     *LIFECYCLE_TOOLS,
+    *EXPORT_TOOLS,
     AiTool(
         "provide_details",
         "Give the application the details it asked for, or correct one you gave, for the request that is "
@@ -837,6 +841,12 @@ def _fingerprint(session) -> str | None:
     """The whole configuration as stable JSON, to tell whether it really changed."""
     config = session.config
     return None if config is None else session.dumps()
+
+
+def _lock_version(session) -> int:
+    """Changes whenever a section lock is added, replaced or removed (see app/locks.py)."""
+    locks = getattr(session, "locks", None)
+    return locks.version if locks is not None else 0
 
 
 def _failure(tool: AiTool, reason: str) -> str:
@@ -879,6 +889,7 @@ class ToolBox:
     def _locked_call(self, name: str, arguments: dict | None) -> ToolResult:
         session = get_session(self.request)
         config_before, schedules_before = session.config, tuple(session.schedules)
+        locks_before = _lock_version(session)
         tool = self.tools.get(name)
         checking = tool is not None and tool.write
         state_before = _fingerprint(session) if checking else None
@@ -890,9 +901,15 @@ class ToolBox:
         schedules_changed = len(schedules) != len(schedules_before) or any(
             now is not then for now, then in zip(schedules, schedules_before)
         )
-        if replaced or schedules_changed:
+        # Locks are noticed here, from the lock list's own version, so no tool has to remember to
+        # report them: the page behind the chat shows the padlocks, so it has to be redrawn.
+        locks_changed = _lock_version(session) != locks_before
+        if replaced or schedules_changed or locks_changed:
             result = replace(
-                result, config_replaced=replaced, schedules_changed=schedules_changed
+                result,
+                config_replaced=replaced,
+                schedules_changed=schedules_changed,
+                locks_changed=locks_changed,
             )
             self.results[-1] = result  # _call recorded exactly one result
         return result

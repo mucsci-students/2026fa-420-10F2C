@@ -32,6 +32,11 @@ Editor, which asks first.
 
 A failed run never shows a partial schedule: the controller only stores results when the run succeeded,
 and the reply explains what happened in the same words the Schedule Generator page uses.
+
+Locked sections (kept from the Schedule Viewer) are part of the review: the user is told which sections
+will stay exactly where they are. If the locks change between the review and the go-ahead, nothing is
+started and the user is asked to review again. The reply says which locks were kept, and a run that
+cannot keep them says so and leaves the schedules already in the viewer alone.
 """
 
 from __future__ import annotations
@@ -44,7 +49,7 @@ from dataclasses import dataclass
 from pydantic import BaseModel, Field
 
 from app import schedule_ops
-from gui.ai import diagnose
+from gui.ai import diagnose, pending
 from gui.ai.base import (
     LOAD_OR_NEW_ACTION,
     UNDO_CHIP,
@@ -57,7 +62,7 @@ from gui.ai.base import (
     find_name,
 )
 from gui.ai.changes import _PENDING_ATTR as DELETE_SLOT
-from gui.ai.changes import _token
+from gui.ai.pending import PendingAction
 from gui.ai.undo import recent_changes
 from gui.controllers import config_controller, schedule_controller, settings
 from gui.controllers.errors import ControllerError
@@ -115,9 +120,14 @@ class LoadArgs(BaseModel):
     )
 
 
-@dataclass(frozen=True)
-class _Plan:
-    """The settings the user was shown, waiting for their go-ahead."""
+@dataclass
+class PendingGeneration(PendingAction):
+    """The settings the user was shown, waiting for their go-ahead (a concrete Command).
+
+    `execute` is the receiver's work: validate again, start the run through schedule_controller (the
+    same call the Schedule Generator page makes) and report what happened. The steps every pending
+    action shares (was it asked in this message? has it expired?) are in gui/ai/pending.py.
+    """
 
     limit: int
     flags: tuple[str, ...]
@@ -125,6 +135,55 @@ class _Plan:
     created: float
     version: int  # the configuration version they were checked against
     config: object  # the configuration they were checked against (a new/loaded one is a different object)
+    locks_version: int = 0  # which set of locked sections they were shown with
+    label: str = "the generation settings"
+    ttl: float = PLAN_SECONDS
+
+    def same_request_message(self) -> str:
+        return (
+            "Generating has to be confirmed in a separate message, after you have seen the settings. "
+            "Nothing was started."
+        )
+
+    def expired_message(self) -> str:
+        return "Those generation settings were shown too long ago. Ask me to generate again."
+
+    def blocked_message(self, request) -> str | None:
+        if pending.current(get_session(request), DELETE_SLOT) is not None:
+            return (
+                'A delete is waiting for your answer too, so I did not start generating. Reply "confirm" or '
+                '"cancel" for the delete, then ask me to generate again.'
+            )
+        return None
+
+    def stale_message(self, request) -> str | None:
+        session = get_session(request)
+        if self.config is not session.config or self.version != session.history.version:
+            return (
+                "The configuration changed after I showed you the generation settings, so I did not start. "
+                "Ask me to generate again to review them."
+            )
+        if self.locks_version != _locks_version(session):
+            return (
+                "The locked sections changed after I showed you the generation settings, so I did not start. "
+                "Ask me to generate again to review them."
+            )
+        return None
+
+    def execute(self, request) -> str:
+        _require_valid(request, "so I did not start. Nothing was generated:")
+        before = schedule_controller.schedule_count(request)
+        schedule_controller.start_generation(
+            request, limit_override=self.limit, optimizer_overrides=list(self.flags)
+        )
+        job = getattr(get_session(request), "generation_job", None)
+        if job is not None and not job.wait(wait_seconds()):
+            return (
+                f"The solver is still working after {_plural(round(wait_seconds() / 60), 'minute')}, so I left it running. "
+                "Any schedules it finds appear in the Schedule Viewer when it finishes. "
+                'Ask me "how is the generation going?" to check, or say "cancel the generation" to stop it.'
+            )
+        return _report(request, before=before, limit=self.limit)
 
 
 # ---------------------------------------------------------------------- #
@@ -173,6 +232,18 @@ def _check_flags(wanted: list[str]) -> tuple[str, ...]:
     return _in_known_order(found)
 
 
+def _locked_sections(session) -> tuple[str, ...]:
+    """The names of the sections locked now, in order (none if the session has no locks)."""
+    locks = getattr(session, "locks", None)
+    return tuple(lock.section for lock in locks) if locks is not None else ()
+
+
+def _locks_version(session) -> int:
+    """Changes whenever a lock is added, replaced or removed."""
+    locks = getattr(session, "locks", None)
+    return locks.version if locks is not None else 0
+
+
 def _problems(problems: list[str]) -> str:
     return "\n".join(f"- {problem}" for problem in problems)
 
@@ -187,11 +258,11 @@ def _require_valid(request, refusal: str) -> None:
         )
 
 
-def _fresh_plan(session) -> _Plan | None:
+def _fresh_plan(session) -> PendingGeneration | None:
     """The reviewed settings, if they are still current: the same configuration, unchanged, recent."""
-    plan = getattr(session, _PLAN_ATTR, None)
+    plan = pending.current(session, _PLAN_ATTR)
     if (
-        plan is None
+        not isinstance(plan, PendingGeneration)
         or plan.config is not session.config
         or plan.version != session.history.version
     ):
@@ -215,10 +286,13 @@ def _refuse_if_it_would_discard(request, doing: str, where: str) -> None:
 
 def _forget_waiting(session) -> None:
     """A different configuration (or chat) is now open: nothing described for the old one may be confirmed."""
-    setattr(session, _PLAN_ATTR, None)
-    setattr(session, DELETE_SLOT, None)
-    setattr(session, config_controller.PENDING_NEW_ATTR, None)
-    setattr(session, WAITING_ATTR, None)
+    pending.forget(
+        session,
+        _PLAN_ATTR,
+        DELETE_SLOT,
+        config_controller.PENDING_NEW_ATTR,
+        WAITING_ATTR,
+    )
 
 
 def _no_configuration(request, wanted: str) -> Outcome:
@@ -270,18 +344,20 @@ def prepare_schedule_generation(request, args: PrepareArgs) -> str:
     )
     limit = _check_limit(limit)
 
-    setattr(session, DELETE_SLOT, None)  # only one thing waits for a "yes" at a time
-    setattr(
+    # Only one thing waits for a "yes" at a time: reviewing the settings drops a described delete.
+    pending.stage(
         session,
         _PLAN_ATTR,
-        _Plan(
+        PendingGeneration(
             limit,
             flags,
-            _token(request),
+            pending.request_token(request),
             _now(),
             session.history.version,
             session.config,
+            _locks_version(session),
         ),
+        replaces=(DELETE_SLOT,),
     )
 
     saved_flags = _in_known_order(saved["enabled_flags"])
@@ -303,6 +379,13 @@ def prepare_schedule_generation(request, args: PrepareArgs) -> str:
         f"- Optimizer flags: {_join(flags, 'none')} ({flags_note})",
         "These apply to this run only. Your saved settings and your configuration are not changed.",
     ]
+    locked = _locked_sections(session)
+    if locked:
+        lines.append(
+            f"{_plural(len(locked), 'locked section')} will be kept exactly where "
+            f"{'it is' if len(locked) == 1 else 'they are'} (instructor, room, lab, days and times): "
+            f"{_join(locked)}."
+        )
     if session.schedules:
         lines.append(
             f"{_plural(len(session.schedules), 'schedule')} loaded now will be replaced if this succeeds."
@@ -321,53 +404,19 @@ def confirm_schedule_generation(request, args: NoArgs) -> str:
     session = get_session(request)
     if session.config is None:
         return _no_configuration(request, "generate schedules")
-    plan = getattr(session, _PLAN_ATTR, None)
-    waiting_delete = getattr(session, DELETE_SLOT, None)
-    if plan is None:
-        if waiting_delete is not None:
-            raise ControllerError(
-                "Nothing is waiting to be generated. A delete is waiting for your answer instead: "
-                'reply "confirm" to delete it or "cancel" to keep it.'
-            )
-        raise ControllerError(
+    if pending.current(session, DELETE_SLOT) is not None:
+        nothing_waiting = (
+            "Nothing is waiting to be generated. A delete is waiting for your answer instead: "
+            'reply "confirm" to delete it or "cancel" to keep it.'
+        )
+    else:
+        nothing_waiting = (
             "No generation settings are waiting for a go-ahead. Ask me to generate schedules first, "
             "and I will show you the settings."
         )
-    if plan.token == _token(request):
-        raise ControllerError(
-            "Generating has to be confirmed in a separate message, after you have seen the settings. "
-            "Nothing was started."
-        )
-    if waiting_delete is not None:
-        raise ControllerError(
-            'A delete is waiting for your answer too, so I did not start generating. Reply "confirm" or '
-            '"cancel" for the delete, then ask me to generate again.'
-        )
-
-    setattr(session, _PLAN_ATTR, None)  # used up, whatever happens next
-    if _now() - plan.created > PLAN_SECONDS:
-        raise ControllerError(
-            "Those generation settings were shown too long ago. Ask me to generate again."
-        )
-    if plan.config is not session.config or plan.version != session.history.version:
-        raise ControllerError(
-            "The configuration changed after I showed you the generation settings, so I did not start. "
-            "Ask me to generate again to review them."
-        )
-    _require_valid(request, "so I did not start. Nothing was generated:")
-
-    before = schedule_controller.schedule_count(request)
-    schedule_controller.start_generation(
-        request, limit_override=plan.limit, optimizer_overrides=list(plan.flags)
+    return pending.confirm(
+        request, session, _PLAN_ATTR, now=_now, nothing_waiting=nothing_waiting
     )
-    job = getattr(session, "generation_job", None)
-    if job is not None and not job.wait(wait_seconds()):
-        return (
-            f"The solver is still working after {_plural(round(wait_seconds() / 60), 'minute')}, so I left it running. "
-            "Any schedules it finds appear in the Schedule Viewer when it finishes. "
-            'Ask me "how is the generation going?" to check, or say "cancel the generation" to stop it.'
-        )
-    return _report(request, before=before, limit=plan.limit)
 
 
 def _report(request, *, before: int | None, limit: int | None) -> str:
@@ -390,6 +439,10 @@ def _report(request, *, before: int | None, limit: int | None) -> str:
                 f"The limit was {limit}, but the solver found only {count}: that is every schedule that "
                 "satisfies all the hard constraints."
             )
+        if result.kept:
+            lines.append(
+                f"Kept {_plural(len(result.kept), 'locked section')} in place: {_join(result.kept)}."
+            )
         lines.append("Your configuration and saved settings were not changed.")
         return " ".join(lines)
     if result.outcome == outcome.CANCELLED:
@@ -407,6 +460,9 @@ def _report(request, *, before: int | None, limit: int | None) -> str:
             *((UNDO_CHIP,) if recent_changes(request, 1) else ()),
         )
         raise error
+    if result.outcome == outcome.LOCK_CONFLICT:
+        # The message already says that nothing changed and what to do next.
+        raise ControllerError(_short(text))
     text += " Nothing was added to the Schedule Viewer, and your previous schedules were kept."
     raise ControllerError(_short(text))
 
@@ -414,8 +470,7 @@ def _report(request, *, before: int | None, limit: int | None) -> str:
 def cancel_schedule_generation(request, args: NoArgs) -> str:
     """Forget the settings that were shown, or ask a run that is still going to stop."""
     session = get_session(request)
-    plan = getattr(session, _PLAN_ATTR, None)
-    setattr(session, _PLAN_ATTR, None)
+    plan = pending.take(session, _PLAN_ATTR)
     job = getattr(session, "generation_job", None)
     if job is not None and not job.finished:
         job.cancel()

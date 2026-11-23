@@ -1,0 +1,25 @@
+{% extends "gui/base.html" %}
+{% block title %}Scheduler — Unlock all sections{% endblock %}
+{% block content %}
+<p class="breadcrumb"><a href="{% url 'gui:schedule_viewer' %}">Schedule Viewer</a> &rsaquo; Unlock all sections</p>
+<div class="page-header">
+    <div>
+        <h1>Unlock all sections</h1>
+    </div>
+</div>
+<div class="card">
+    <p>
+        Unlock all <strong>{{ locked_total }}</strong> locked section{{ locked_total|pluralize }}?
+        {% if locked_total == 1 %}It{% else %}They{% endif %} can change the next time you generate schedules.
+    </p>
+    <p class="help">Your schedules and configuration are not affected.</p>
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ lock_next }}">
+        <div class="form-actions">
+            <button type="submit" name="action" value="confirm" class="btn btn-danger">Unlock all</button>
+            <button type="submit" name="action" value="cancel" class="btn">Cancel</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

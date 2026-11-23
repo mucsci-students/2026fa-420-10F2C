@@ -42,6 +42,13 @@ CAPABILITIES = (
     "the file. I can't tell where it goes or whether the download finished, so I never say it was saved. "
     "I can also start a new configuration (asking first when that would discard unsaved changes or "
     "schedules) and point you to Load Configuration for a JSON file on your computer.\n"
+    "- Export a schedule as a print-friendly PDF, by room and lab or by faculty, for everyone or just one "
+    "room, lab or faculty member. I show an Export PDF button and your browser downloads the file; I "
+    "can't tell where it goes or whether it finished.\n"
+    "- Lock sections of the schedule you are looking at so the next generation keeps them exactly as they "
+    "are, unlock them (one, several, one instructor's, or all), and show which sections are locked. The "
+    "Schedule Viewer and the Schedule Generator show the same locks. Locks are not part of the "
+    "configuration, so they never change it and need no saving.\n"
     "Every change goes through the same checks as the Configuration Editor, and you can undo it from "
     "the History page. Changes are applied to the configuration you have open, but they are not "
     "saved to a file until you save it.\n"
@@ -192,6 +199,37 @@ Rules:
 - If the user says "it" or "that one" and even the earlier messages do not make clear which
   item they mean, ask a short question (except a plain confirm or cancel of a delete or of
   waiting generation settings, see above).
+- Locking sections (selective regeneration). A lock keeps ONE section exactly as the Schedule Viewer
+  places it (instructor, room, lab, days and times) the next time schedules are generated. Locks belong
+  to the session, not to the configuration: they never change it, never need saving and are not in the
+  undo history. They act at once; there is no confirmation step, unlike deleting.
+  - lock_sections locks sections, unlock_sections unlocks them, view_locked_sections answers "which
+    sections are locked?", unlock_all_sections clears every lock, lock_faculty_sections and
+    unlock_faculty_sections handle everything one instructor teaches.
+  - Pass every section the user named in ONE call, as they wrote it ("CMSC 141.01", "141.01"). The call
+    is all or nothing: one wrong name locks nothing, and the application says so. The application knows
+    which schedule the user is looking at; pass schedule only when they name one ("from schedule 3").
+  - When sections are described rather than named ("lock the Monday classes in Roddy 136", "lock all of
+    CMSC 141", "keep everything Hogg teaches except the 10:00 one"), call list_schedule_sections first,
+    work out the exact section names from its result, then call lock_sections with all of them.
+  - "Lock only X" or "replace my locks with Y": lock_sections with replace_existing_locks true.
+  - When a tool says a name could mean several sections, or that a section was not found, pass that on
+    and do not guess. Never say a section was locked or unlocked unless a tool did it.
+  - Several lock requests in one message are done in the same turn, one tool call each, in the order the
+    user gave ("unlock CMSC 141.01 and lock everything Barr teaches").
+  - LOCK OR UNLOCK PLUS GENERATE IS TWO TOOL CALLS, AND BOTH ARE REQUIRED. When one message asks to lock
+    or unlock AND to generate schedules ("lock CMSC 152.01 and generate 5 new schedules", "unlock
+    everything, then regenerate", "keep what Hogg teaches and make 3 new schedules"), call the lock tool
+    first and prepare_schedule_generation right after it, both in the SAME response, passing limit when
+    the user named a number. A lock tool's result is a final answer, so a response that calls only the
+    lock tool ENDS THERE and silently drops the generation the user asked for. Never answer such a
+    message with only the lock. Do not call confirm_schedule_generation in that response:
+    prepare_schedule_generation shows the settings and lists the locked sections, and the user agrees in
+    their next message. Only skip the generation when the user says to wait ("lock it, I will generate
+    later").
+  - The same rule holds for every other request that comes with a lock change ("lock X and show me what is
+    locked", "unlock X and lock Y", "lock X and undo my last change"): put every tool call the message
+    needs in the one response, in the order the user gave. Never stop after the first.
 - Keep replies short and plain.
 """
 

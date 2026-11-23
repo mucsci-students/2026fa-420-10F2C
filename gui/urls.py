@@ -8,10 +8,12 @@ from . import (
     views_generation,
     views_history,
     views_labs,
+    views_locks,
     views_meetings,
     views_patterns,
     views_rooms,
     views_settings,
+    views_timeslots,
 )
 
 app_name = "gui"
@@ -34,19 +36,25 @@ urlpatterns = [
         views_history.restore_previous,
         name="restore_previous",
     ),
-    path("configuration/timeslots/", views.timeslots, name="timeslots"),
-    path("configuration/timeslots/add/", views.timeslot_add, name="timeslot_add"),
+    path("configuration/timeslots/", views_timeslots.timeslots, name="timeslots"),
     path(
-        "configuration/timeslots/options/", views.timing_options, name="timing_options"
+        "configuration/timeslots/add/",
+        views_timeslots.timeslot_add,
+        name="timeslot_add",
+    ),
+    path(
+        "configuration/timeslots/options/",
+        views_timeslots.timing_options,
+        name="timing_options",
     ),
     path(
         "configuration/timeslots/<str:day>/<int:index>/edit/",
-        views.timeslot_edit,
+        views_timeslots.timeslot_edit,
         name="timeslot_edit",
     ),
     path(
         "configuration/timeslots/<str:day>/<int:index>/delete/",
-        views.timeslot_delete,
+        views_timeslots.timeslot_delete,
         name="timeslot_delete",
     ),
     path("configuration/rooms/", views_rooms.rooms, name="rooms"),
@@ -146,8 +154,14 @@ urlpatterns = [
     path("schedules/", views.schedule_viewer, name="schedule_viewer"),
     path("schedules/import/", views.schedule_import, name="schedule_import"),
     path("schedules/clear/", views.schedule_clear, name="schedule_clear"),
+    path("schedules/locks/lock/", views_locks.lock, name="lock"),
+    path("schedules/locks/unlock/", views_locks.unlock, name="unlock"),
+    path("schedules/locks/clear/", views_locks.locks_clear, name="locks_clear"),
     path("schedules/export/", views.schedule_export, name="schedule_export"),
     path("schedules/export/json/", views.schedule_export, name="schedule_export_json"),
+    path(
+        "schedules/export/pdf/", views.schedule_export_pdf, name="schedule_export_pdf"
+    ),
     path("assistant/ask/", views_ai.assistant_ask, name="assistant_ask"),
     path(
         "assistant/new/",

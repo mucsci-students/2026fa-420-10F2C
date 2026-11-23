@@ -5,6 +5,16 @@
 // background run (POST data-start-url), then polls data-status-url and fills
 // the <progress> bar until the run finishes, then follows the server's
 // "redirect". The Cancel button posts to data-cancel-url.
+//
+// Two places start a run, and both use the one progress panel on the page:
+//   * the Schedule Generator: form[data-generation-form], with the override fields;
+//   * the Schedule Viewer: form[data-regenerate-form], "Generate again" with the
+//     saved settings. Its panel sits inside the lock banner and carries
+//     data-return-url, so the run ends back in the viewer (the server's own
+//     redirect would send a failed run to the generator page).
+// While a run is going the page is marked busy: elements with
+// data-hide-while-generating are hidden, the lock buttons are switched off (the
+// run keeps the locks it started with) and the calendar is dimmed.
 (function () {
   "use strict";
 
@@ -12,7 +22,9 @@
     var panel = document.getElementById("generation-progress");
     if (!panel || typeof window.fetch !== "function") { return; }
 
-    var form = document.querySelector("form[data-generation-form]");
+    var forms = Array.prototype.slice.call(
+      document.querySelectorAll("form[data-generation-form], form[data-regenerate-form]")
+    );
     var bar = panel.querySelector("progress");
     var text = panel.querySelector("[data-progress-text]");
     var cancel = panel.querySelector("[data-progress-cancel]");
@@ -24,8 +36,7 @@
     var MAX_FAILURES = 10;
     var failures = 0;
     var timer = null;
-    var submitButton = form ? form.querySelector("button[type=submit]") : null;
-    var submitLabel = submitButton ? submitButton.textContent : "";
+    var starting = false;
 
     function token() {
       var input = document.querySelector("input[name=csrfmiddlewaretoken]");
@@ -58,17 +69,35 @@
       if (errors) { errors.hidden = true; errors.textContent = ""; }
     }
 
+    // Every start button on the page (the generator's, and each "Generate again").
     function setStarting(on) {
-      if (!submitButton) { return; }
-      if (on) {
-        submitButton.disabled = true;
-        submitButton.setAttribute("aria-disabled", "true");
-        submitButton.textContent = "Generating…";
-      } else {
-        submitButton.disabled = false;
-        submitButton.removeAttribute("aria-disabled");
-        submitButton.textContent = submitLabel;
-      }
+      forms.forEach(function (form) {
+        var button = form.querySelector("button[type=submit]");
+        if (!button) { return; }
+        if (button.dataset.idleLabel === undefined) { button.dataset.idleLabel = button.textContent; }
+        if (on) {
+          button.disabled = true;
+          button.setAttribute("aria-disabled", "true");
+          button.textContent = "Generating…";
+        } else {
+          button.disabled = false;
+          button.removeAttribute("aria-disabled");
+          button.textContent = button.dataset.idleLabel;
+        }
+      });
+    }
+
+    // While a run is going: hide what does not apply, freeze the locks, dim the old schedules.
+    function setBusy(on) {
+      document.documentElement.classList.toggle("is-generating", on);
+      Array.prototype.forEach.call(document.querySelectorAll("[data-hide-while-generating]"), function (element) {
+        element.hidden = on;
+      });
+      Array.prototype.forEach.call(document.querySelectorAll("button[form=lock-form]"), function (button) {
+        button.disabled = on;
+        if (on) { button.setAttribute("aria-disabled", "true"); }
+        else { button.removeAttribute("aria-disabled"); }
+      });
     }
 
     function plural(n, word) { return n + " " + word + (n === 1 ? "" : "s"); }
@@ -102,7 +131,8 @@
       if (typeof s.percent === "number") { bar.value = s.percent; }
       text.textContent = s.message || "Finished.";
       say("Schedule generation finished.");
-      setTimeout(function () { window.location.assign(s.redirect || window.location.pathname); }, 400);
+      var next = panel.dataset.returnUrl || s.redirect || window.location.pathname;
+      setTimeout(function () { window.location.assign(next); }, 400);
     }
 
     function tick() {
@@ -128,21 +158,24 @@
     function begin(initial) {
       hideErrors();
       failures = 0;
+      setBusy(true);
       render(initial);
       schedule(POLL_MS);
     }
 
-    if (form) {
+    forms.forEach(function (form) {
+      if (form.dataset.wired === "true") { return; }
+      form.dataset.wired = "true";
       // Runs on the form itself, before loading.js sees the event on document.
       form.addEventListener("submit", function (event) {
         event.preventDefault();
         event.stopPropagation();
-        if (form.dataset.starting === "true") { return; }
-        form.dataset.starting = "true";
+        if (starting) { return; }
+        starting = true;
         hideErrors();
         setStarting(true);
         request(form.dataset.startUrl, { method: "POST", body: new FormData(form) }).then(function (res) {
-          form.dataset.starting = "false";
+          starting = false;
           if (!res.ok || !res.body.started) {
             setStarting(false);
             showErrors(res.body.errors);
@@ -150,15 +183,20 @@
           }
           say("Schedule generation started.");
           begin(res.body.status);
+          // A button far down the page (the lock card) starts a run whose progress is at the top.
+          if (form.hasAttribute("data-regenerate-form") && panel.scrollIntoView) {
+            panel.scrollIntoView({ block: "nearest" });
+          }
         }).catch(function () {
-          form.dataset.starting = "false";
+          starting = false;
           setStarting(false);
           showErrors(["Could not start generation. Check that the server is still running and try again."]);
         });
       });
-    }
+    });
 
-    if (cancel) {
+    if (cancel && cancel.dataset.wired !== "true") {
+      cancel.dataset.wired = "true";
       cancel.addEventListener("click", function () {
         cancel.disabled = true;
         request(panel.dataset.cancelUrl, { method: "POST" }).then(function (res) {
